@@ -229,5 +229,5 @@ mlruns/
 
 # Idiolect local settings and credentials
 conf/*.toml
-!conf/*.toml.example
+!conf/idiolect.toml
 *.env

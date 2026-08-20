@@ -24,15 +24,14 @@ def signal_mentions() -> Path:
 
 
 @pytest.fixture
-def local_config(tmp_path: Path) -> Path:
+def local_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Create safe settings for one test."""
+    monkeypatch.setenv("IDIOLECT_SIGNAL_ACCOUNT", "+10000000000")
+    monkeypatch.setenv("IDIOLECT_SIGNAL_CHATS", '["group-allowed"]')
     path = tmp_path / "local.toml"
     path.write_text(
         f"""
 [signal]
-account = "+10000000000"
-chats = ["group-allowed"]
-
 [store]
 root = "{tmp_path.as_posix()}"
 database = "test.duckdb"

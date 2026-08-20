@@ -13,7 +13,7 @@ This directory contains the replication record for the current system.
 
 ## Current state
 
-The Signal collector, DuckDB store, context renderer, dataset builder, and MLX-LM trainer operate now. Evaluation and inference contain contracts only.
+The package implements the Signal collector, DuckDB store, context renderer, dataset builder, and MLX-LM trainer. Evaluation and inference contain contracts only.
 
 The collector uses this flow:
 

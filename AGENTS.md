@@ -32,6 +32,8 @@ Write every Python docstring in ASD-STE100 Simplified Technical English. Add doc
 
 Update `README.md` and the applicable file in `docs/` when behavior, setup, configuration, operation, or data flow changes.
 
+Document only the present implementation. Never describe prior implementations, removed paths, replaced commands, migration narratives, or historical design choices. Git history is the change record.
+
 ## Tests
 
 Every test must protect useful behavior or a stable contract. A test must fail for a plausible implementation defect. Do not add tests only to increase coverage, execute lines, confirm that imports succeed, or restate implementation details.
@@ -52,7 +54,7 @@ Name files `test_*.py` and tests `test_<behavior>`. Use a regression test for ea
 
 Never commit credentials, local configuration, private messages, Signal identifiers, DuckDB files, Parquet datasets, model weights, adapters, checkpoints, logs, or generated artifacts. Use synthetic data in examples and tests. Put secrets in environment variables and document them with safe placeholders.
 
-Treat `conf/local.toml`, `.env`, `var/`, and the installed `launchd` agent as live private state. Do not read or change this state unless the user requests an operational task. Do not start, stop, install, or remove the collector as part of a code test. Use `docs/` as the source for operating procedures.
+`conf/idiolect.toml` is the public canonical configuration. Keep private values out of it. Store Signal account and chat identifiers only in `.env` or a system secret store. Treat optional `conf/local.toml`, `.env`, `var/`, and the installed `launchd` agent as live private state. Do not read or change this state unless the user requests an operational task. Do not start, stop, install, or remove the collector as part of a code test. Use `docs/` as the source for operating procedures.
 
 ## Changes
 

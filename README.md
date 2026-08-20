@@ -9,7 +9,7 @@ signal-cli → group allowlist → normalized records → DuckDB
                          MLX-LM JSONL → LoRA → evaluation
 ```
 
-Signal collection, DuckDB storage, target-relative rendering, immutable dataset export, and local MLX-LM adapter training operate now. Evaluation and inference contain typed contracts only.
+The package implements Signal collection, DuckDB storage, target-relative rendering, immutable dataset export, and local MLX-LM adapter training. Evaluation and inference contain typed contracts only.
 
 ## Start
 
@@ -25,7 +25,6 @@ The minimum interactive commands are:
 
 ```console
 uv sync
-cp conf/local.toml.example conf/local.toml
 set -a
 source .env
 set +a
@@ -40,7 +39,7 @@ just sync-train
 just train var/data/DATASET_ID
 ```
 
-The training command reads all model, formatting, optimizer, seed, and path choices from private TOML configuration. See [adapter training](docs/train.md).
+The training command reads all model, formatting, optimizer, seed, and path choices from the tracked TOML configuration. See [adapter training](docs/train.md).
 
 Use native command groups for routine operations:
 

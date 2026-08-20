@@ -14,11 +14,12 @@ Do not put a real account, group ID, absolute private path, token, or message in
 
 ## Private configuration
 
-Use `conf/local.toml` for structured private settings, such as group IDs. Git ignores this file.
+Use `conf/idiolect.toml` for public and reproducible settings. Git tracks this file. Signal chat IDs are not valid TOML settings.
 
 Use `.env` or a system secret store for these values:
 
 - `IDIOLECT_SIGNAL_ACCOUNT`
+- `IDIOLECT_SIGNAL_CHATS`
 - `IDIOLECT_SIGNAL_DATA_DIR`
 - Model hub tokens
 - Experiment service tokens
@@ -30,7 +31,9 @@ Set `.env` mode to `0600`:
 chmod 600 .env
 ```
 
-The account number and group IDs are private metadata. They are not enough to authenticate a Signal device, but they must not be public.
+`IDIOLECT_SIGNAL_CHATS` is a JSON list of group IDs. The account number and group IDs are private metadata. They are not enough to authenticate a Signal device, but they must not be public.
+
+Use the ignored `conf/local.toml` file only when you need a complete local configuration that differs from the canonical file. Set `IDIOLECT_CONFIG` to select it. Keep private values in `.env` or a system secret store.
 
 ## Key material and data
 

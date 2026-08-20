@@ -15,21 +15,58 @@ def test_environment_replaces_sensitive_signal_values(local_config: Path) -> Non
             "IDIOLECT_SIGNAL_ACCOUNT": "+19999999999",
             "IDIOLECT_SIGNAL_BIN": "/safe/signal-cli",
             "IDIOLECT_SIGNAL_DATA_DIR": "/safe/data",
+            "IDIOLECT_SIGNAL_CHATS": '["env-group-one", "env-group-two"]',
         },
     )
 
     assert config.signal.account == "+19999999999"
     assert config.signal.binary == "/safe/signal-cli"
     assert config.signal.data_dir == Path("/safe/data")
+    assert config.signal.chats == ("env-group-one", "env-group-two")
     assert config.store.database_path == local_config.parent / "test.duckdb"
 
 
-def test_unknown_setting_is_rejected(tmp_path: Path) -> None:
-    """Check that a setting typo cannot change collection silently."""
-    path = tmp_path / "invalid.toml"
-    path.write_text('[signal]\nchat = ["wrong-key"]\n', encoding="utf-8")
+@pytest.mark.parametrize(
+    "value",
+    (
+        "not-json",
+        '{"group": "not-a-list"}',
+        '["valid", ""]',
+        '["valid", 4]',
+    ),
+)
+def test_signal_chat_environment_rejects_invalid_lists(
+    local_config: Path,
+    value: str,
+) -> None:
+    """Check that an invalid private allowlist stops configuration."""
+    with pytest.raises(ConfigError, match="must be a JSON list"):
+        load_config(local_config, {"IDIOLECT_SIGNAL_CHATS": value})
 
-    with pytest.raises(ConfigError, match="unknown values: chat"):
+
+def test_signal_chat_environment_rejects_duplicates(local_config: Path) -> None:
+    """Check that one chat cannot occur twice in the allowlist."""
+    with pytest.raises(ConfigError, match="must not contain duplicate"):
+        load_config(
+            local_config,
+            {"IDIOLECT_SIGNAL_CHATS": '["same-group", "same-group"]'},
+        )
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    (("account", '"+10000000000"'), ("chats", '["group-private"]')),
+)
+def test_private_signal_identifiers_are_rejected_in_toml(
+    tmp_path: Path,
+    name: str,
+    value: str,
+) -> None:
+    """Check that private Signal identifiers cannot load from TOML."""
+    path = tmp_path / "invalid.toml"
+    path.write_text(f"[signal]\n{name} = {value}\n", encoding="utf-8")
+
+    with pytest.raises(ConfigError, match=f"unknown values: {name}"):
         load_config(path, {})
 
 

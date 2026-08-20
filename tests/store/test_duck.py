@@ -48,7 +48,7 @@ def test_store_round_trips_mentions_and_quote_snapshots(
     signal_mentions: Path,
     tmp_path: Path,
 ) -> None:
-    """Check migration and storage of addressing data for datasets."""
+    """Check storage of addressing data in the required schema."""
     path = tmp_path / "test.duckdb"
     with duckdb.connect(str(path)) as connection:
         connection.execute(
@@ -88,7 +88,7 @@ def test_reindex_refreshes_addressing_from_raw_events(
     signal_mentions: Path,
     tmp_path: Path,
 ) -> None:
-    """Check that old normalized data can use stored mention metadata."""
+    """Check that reindex rebuilds addressing from stored events."""
     repository = DuckRepository(tmp_path / "test.duckdb")
     parser = SignalParser((ChatId("group-allowed"),))
     events = tuple(SignalFileSource(signal_mentions, clock=lambda: _NOW).events())

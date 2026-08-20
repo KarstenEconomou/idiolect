@@ -62,6 +62,22 @@ def test_missing_config_has_actionable_error(tmp_path: Path, capsys) -> None:
     assert "Configuration file does not exist" in output.err
 
 
+def test_message_processing_requires_a_chat_allowlist(
+    tmp_path: Path,
+    signal_events: Path,
+    capsys,
+) -> None:
+    """Check that message input cannot run without an allowlist."""
+    config = tmp_path / "empty.toml"
+    config.write_text("[signal]\n", encoding="utf-8")
+
+    code = main(("--config", str(config), "signal", "import", str(signal_events)))
+
+    output = capsys.readouterr()
+    assert code == 2
+    assert "Set IDIOLECT_SIGNAL_CHATS" in output.err
+
+
 def test_train_command_uses_fixed_dataset_and_config(
     local_config: Path,
     signal_events: Path,

@@ -32,10 +32,9 @@ The `var/signal` directory contains the linked-device keys and account state. Do
 
 ## Configure Idiolect
 
-Create the private files:
+The repository contains `conf/idiolect.toml`. This file contains public settings. Create the private environment file:
 
 ```console
-cp conf/local.toml.example conf/local.toml
 touch .env
 chmod 600 .env
 ```
@@ -60,12 +59,15 @@ These environment values are available:
 
 | Value | Function |
 |---|---|
-| `IDIOLECT_CONFIG` | Set another TOML configuration path. |
+| `IDIOLECT_CONFIG` | Select an optional alternate TOML configuration path. |
 | `IDIOLECT_SIGNAL_ACCOUNT` | Set the Signal account identifier. |
+| `IDIOLECT_SIGNAL_CHATS` | Replace the Signal chat allowlist with a JSON list. |
 | `IDIOLECT_SIGNAL_BIN` | Set the absolute `signal-cli` path. |
 | `IDIOLECT_SIGNAL_DATA_DIR` | Set the private Signal data directory. |
 
-Signal environment values take priority over the same TOML values. The loader rejects an unknown TOML key. `timeout` must be `-1` or greater. `max_messages` must be greater than zero.
+The default configuration path is `conf/idiolect.toml`. You do not need to set `IDIOLECT_CONFIG` for normal operation. Set it only when you must select a different configuration file.
+
+Signal environment values take priority over the same TOML values. The loader rejects an unknown TOML key. Signal chat IDs are valid only in `IDIOLECT_SIGNAL_CHATS`. The loader rejects invalid or duplicate chat IDs. `timeout` must be `-1` or greater. `max_messages` must be greater than zero.
 
 List the Signal groups:
 
@@ -79,18 +81,14 @@ The output format is:
 GROUP_ID=    active    Group name
 ```
 
-Copy each required ID to `conf/local.toml`. Quote each ID.
+Add the required IDs to `.env` as one JSON list. Use single shell quotes around the JSON text.
 
-```toml
-[signal]
-binary = "signal-cli"
-data_dir = "var/signal"
-chats = [
-    "GROUP_ID_ONE=",
-    "GROUP_ID_TWO=",
-]
-timeout = 5
+```sh
+IDIOLECT_SIGNAL_CHATS='["GROUP_ID_ONE=", "GROUP_ID_TWO="]'
 ```
+
+Reload `.env` after each change. The chat list is private metadata. Do not put a real group ID in `conf/idiolect.toml`.
+Keep the outer single quotes. Use double quotes around each ID. Do not use a trailing comma.
 
 ## Run collection
 
@@ -138,7 +136,7 @@ uv run idiolect signal import path/to/events.jsonl
 
 - The source runs `signal-cli --output json receive`.
 - The source does not download attachments, stories, avatars, or stickers.
-- The parser accepts only group IDs in `signal.chats`.
+- The parser accepts only group IDs in the configured chat allowlist.
 - The parser discards direct messages and messages from other groups.
 - The parser reads incoming messages and sent-message sync events.
 - The parser records text, identity-linked mentions, reply snapshots, edits, remote deletes, reactions, and attachment metadata.

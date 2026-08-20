@@ -52,9 +52,9 @@ The completion contains only the target message text. A first model must generat
 
 Supply a stable pseudonym for every other person across one dataset. The renderer rejects a missing pseudonym. Do not put Signal UUIDs, phone numbers, or hashed database IDs into model text.
 
-## Existing records
+## Reindex
 
-Raw stored events keep their original mention and quote data. Refresh old normalized records after this feature is installed:
+Raw stored events keep their original mention and quote data. Rebuild normalized records from these events:
 
 ```console
 uv run idiolect signal reindex

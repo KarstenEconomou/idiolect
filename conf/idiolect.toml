@@ -1,9 +1,8 @@
-# This file contains safe local example settings.
+# This file contains public and reproducible settings.
 
 [signal]
 binary = "signal-cli"
 data_dir = "var/signal"
-chats = []
 timeout = 5
 # max_messages = 100
 

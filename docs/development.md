@@ -35,7 +35,7 @@ The checks run Ruff, ty, and pytest. The build creates a source archive and a wh
 
 Use only synthetic Signal JSON fixtures. Use a fake command runner for `signal-cli`. Use `tmp_path` for DuckDB and configuration files.
 
-Do not read `.env`, `conf/local.toml`, `var/`, or the installed launch agent in a test. Do not call Signal, a model hub, or another network service. Do not run a real model, model download, training operation, or GPU operation. Use a fake model resolver and a fake training command.
+Do not read `.env`, `conf/idiolect.toml`, `conf/local.toml`, `var/`, or the installed launch agent in a test. Use fixture configuration files. Do not call Signal, a model hub, or another network service. Do not run a real model, model download, training operation, or GPU operation. Use a fake model resolver and a fake training command.
 
 Each test must detect a possible implementation defect. Test the group allowlist, command safety options, message normalization, edit order, delete tombstones, reaction links, transaction behavior, duplicate events, strict configuration, and CLI results.
 

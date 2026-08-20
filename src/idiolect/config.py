@@ -1,5 +1,6 @@
 """Load and define settings for each pipeline stage."""
 
+import json
 import os
 import tomllib
 from collections.abc import Mapping
@@ -168,7 +169,7 @@ def load_config(
     _check_keys(values, {"signal", "store", "data", "train", "eval", "infer"}, "root")
     _check_keys(
         signal_values,
-        {"account", "binary", "data_dir", "chats", "timeout", "max_messages"},
+        {"binary", "data_dir", "timeout", "max_messages"},
         "signal",
     )
     _check_keys(store_values, {"root", "database"}, "store")
@@ -234,12 +235,12 @@ def load_config(
     _check_keys(infer_values, {"max_tokens", "temperature"}, "infer")
 
     signal = SignalConfig(
-        account=env.get("IDIOLECT_SIGNAL_ACCOUNT") or _optional_str(signal_values, "account"),
+        account=env.get("IDIOLECT_SIGNAL_ACCOUNT"),
         binary=env.get("IDIOLECT_SIGNAL_BIN") or _str(signal_values, "binary", "signal-cli"),
         data_dir=_optional_path(
             env.get("IDIOLECT_SIGNAL_DATA_DIR") or signal_values.get("data_dir")
         ),
-        chats=tuple(ChatId(value) for value in _str_list(signal_values, "chats")),
+        chats=_signal_chats(env.get("IDIOLECT_SIGNAL_CHATS")),
         timeout=_int(signal_values, "timeout", 5),
         max_messages=_optional_int(signal_values, "max_messages"),
     )
@@ -336,15 +337,6 @@ def _str(values: Mapping[str, Any], name: str, default: str) -> str:
     return value
 
 
-def _optional_str(values: Mapping[str, Any], name: str) -> str | None:
-    value = values.get(name)
-    if value is None:
-        return None
-    if not isinstance(value, str):
-        raise ConfigError(f"Configuration value must be text: {name}")
-    return value
-
-
 def _int(values: Mapping[str, Any], name: str, default: int) -> int:
     value = values.get(name, default)
     if not isinstance(value, int) or isinstance(value, bool):
@@ -380,6 +372,28 @@ def _str_list(values: Mapping[str, Any], name: str) -> list[str]:
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
         raise ConfigError(f"Configuration value must be a list of text: {name}")
     return value
+
+
+def _signal_chats(value: str | None) -> tuple[ChatId, ...]:
+    """Load the private Signal chat allowlist."""
+    if value is None:
+        return ()
+    try:
+        decoded = json.loads(value)
+    except json.JSONDecodeError as error:
+        raise ConfigError(
+            "IDIOLECT_SIGNAL_CHATS must be a JSON list of nonempty text values"
+        ) from error
+    if not isinstance(decoded, list) or not all(
+        isinstance(item, str) and item.strip() for item in decoded
+    ):
+        raise ConfigError(
+            "IDIOLECT_SIGNAL_CHATS must be a JSON list of nonempty text values"
+        )
+    chats = decoded
+    if len(chats) != len(set(chats)):
+        raise ConfigError("IDIOLECT_SIGNAL_CHATS must not contain duplicate values")
+    return tuple(ChatId(chat) for chat in chats)
 
 
 def _int_list(values: Mapping[str, Any], name: str) -> list[int]:

@@ -74,6 +74,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 state = "active" if group.active else "inactive"
                 print(f"{group.id}\t{state}\t{group.name}")
             return 0
+        if arguments.signal_command != "stats" and not config.signal.chats:
+            raise ConfigError(
+                "Set IDIOLECT_SIGNAL_CHATS before Signal message processing"
+            )
         repository = DuckRepository(config.store.database_path)
         if arguments.signal_command == "stats":
             stats = repository.stats()
@@ -128,7 +132,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--config",
         type=Path,
-        default=Path(os.environ.get("IDIOLECT_CONFIG", "conf/local.toml")),
+        default=Path(os.environ.get("IDIOLECT_CONFIG", "conf/idiolect.toml")),
         help="TOML configuration path",
     )
     commands = parser.add_subparsers(dest="command", required=True)

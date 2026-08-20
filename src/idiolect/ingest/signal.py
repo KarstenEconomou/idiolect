@@ -204,7 +204,7 @@ class SignalParser:
     def __init__(self, chats: Sequence[ChatId]) -> None:
         """Set the group allowlist."""
         if not chats:
-            raise SignalError("Add at least one Signal group to signal.chats")
+            raise SignalError("Add at least one Signal group to the chat allowlist")
         self._chats = frozenset(str(chat) for chat in chats)
 
     def records(self, event: Event) -> Iterable[Record]:

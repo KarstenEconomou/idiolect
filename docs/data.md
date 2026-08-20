@@ -42,7 +42,7 @@ If DuckDB reports an error, the transaction does not commit. The collector repor
 
 Edits and deletes use a revision time. The store keeps the record with the newest revision time. A delete creates a message tombstone with no text.
 
-The store adds new columns and tables when it opens an older database. Run `uv run idiolect signal reindex` to rebuild normalized records from stored raw events. This step adds new normalized data to old events.
+The store verifies its required columns and tables when it opens the database. Run `uv run idiolect signal reindex` to rebuild normalized records from stored raw events.
 
 ## Inspection
 

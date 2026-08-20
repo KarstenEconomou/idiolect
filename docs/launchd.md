@@ -7,10 +7,10 @@
 The Idiolect agent has the label `com.idiolect.collect`. It runs this operation:
 
 ```console
-uv run idiolect signal collect --follow
+uv run idiolect --config /absolute/repository/path/conf/idiolect.toml signal collect --follow
 ```
 
-The agent sources `.env`, sets the repository as its working directory, and uses explicit command paths. It writes logs to `var/log/`.
+The agent sources `.env`, selects the canonical configuration, sets the repository as its working directory, and uses explicit command paths. It writes logs to `var/log/`.
 
 ## Agent fields
 
@@ -112,6 +112,6 @@ The `caffeinate` command must continue to run. A closed MacBook lid can still ca
 
 ## Path changes
 
-The plist contains absolute paths. If the repository, `uv`, or `signal-cli` moves, update the private plist. Run `bootout`, install the new file, and run `bootstrap` again.
+The plist contains absolute paths. If the repository, canonical configuration, `uv`, or `signal-cli` moves, update the private plist. Run `bootout`, install the new file, and run `bootstrap` again.
 
 The tracked example is not the installed agent. The installed file is `~/Library/LaunchAgents/com.idiolect.collect.plist`.

@@ -9,7 +9,7 @@
     <array>
         <string>/bin/zsh</string>
         <string>-c</string>
-        <string>set -a; source REPO_PATH/.env; set +a; exec UV_PATH run idiolect signal collect --follow</string>
+        <string>set -a; source REPO_PATH/.env; set +a; exec UV_PATH run idiolect --config REPO_PATH/conf/idiolect.toml signal collect --follow</string>
     </array>
 
     <key>WorkingDirectory</key>
