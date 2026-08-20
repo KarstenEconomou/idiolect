@@ -1,0 +1,26 @@
+# This file contains safe local example settings.
+
+[signal]
+live = false
+chats = []
+
+[store]
+root = "var"
+database = "idiolect.duckdb"
+
+[data]
+context = 32
+valid_ratio = 0.1
+test_ratio = 0.1
+
+[train]
+base_model = ""
+batch_size = 1
+epochs = 1
+learning_rate = 0.0002
+
+[eval]
+
+[infer]
+max_tokens = 128
+temperature = 0.7

@@ -216,3 +216,18 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Idiolect local data and model artifacts
+var/
+*.duckdb
+*.duckdb.wal
+*.parquet
+*.safetensors
+checkpoint-*/
+wandb/
+mlruns/
+
+# Idiolect local settings and credentials
+conf/*.toml
+!conf/*.toml.example
+*.env

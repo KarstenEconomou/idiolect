@@ -1,0 +1,27 @@
+[project]
+name = "idiolect"
+version = "0.1.0"
+description = "Build language models that reproduce individual writing styles"
+readme = "README.md"
+authors = [
+    { name = "Karsten Economou", email = "economoukarsten@gmail.com" }
+]
+requires-python = ">=3.14"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "ruff",
+    "ty",
+]
+
+[project.scripts]
+idiolect = "idiolect.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.12.5,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
