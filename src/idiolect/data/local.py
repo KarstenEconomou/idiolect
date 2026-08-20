@@ -159,6 +159,15 @@ class LocalBuilder:
             raise DataError(f"Cannot write dataset: {destination}") from error
 
 
+def load_dataset(path: Path) -> BuildResult:
+    """Load and verify one immutable dataset."""
+    try:
+        dataset_id = DatasetId(path.name)
+    except (TypeError, ValueError) as error:
+        raise DataError(f"Dataset path does not contain an ID: {path}") from error
+    return _existing_result(path, dataset_id)
+
+
 def summarize_people(messages: Iterable[Message]) -> tuple[PersonSummary, ...]:
     """Return one summary for each message author."""
     values: dict[PersonId, list[Message]] = {}

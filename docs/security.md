@@ -20,8 +20,8 @@ Use `.env` or a system secret store for these values:
 
 - `IDIOLECT_SIGNAL_ACCOUNT`
 - `IDIOLECT_SIGNAL_DATA_DIR`
-- Future model hub tokens
-- Future experiment service tokens
+- Model hub tokens
+- Experiment service tokens
 - Future cloud credentials
 
 Set `.env` mode to `0600`:
@@ -41,6 +41,8 @@ The device link URI is a temporary credential. Render it locally, scan it, and d
 The DuckDB file contains raw messages and original Signal identifiers. Hashed normalized IDs do not make the raw event table anonymous.
 
 The log files can contain command errors and local paths. Keep `var/log/` private.
+
+Model snapshots, model-specific datasets, adapters, run logs, and run manifests are private. An adapter can retain source text. Keep external experiment reporting disabled unless you approve the service and its data flow.
 
 Use disk encryption. Limit local file access. Do not include `var/`, `.env`, or `conf/local.toml` in a public archive.
 

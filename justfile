@@ -1,5 +1,23 @@
 set shell := ["sh", "-eu", "-c"]
 
+# Operate the macOS collector.
+mod collect
+
+# Inspect data and build datasets.
+mod data
+
+# List available commands.
+default:
+    @just --list
+
+# Install the core project environment.
+sync:
+    uv sync
+
+# Install the local training environment.
+sync-train:
+    uv sync --extra train
+
 # Run the complete test suite.
 test:
     uv run pytest
@@ -14,3 +32,7 @@ typecheck:
 
 # Run every required quality check.
 check: lint typecheck test
+
+# Train all configured seeds and keep the Mac awake.
+train dataset:
+    caffeinate -i uv run idiolect train "{{dataset}}"

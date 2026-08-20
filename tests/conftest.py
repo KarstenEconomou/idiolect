@@ -38,6 +38,7 @@ root = "{tmp_path.as_posix()}"
 database = "test.duckdb"
 
 [data]
+output = "{(tmp_path / "data").as_posix()}"
 context = 4
 valid_ratio = 0.0
 test_ratio = 0.0

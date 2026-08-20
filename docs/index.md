@@ -6,13 +6,14 @@ This directory contains the replication record for the current system.
 - [Data store](data.md): Follow the record flow and inspect DuckDB.
 - [Conversation context](context.md): Preserve names, mentions, and replies for training.
 - [Dataset build](dataset.md): Build immutable target-specific MLX-LM files.
+- [Adapter training](train.md): Configure and run local QLoRA adapters.
 - [Security](security.md): Separate public settings from private data.
 - [macOS service](launchd.md): Run collection with `launchd`.
 - [Development](development.md): Verify changes without live data or model calls.
 
 ## Current state
 
-The Signal collector, DuckDB store, context renderer, and dataset builder operate now. Training, evaluation, and inference contain contracts only.
+The Signal collector, DuckDB store, context renderer, dataset builder, and MLX-LM trainer operate now. Evaluation and inference contain contracts only.
 
 The collector uses this flow:
 

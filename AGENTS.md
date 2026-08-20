@@ -2,7 +2,7 @@
 
 ## Project
 
-Idiolect is a Python 3.14 package for a local-first ML pipeline. It collects Signal group messages, stores source and normalized data in DuckDB, builds immutable MLX-LM JSONL datasets, and trains one adapter per person for contextual reply generation.
+Idiolect is a Python 3.14 package for a local-first ML pipeline. It collects Signal group messages, stores source and normalized data in DuckDB, builds immutable JSONL datasets, and trains content-addressed MLX-LM adapters for contextual reply generation.
 
 Code lives in `src/idiolect/`. Tests mirror it in `tests/`. Keep Signal, storage, dataset, training, evaluation, and inference code behind the existing typed ports. Do not add working backend code to contract modules.
 
@@ -11,8 +11,12 @@ Code lives in `src/idiolect/`. Tests mirror it in `tests/`. Keep Signal, storage
 Use `uv` for all Python work and the root `justfile` for checks.
 
 - `uv sync`: update the local environment.
+- `uv sync --extra train`: install optional local MLX-LM training packages.
 - `uv run idiolect`: run the CLI.
 - `uv build`: build distributions.
+- `just collect status|start|stop`: operate the installed LaunchAgent.
+- `just data people|build`: inspect authors or build a self dataset.
+- `just train <dataset>`: train configured seeds while the Mac stays awake.
 - `just test`: run pytest.
 - `just lint`: run Ruff.
 - `just typecheck`: run ty.

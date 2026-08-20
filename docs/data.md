@@ -10,7 +10,8 @@ var/
 ├── idiolect.duckdb         raw events and normalized records
 ├── log/                    launchd output
 ├── data/<dataset-id>/      immutable MLX-LM datasets
-└── run/<run-id>/           future model results
+├── models/                 fixed model snapshots
+└── runs/<run-id>/          immutable adapter runs
 ```
 
 Git ignores `var/`. The collector creates the DuckDB file with mode `0600`. Create `var/` with mode `0700` on a multi-user computer.

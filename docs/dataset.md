@@ -13,8 +13,8 @@ Stop continuous collection before a batch operation. This rule prevents two proc
 For the documented `launchd` service, stop and later start it with:
 
 ```console
-launchctl bootout gui/$(id -u)/com.idiolect.collect
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.idiolect.collect.plist
+just collect stop
+just collect start
 ```
 
 Run the second command only after the batch commands finish.
@@ -35,7 +35,7 @@ The command rebuilds normalized records from immutable raw events.
 List normalized authors:
 
 ```console
-uv run idiolect data people
+just data people
 ```
 
 The output contains the hashed person ID, `self` or `member`, message count, and latest source display name. The command does not print a phone number or Signal UUID.
@@ -43,8 +43,10 @@ The output contains the hashed person ID, `self` or `member`, message count, and
 Use `--self` for the linked Signal account:
 
 ```console
-uv run idiolect data build --self --name Karsten
+just data build Karsten
 ```
+
+The recipe builds data for the local Signal account. Use the direct CLI command with `--person` for another consenting person.
 
 Use a normalized person ID for another consenting person:
 
@@ -71,7 +73,7 @@ Purged boundaries prevent one source message from entering more than one dataset
 
 ## Output
 
-The default output path is:
+The `data.output` setting selects the output path. The example uses:
 
 ```text
 var/data/<dataset-id>/

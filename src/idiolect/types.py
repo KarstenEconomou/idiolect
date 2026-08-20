@@ -146,6 +146,13 @@ class RunRef:
 
 
 @dataclass(frozen=True, slots=True)
+class TrainResult:
+    """Keep the completed runs for one configured experiment."""
+
+    runs: tuple[RunRef, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class Metric:
     """Keep one model test result."""
 

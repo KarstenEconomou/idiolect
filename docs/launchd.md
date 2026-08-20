@@ -66,7 +66,7 @@ Do not run a manual `collect --follow` process at the same time.
 Show the state:
 
 ```console
-launchctl print gui/$(id -u)/com.idiolect.collect
+just collect status
 ```
 
 The expected state is `running`. `runs=1` and `last exit code = (never exited)` show that the first process still runs.
@@ -80,10 +80,16 @@ launchctl kickstart -k gui/$(id -u)/com.idiolect.collect
 Stop and remove the agent from the current login session:
 
 ```console
-launchctl bootout gui/$(id -u)/com.idiolect.collect
+just collect stop
 ```
 
-Load it again with the `bootstrap` command. Remove the installed plist only after the `bootout` command.
+Load it again:
+
+```console
+just collect start
+```
+
+These recipes use `launchctl` with the current user ID and the documented agent label. Remove the installed plist only after `just collect stop`.
 
 Watch the logs:
 

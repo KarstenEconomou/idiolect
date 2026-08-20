@@ -44,9 +44,38 @@ class StoreConfig:
 class DataConfig:
     """Set the dataset build options."""
 
+    output: Path | None = None
     context: int = 32
     valid_ratio: float = 0.1
     test_ratio: float = 0.1
+
+
+type ConfigScalar = str | int | float | bool
+type ConfigValue = ConfigScalar | tuple[ConfigScalar, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class TrainDataConfig:
+    """Set the training data export options."""
+
+    format: str = ""
+    system_prompt: str = ""
+    prompt_role: str = ""
+    completion_role: str = ""
+    prompt_prefix: str = ""
+    prompt_suffix: str = ""
+    completion_prefix: str = ""
+    completion_suffix: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class LoraConfig:
+    """Set the low-rank adapter options."""
+
+    keys: tuple[str, ...] = ()
+    rank: int = 0
+    scale: float = 0.0
+    dropout: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,9 +83,39 @@ class TrainConfig:
     """Set the model training options."""
 
     base_model: str = ""
+    model_source: str = ""
+    model_revision: str = ""
+    model_cache: Path | None = None
+    output: Path | None = None
+    adapter_file: str = ""
+    command: tuple[str, ...] = ()
+    seeds: tuple[int, ...] = ()
+    fine_tune_type: str = ""
+    optimizer: str = ""
+    optimizer_options: tuple[tuple[str, ConfigValue], ...] = ()
     batch_size: int = 1
-    epochs: int = 1
+    epochs: int | None = None
+    iterations: int | None = None
     learning_rate: float = 0.0002
+    num_layers: int = 0
+    val_batches: int = 0
+    test: bool = False
+    test_batches: int = 0
+    max_seq_length: int = 0
+    grad_checkpoint: bool = False
+    grad_accumulation_steps: int = 0
+    clear_cache_threshold: int = 0
+    steps_per_report: int = 0
+    steps_per_eval: int = 0
+    save_every: int = 0
+    mask_prompt: bool = False
+    trust_remote_code: bool = False
+    schedule: str = ""
+    report_to: str = ""
+    project_name: str = ""
+    data: TrainDataConfig = field(default_factory=TrainDataConfig)
+    lora: LoraConfig = field(default_factory=LoraConfig)
+    specified: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,12 +172,64 @@ def load_config(
         "signal",
     )
     _check_keys(store_values, {"root", "database"}, "store")
-    _check_keys(data_values, {"context", "valid_ratio", "test_ratio"}, "data")
+    _check_keys(data_values, {"output", "context", "valid_ratio", "test_ratio"}, "data")
     _check_keys(
         train_values,
-        {"base_model", "batch_size", "epochs", "learning_rate"},
+        {
+            "base_model",
+            "model_source",
+            "model_revision",
+            "model_cache",
+            "output",
+            "adapter_file",
+            "command",
+            "seeds",
+            "fine_tune_type",
+            "optimizer",
+            "optimizer_options",
+            "batch_size",
+            "epochs",
+            "iterations",
+            "learning_rate",
+            "num_layers",
+            "val_batches",
+            "test",
+            "test_batches",
+            "max_seq_length",
+            "grad_checkpoint",
+            "grad_accumulation_steps",
+            "clear_cache_threshold",
+            "steps_per_report",
+            "steps_per_eval",
+            "save_every",
+            "mask_prompt",
+            "trust_remote_code",
+            "schedule",
+            "report_to",
+            "project_name",
+            "data",
+            "lora",
+        },
         "train",
     )
+    train_data_values = _section(train_values, "data")
+    lora_values = _section(train_values, "lora")
+    optimizer_values = _section(train_values, "optimizer_options")
+    _check_keys(
+        train_data_values,
+        {
+            "format",
+            "system_prompt",
+            "prompt_role",
+            "completion_role",
+            "prompt_prefix",
+            "prompt_suffix",
+            "completion_prefix",
+            "completion_suffix",
+        },
+        "train.data",
+    )
+    _check_keys(lora_values, {"keys", "rank", "scale", "dropout"}, "train.lora")
     _check_keys(eval_values, {"max_examples"}, "eval")
     _check_keys(infer_values, {"max_tokens", "temperature"}, "infer")
 
@@ -137,15 +248,62 @@ def load_config(
         database=_str(store_values, "database", "idiolect.duckdb"),
     )
     data = DataConfig(
+        output=_optional_path(data_values.get("output")),
         context=_int(data_values, "context", 32),
         valid_ratio=_float(data_values, "valid_ratio", 0.1),
         test_ratio=_float(data_values, "test_ratio", 0.1),
     )
     train = TrainConfig(
         base_model=_str(train_values, "base_model", ""),
+        model_source=_str(train_values, "model_source", ""),
+        model_revision=_str(train_values, "model_revision", ""),
+        model_cache=_optional_path(train_values.get("model_cache")),
+        output=_optional_path(train_values.get("output")),
+        adapter_file=_str(train_values, "adapter_file", ""),
+        command=tuple(_str_list(train_values, "command")),
+        seeds=tuple(_int_list(train_values, "seeds")),
+        fine_tune_type=_str(train_values, "fine_tune_type", ""),
+        optimizer=_str(train_values, "optimizer", ""),
+        optimizer_options=tuple(sorted(_scalar_map(optimizer_values).items())),
         batch_size=_int(train_values, "batch_size", 1),
-        epochs=_int(train_values, "epochs", 1),
+        epochs=_optional_int(train_values, "epochs"),
+        iterations=_optional_int(train_values, "iterations"),
         learning_rate=_float(train_values, "learning_rate", 0.0002),
+        num_layers=_int(train_values, "num_layers", 0),
+        val_batches=_int(train_values, "val_batches", 0),
+        test=_bool(train_values, "test", False),
+        test_batches=_int(train_values, "test_batches", 0),
+        max_seq_length=_int(train_values, "max_seq_length", 0),
+        grad_checkpoint=_bool(train_values, "grad_checkpoint", False),
+        grad_accumulation_steps=_int(
+            train_values, "grad_accumulation_steps", 0
+        ),
+        clear_cache_threshold=_int(train_values, "clear_cache_threshold", 0),
+        steps_per_report=_int(train_values, "steps_per_report", 0),
+        steps_per_eval=_int(train_values, "steps_per_eval", 0),
+        save_every=_int(train_values, "save_every", 0),
+        mask_prompt=_bool(train_values, "mask_prompt", False),
+        trust_remote_code=_bool(train_values, "trust_remote_code", False),
+        schedule=_str(train_values, "schedule", ""),
+        report_to=_str(train_values, "report_to", ""),
+        project_name=_str(train_values, "project_name", ""),
+        data=TrainDataConfig(
+            format=_str(train_data_values, "format", ""),
+            system_prompt=_str(train_data_values, "system_prompt", ""),
+            prompt_role=_str(train_data_values, "prompt_role", ""),
+            completion_role=_str(train_data_values, "completion_role", ""),
+            prompt_prefix=_str(train_data_values, "prompt_prefix", ""),
+            prompt_suffix=_str(train_data_values, "prompt_suffix", ""),
+            completion_prefix=_str(train_data_values, "completion_prefix", ""),
+            completion_suffix=_str(train_data_values, "completion_suffix", ""),
+        ),
+        lora=LoraConfig(
+            keys=tuple(_str_list(lora_values, "keys")),
+            rank=_int(lora_values, "rank", 0),
+            scale=_float(lora_values, "scale", 0.0),
+            dropout=_float(lora_values, "dropout", 0.0),
+        ),
+        specified=_train_keys(train_values, train_data_values, lora_values),
     )
     eval_config = EvalConfig(max_examples=_optional_int(eval_values, "max_examples"))
     infer = InferConfig(
@@ -153,6 +311,7 @@ def load_config(
         temperature=_float(infer_values, "temperature", 0.7),
     )
     _validate_signal(signal)
+    _validate_train(train)
     return AppConfig(signal, store, data, train, eval_config, infer)
 
 
@@ -209,6 +368,13 @@ def _float(values: Mapping[str, Any], name: str, default: float) -> float:
     return float(value)
 
 
+def _bool(values: Mapping[str, Any], name: str, default: bool) -> bool:
+    value = values.get(name, default)
+    if not isinstance(value, bool):
+        raise ConfigError(f"Configuration value must be true or false: {name}")
+    return value
+
+
 def _str_list(values: Mapping[str, Any], name: str) -> list[str]:
     value = values.get(name, [])
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
@@ -216,11 +382,48 @@ def _str_list(values: Mapping[str, Any], name: str) -> list[str]:
     return value
 
 
+def _int_list(values: Mapping[str, Any], name: str) -> list[int]:
+    value = values.get(name, [])
+    if not isinstance(value, list) or not all(
+        isinstance(item, int) and not isinstance(item, bool) for item in value
+    ):
+        raise ConfigError(f"Configuration value must be a list of integers: {name}")
+    return value
+
+
+def _scalar_map(values: Mapping[str, Any]) -> dict[str, ConfigValue]:
+    result: dict[str, ConfigValue] = {}
+    for name, value in values.items():
+        if isinstance(value, list) and all(
+            isinstance(item, (str, int, float, bool)) for item in value
+        ):
+            result[name] = tuple(value)
+            continue
+        if not isinstance(value, (str, int, float, bool)):
+            raise ConfigError(
+                "Configuration value must be a scalar or scalar list: "
+                f"optimizer_options.{name}"
+            )
+        result[name] = value
+    return result
+
+
+def _train_keys(
+    train: Mapping[str, Any],
+    data: Mapping[str, Any],
+    lora: Mapping[str, Any],
+) -> frozenset[str]:
+    keys = {name for name in train if name not in {"data", "lora"}}
+    keys.update(f"data.{name}" for name in data)
+    keys.update(f"lora.{name}" for name in lora)
+    return frozenset(keys)
+
+
 def _optional_path(value: Any) -> Path | None:
     if value is None:
         return None
     if not isinstance(value, str):
-        raise ConfigError("Signal data directory must be text")
+        raise ConfigError("Configuration path must be text")
     return Path(value)
 
 
@@ -229,3 +432,16 @@ def _validate_signal(config: SignalConfig) -> None:
         raise ConfigError("Signal timeout must be -1 or greater")
     if config.max_messages is not None and config.max_messages < 1:
         raise ConfigError("Signal max_messages must be greater than zero")
+
+
+def _validate_train(config: TrainConfig) -> None:
+    if config.epochs is not None and config.epochs < 1:
+        raise ConfigError("Training epochs must be greater than zero")
+    if config.iterations is not None and config.iterations < 1:
+        raise ConfigError("Training iterations must be greater than zero")
+    if config.epochs is not None and config.iterations is not None:
+        raise ConfigError("Set training epochs or iterations, not both")
+    if config.seeds and len(set(config.seeds)) != len(config.seeds):
+        raise ConfigError("Training seeds must be unique")
+    if not 0.0 <= config.lora.dropout < 1.0:
+        raise ConfigError("LoRA dropout must be at least zero and less than one")

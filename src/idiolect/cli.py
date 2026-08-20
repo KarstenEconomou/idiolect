@@ -8,7 +8,13 @@ from dataclasses import replace
 from pathlib import Path
 
 from idiolect.config import ConfigError, load_config
-from idiolect.data.local import DataError, LocalBuilder, resolve_self, summarize_people
+from idiolect.data.local import (
+    DataError,
+    LocalBuilder,
+    load_dataset,
+    resolve_self,
+    summarize_people,
+)
 from idiolect.ingest import harvest
 from idiolect.ingest.harvest import reindex
 from idiolect.ingest.signal import (
@@ -18,6 +24,7 @@ from idiolect.ingest.signal import (
     SignalSource,
 )
 from idiolect.store.duck import DuckRepository, StoreError
+from idiolect.train.mlx import MlxTrainer, TrainError
 from idiolect.types import PersonId, Split
 
 
@@ -41,7 +48,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 if arguments.self_person
                 else PersonId(arguments.person)
             )
-            result = LocalBuilder(repository, config.store.root / "data").build(
+            if config.data.output is None:
+                raise ConfigError("Set data.output before dataset construction")
+            result = LocalBuilder(repository, config.data.output).build(
                 person_id,
                 arguments.name,
                 config.data,
@@ -52,6 +61,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                 f"valid={counts.get(Split.VALID, 0)} test={counts.get(Split.TEST, 0)} "
                 f"path={result.dataset.path}"
             )
+            return 0
+        if arguments.command == "train":
+            dataset = load_dataset(arguments.dataset).dataset
+            result = MlxTrainer().train(dataset, config.train)
+            for run in result.runs:
+                print(f"run={run.id} dataset={run.dataset_id} path={run.path}")
             return 0
         if arguments.signal_command == "groups":
             source = SignalSource(config.signal)
@@ -99,11 +114,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             f"skipped={result.skipped} duplicates={result.duplicates}"
         )
         return 0
-    except (ConfigError, DataError, SignalError, StoreError) as error:
+    except (ConfigError, DataError, SignalError, StoreError, TrainError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 2
     except KeyboardInterrupt:
-        print("Signal collection stopped.", file=sys.stderr)
+        print("Operation stopped.", file=sys.stderr)
         return 130
 
 
@@ -147,4 +162,6 @@ def _parser() -> argparse.ArgumentParser:
     target.add_argument("--self", dest="self_person", action="store_true")
     target.add_argument("--person", help="normalized target person ID")
     build.add_argument("--name", required=True, help="target name in model text")
+    train = commands.add_parser("train", help="train configured local adapters")
+    train.add_argument("dataset", type=Path, help="immutable dataset directory")
     return parser

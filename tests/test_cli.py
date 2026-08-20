@@ -2,7 +2,9 @@
 
 from pathlib import Path
 
+import idiolect.cli
 from idiolect.cli import main
+from idiolect.types import RunId, RunRef, TrainResult
 
 
 def test_import_and_stats_use_configured_store(
@@ -58,3 +60,55 @@ def test_missing_config_has_actionable_error(tmp_path: Path, capsys) -> None:
     output = capsys.readouterr()
     assert code == 2
     assert "Configuration file does not exist" in output.err
+
+
+def test_train_command_uses_fixed_dataset_and_config(
+    local_config: Path,
+    signal_events: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    """Check that the CLI passes one verified dataset to the trainer."""
+    assert main(
+        ("--config", str(local_config), "signal", "import", str(signal_events))
+    ) == 0
+    capsys.readouterr()
+    assert main(
+        (
+            "--config",
+            str(local_config),
+            "data",
+            "build",
+            "--self",
+            "--name",
+            "Karsten",
+        )
+    ) == 0
+    capsys.readouterr()
+    dataset_path = next((local_config.parent / "data").iterdir())
+    seen = []
+
+    class FakeTrainer:
+        """Return one fixed run without model work."""
+
+        def train(self, dataset, config) -> TrainResult:
+            """Record the verified dataset and settings."""
+            seen.append((dataset, config))
+            run = RunRef(
+                RunId("run-id"),
+                dataset.id,
+                local_config.parent / "runs" / "run-id",
+                dataset.created_at,
+            )
+            return TrainResult((run,))
+
+    monkeypatch.setattr(idiolect.cli, "MlxTrainer", FakeTrainer)
+
+    code = main(("--config", str(local_config), "train", str(dataset_path)))
+
+    output = capsys.readouterr()
+    assert code == 0
+    assert len(seen) == 1
+    assert seen[0][0].path == dataset_path
+    assert "run=run-id" in output.out
+    assert output.err == ""
