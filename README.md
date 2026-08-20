@@ -1,77 +1,159 @@
-# idiolect
-
-Idiolect collects Signal group messages for a local ML pipeline. It stores allowed raw events and identity-linked records in DuckDB. Native mentions and reply snapshots remain available for target-relative training context.
+# Idiolect
 
 ```text
-signal-cli → group allowlist → normalized records → DuckDB
-                                                   │
-                                                   v
-                   MLX-LM JSONL → LoRA → inference → evaluation
+     ╭─╮
+  ╭──╯ ╰──╮
+  │  · ·  │    IDIOLECT
+  ╰──╮ ╭──╯    someone, reconstructed.
+     ╰─╯
 ```
 
-The package implements Signal collection, DuckDB storage, target-relative rendering, immutable dataset export, local MLX-LM adapter training, and reproducible local inference. Evaluation contains a typed contract.
+Idiolect is a local-first ML pipeline for experiments with the writing style of a
+consenting Signal user. It collects allowlisted group messages, preserves native
+mention and reply context, builds immutable target-specific datasets, trains
+MLX-LM LoRA adapters, and generates reproducible local predictions.
 
-## Start
+```mermaid
+flowchart LR
+    signal["Signal groups"] --> collect["signal-cli collector"]
+    collect --> normalize["Allowlist and normalization"]
+    normalize --> store[("DuckDB")]
+    store --> render["Target-relative context"]
+    render --> data["Immutable JSONL dataset"]
 
-Read the [operations index](docs/index.md). It contains the complete replication procedure for:
+    data --> train["MLX-LM LoRA training"]
+    train --> adapter["Verified adapter run"]
 
-- Signal device setup and group selection
-- Private configuration and credentials
-- Collection and DuckDB behavior
-- macOS `launchd` operation
-- Development and verification
+    data --> base["Recorded base inference"]
+    data --> tuned["Adapter inference"]
+    adapter --> base
+    adapter --> tuned
+    base --> predictions["Content-addressed predictions"]
+    tuned --> predictions
+```
 
-The minimum interactive commands are:
+The canonical configuration keeps Signal data, datasets, model files, adapters,
+and predictions under the ignored `var/` directory. The repository tracks public
+settings in `conf/idiolect.toml` and complete experiment settings in `conf/exp/`.
+Evaluation has a typed contract but no evaluation runner.
+
+## Requirements
+
+- Python 3.14
+- [`uv`](https://docs.astral.sh/uv/)
+- [`just`](https://just.systems/) 1.46.0 or later
+- A current `signal-cli` release and a local QR code tool for collection
+- An Apple silicon Mac for the MLX-LM training and inference workflow
+
+Run commands from the repository root. Use only messages from people who consent
+to the collection and model experiment.
+
+## Set up
+
+Install the core environment:
 
 ```console
-uv sync
+just sync
+```
+
+Link `signal-cli` as a secondary Signal device as described in
+[Signal collection](docs/signal.md). Then create the private environment file:
+
+```console
+touch .env
+chmod 600 .env
+```
+
+Add the account first:
+
+```sh
+IDIOLECT_SIGNAL_ACCOUNT="+14165550123"
+```
+
+The values above are placeholders. Do not commit a real account, group ID,
+message, token, or model artifact. Idiolect does not load `.env` automatically
+for interactive commands. Load it in the current shell:
+
+```console
 set -a
 source .env
 set +a
-uv run idiolect signal groups
-uv run idiolect signal collect --follow
 ```
 
-Install and run local training separately:
+List groups, then add the selected IDs to `.env`:
+
+```console
+uv run idiolect signal groups
+```
+
+```sh
+IDIOLECT_SIGNAL_CHATS='["GROUP_ID_ONE=", "GROUP_ID_TWO="]'
+```
+
+Load `.env` again after you add the group IDs.
+
+## Run the pipeline
+
+Collect queued messages once, or use the documented macOS LaunchAgent for
+continuous collection:
+
+```console
+uv run idiolect signal collect
+just collect status
+```
+
+Build an immutable dataset for the linked Signal user:
+
+```console
+just data people
+just data build TARGET_NAME
+```
+
+Install MLX-LM and run a short tracked experiment:
 
 ```console
 just sync-train
-just train var/data/DATASET_ID
+just config train qwen3-8b-smoke var/data/DATASET_ID
 ```
 
-Create and run a named experiment configuration:
+Generate paired predictions from the exact base model and adapter recorded by
+the run:
 
 ```console
-just config new qwen3-14b-r16
-just config train qwen3-14b-r16 var/data/DATASET_ID
+just infer base-of var/runs/RUN_ID var/data/DATASET_ID test qwen3-8b-smoke
+just infer run var/runs/RUN_ID var/data/DATASET_ID test qwen3-8b-smoke
 ```
 
-Training reads all model, formatting, optimizer, seed, and path choices from one complete tracked TOML configuration. See [adapter training](docs/train.md).
+Use `just config new NAME` to copy the complete canonical configuration before
+you define another experiment. Do not change a configuration after you use it
+for a recorded run.
 
-Generate paired predictions from one fixed dataset split:
+## Documentation
 
-```console
-just infer base var/data/DATASET_ID test
-just infer run var/runs/RUN_ID var/data/DATASET_ID test
-```
+The [operations index](docs/index.md) is the replication entry point. It links
+the procedures for Signal setup, security, collection, `launchd`, conversation
+context, dataset construction, training, inference, and development.
 
-Inference reads its complete policy from TOML and writes private content-addressed artifacts under `var/infer/`. See [local inference](docs/infer.md).
+Important constraints:
 
-Use native command groups for routine operations:
-
-```console
-just collect status
-just data people
-just data build Karsten
-```
+- The collector receives new queued events. It does not import existing phone
+  history.
+- Stop the continuous collector during `reindex` and dataset construction.
+- Collection can continue during training and inference because those operations
+  use immutable files.
+- Keep the Mac on, awake, and logged in for the LaunchAgent. Training and
+  inference recipes use `caffeinate`.
+- Treat raw events and hashed records as private data.
 
 ## Develop
 
-The project requires Python 3.14 and uses `uv`.
+Source code uses the `src` layout. Tests use synthetic fixtures, temporary
+storage, and fake external boundaries.
 
 ```console
 just check
 uv build
 ```
 
-Tests use synthetic fixtures, temporary databases, and fake Signal process boundaries. Do not use live data or model calls in tests.
+See [Development and verification](docs/development.md) and
+[AGENTS.md](AGENTS.md) for repository rules.
