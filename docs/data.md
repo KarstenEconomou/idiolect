@@ -9,7 +9,7 @@ var/
 ├── signal/                 linked-device keys and Signal state
 ├── idiolect.duckdb         raw events and normalized records
 ├── log/                    launchd output
-├── data/<dataset-id>/      future Parquet datasets
+├── data/<dataset-id>/      immutable MLX-LM datasets
 └── run/<run-id>/           future model results
 ```
 
@@ -19,7 +19,9 @@ Git ignores `var/`. The collector creates the DuckDB file with mode `0600`. Crea
 
 `events` is the source record. It contains the event ID, source name, source ID, receive time, raw JSON bytes, and store time.
 
-`messages` is the current message revision. It contains the source event ID, hashed chat ID, hashed author ID, send time, text, reply ID, edit time, delete time, and revision time.
+`messages` is the current message revision. It contains the source event ID, hashed chat ID, hashed author ID, send time, text, reply ID, quote snapshot, edit time, delete time, and revision time.
+
+`mentions` contains native Signal mention ranges. Each row contains the message ID, body or quote scope, order, hashed mentioned-person ID, original UTF-16 range, and source display name.
 
 `attachments` contains metadata only. It contains the message ID, hashed attachment ID, media type, file name, and byte count.
 
@@ -38,6 +40,8 @@ The store starts one transaction for each accepted source event.
 If DuckDB reports an error, the transaction does not commit. The collector reports the event ID that failed.
 
 Edits and deletes use a revision time. The store keeps the record with the newest revision time. A delete creates a message tombstone with no text.
+
+The store adds new columns and tables when it opens an older database. Run `uv run idiolect signal reindex` to rebuild normalized records from stored raw events. This step adds new normalized data to old events.
 
 ## Inspection
 

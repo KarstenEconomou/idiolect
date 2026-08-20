@@ -8,7 +8,9 @@ from dataclasses import replace
 from pathlib import Path
 
 from idiolect.config import ConfigError, load_config
+from idiolect.data.local import DataError, LocalBuilder, resolve_self, summarize_people
 from idiolect.ingest import harvest
+from idiolect.ingest.harvest import reindex
 from idiolect.ingest.signal import (
     SignalError,
     SignalFileSource,
@@ -16,6 +18,7 @@ from idiolect.ingest.signal import (
     SignalSource,
 )
 from idiolect.store.duck import DuckRepository, StoreError
+from idiolect.types import PersonId, Split
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -24,6 +27,32 @@ def main(argv: Sequence[str] | None = None) -> int:
     arguments = parser.parse_args(argv)
     try:
         config = load_config(arguments.config)
+        if arguments.command == "data":
+            repository = DuckRepository(config.store.database_path)
+            people = summarize_people(repository.messages())
+            if arguments.data_command == "people":
+                for person in people:
+                    state = "self" if person.is_self else "member"
+                    name = person.name or "(unknown)"
+                    print(f"{person.id}\t{state}\t{person.messages}\t{name}")
+                return 0
+            person_id = (
+                resolve_self(people)
+                if arguments.self_person
+                else PersonId(arguments.person)
+            )
+            result = LocalBuilder(repository, config.store.root / "data").build(
+                person_id,
+                arguments.name,
+                config.data,
+            )
+            counts = result.counts
+            print(
+                f"dataset={result.dataset.id} train={counts.get(Split.TRAIN, 0)} "
+                f"valid={counts.get(Split.VALID, 0)} test={counts.get(Split.TEST, 0)} "
+                f"path={result.dataset.path}"
+            )
+            return 0
         if arguments.signal_command == "groups":
             source = SignalSource(config.signal)
             for group in source.groups():
@@ -40,6 +69,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
 
         parser_adapter = SignalParser(config.signal.chats)
+        if arguments.signal_command == "reindex":
+            result = reindex(parser_adapter, repository)
+            print(
+                f"scanned={result.scanned} updated={result.updated} "
+                f"messages={result.messages} reactions={result.reactions} "
+                f"skipped={result.skipped}"
+            )
+            return 0
         if arguments.signal_command == "import":
             source = SignalFileSource(arguments.path)
         else:
@@ -62,7 +99,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             f"skipped={result.skipped} duplicates={result.duplicates}"
         )
         return 0
-    except (ConfigError, SignalError, StoreError) as error:
+    except (ConfigError, DataError, SignalError, StoreError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 2
     except KeyboardInterrupt:
@@ -98,4 +135,16 @@ def _parser() -> argparse.ArgumentParser:
     )
     import_command.add_argument("path", type=Path, help="JSON lines path")
     signal_commands.add_parser("stats", help="show stored record counts")
+    signal_commands.add_parser(
+        "reindex",
+        help="refresh normalized records from stored events",
+    )
+    data = commands.add_parser("data", help="build model datasets")
+    data_commands = data.add_subparsers(dest="data_command", required=True)
+    data_commands.add_parser("people", help="list normalized message authors")
+    build = data_commands.add_parser("build", help="build one target dataset")
+    target = build.add_mutually_exclusive_group(required=True)
+    target.add_argument("--self", dest="self_person", action="store_true")
+    target.add_argument("--person", help="normalized target person ID")
+    build.add_argument("--name", required=True, help="target name in model text")
     return parser

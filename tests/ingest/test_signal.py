@@ -133,3 +133,32 @@ def test_parser_makes_delete_tombstone(signal_events: Path, signal_delete: Path)
     assert deleted.id == original.id
     assert deleted.text is None
     assert deleted.deleted_at is not None
+
+
+def test_parser_links_native_mentions_to_people(
+    signal_mentions: Path,
+) -> None:
+    """Check visible names, UTF-16 ranges, and quote snapshots."""
+    events = tuple(SignalFileSource(signal_mentions, clock=lambda: _NOW).events())
+    parser = SignalParser((ChatId("group-allowed"),))
+
+    target = next(iter(parser.records(events[0])))
+    tagged = next(iter(parser.records(events[1])))
+    plain = next(iter(parser.records(events[2])))
+
+    assert isinstance(target, Message)
+    assert isinstance(tagged, Message)
+    assert isinstance(plain, Message)
+    assert tagged.text == "😀 ￼ are you coming?"
+    assert len(tagged.mentions) == 1
+    assert tagged.mentions[0].person_id == target.author_id
+    assert (
+        tagged.mentions[0].start_utf16,
+        tagged.mentions[0].length_utf16,
+    ) == (3, 1)
+    assert tagged.reply_to == target.id
+    assert tagged.quote is not None
+    assert tagged.quote.author_id == target.author_id
+    assert tagged.quote.text == "Maybe"
+    assert plain.text == "Karsten are you coming?"
+    assert plain.mentions == ()

@@ -1,0 +1,177 @@
+"""Render target-relative chat examples."""
+
+import json
+from collections.abc import Mapping, Sequence
+
+from idiolect.types import ChatExample, Example, Mention, Message, MessageId, PersonId
+
+
+class RenderError(ValueError):
+    """Report invalid example data."""
+
+
+def render_example(
+    example: Example,
+    target_name: str,
+    person_names: Mapping[PersonId, str],
+) -> ChatExample:
+    """Render one example from the target person's view."""
+    name = _clean_name(target_name)
+    target_id = example.target.author_id
+    messages = {message.id: message for message in example.context}
+    lines = [f"You are {name}. Write only {name}'s next message.", "", "Conversation:"]
+    for message in example.context:
+        lines.extend(_message_lines(message, target_id, name, person_names, messages))
+
+    target_text = example.target.text
+    if target_text is None:
+        raise RenderError("The target message must contain text")
+    target_meta = ["next response"]
+    reply = _reply_text(example.target, target_id, name, person_names, messages)
+    if reply is not None:
+        target_meta.append(reply)
+    lines.extend(("", f"[{' | '.join(target_meta)}]"))
+    completion = _render_text(
+        target_text,
+        example.target.mentions,
+        target_id,
+        name,
+        person_names,
+    )
+    return ChatExample(prompt="\n".join(lines), completion=completion)
+
+
+def _message_lines(
+    message: Message,
+    target_id: PersonId,
+    target_name: str,
+    person_names: Mapping[PersonId, str],
+    messages: Mapping[MessageId, Message],
+) -> tuple[str, ...]:
+    author = _person_name(message.author_id, target_id, target_name, person_names)
+    meta = [author]
+    if any(mention.person_id == target_id for mention in message.mentions):
+        meta.append(f"mentions @{target_name}")
+    reply = _reply_text(message, target_id, target_name, person_names, messages)
+    if reply is not None:
+        meta.append(reply)
+    body = _message_text(message, target_id, target_name, person_names)
+    return "", f"[{' | '.join(meta)}]", body
+
+
+def _message_text(
+    message: Message,
+    target_id: PersonId,
+    target_name: str,
+    person_names: Mapping[PersonId, str],
+) -> str:
+    if message.deleted_at is not None:
+        return "[deleted message]"
+    if message.text is not None:
+        return _render_text(
+            message.text,
+            message.mentions,
+            target_id,
+            target_name,
+            person_names,
+        )
+    if message.attachments:
+        return "[attachment]"
+    return "[empty message]"
+
+
+def _reply_text(
+    message: Message,
+    target_id: PersonId,
+    target_name: str,
+    person_names: Mapping[PersonId, str],
+    messages: Mapping[MessageId, Message],
+) -> str | None:
+    if message.reply_to is None:
+        return None
+    original = messages.get(message.reply_to)
+    author_id = message.quote.author_id if message.quote is not None else None
+    if author_id is None and original is not None:
+        author_id = original.author_id
+    if author_id is None:
+        value = "reply to an earlier message"
+    else:
+        author = _person_name(author_id, target_id, target_name, person_names)
+        value = f"reply to {author}"
+
+    quote_text = message.quote.text if message.quote is not None else None
+    quote_mentions = message.quote.mentions if message.quote is not None else ()
+    if quote_text is None and original is not None:
+        quote_text = original.text
+        quote_mentions = original.mentions
+    if quote_text is not None:
+        rendered = _render_text(
+            quote_text,
+            quote_mentions,
+            target_id,
+            target_name,
+            person_names,
+        )
+        value = f"{value}: {json.dumps(rendered, ensure_ascii=False)}"
+    return value
+
+
+def _render_text(
+    text: str,
+    mentions: Sequence[Mention],
+    target_id: PersonId,
+    target_name: str,
+    person_names: Mapping[PersonId, str],
+) -> str:
+    parts: list[str] = []
+    cursor = 0
+    for mention in sorted(mentions, key=lambda item: item.start_utf16):
+        start = _utf16_index(text, mention.start_utf16)
+        end = _utf16_index(text, mention.start_utf16 + mention.length_utf16)
+        if start < cursor:
+            raise RenderError("A mention range is not valid for its message")
+        prefix = text[cursor:start]
+        source = text[start:end]
+        if prefix.endswith("@") and not source.startswith("@"):
+            prefix = prefix[:-1]
+        parts.append(prefix)
+        name = _person_name(mention.person_id, target_id, target_name, person_names)
+        parts.append(f"@{name}")
+        cursor = end
+    parts.append(text[cursor:])
+    return "".join(parts)
+
+
+def _person_name(
+    person_id: PersonId,
+    target_id: PersonId,
+    target_name: str,
+    person_names: Mapping[PersonId, str],
+) -> str:
+    if person_id == target_id:
+        return target_name
+    configured = person_names.get(person_id)
+    if configured is not None:
+        return _clean_name(configured)
+    raise RenderError("Add a stable pseudonym for each non-target person")
+
+
+def _clean_name(value: str) -> str:
+    name = " ".join(value.strip().lstrip("@").split())
+    name = name.replace("[", "(").replace("]", ")").replace("|", "/")
+    if not name:
+        raise RenderError("A person name must contain text")
+    return name
+
+
+def _utf16_index(text: str, units: int) -> int:
+    used = 0
+    for index, character in enumerate(text):
+        if used == units:
+            return index
+        used += 2 if ord(character) > 0xFFFF else 1
+        if used > units:
+            raise RenderError("A mention range splits one Unicode character")
+    if used == units:
+        return len(text)
+    raise RenderError("A mention range is outside its message")

@@ -9,6 +9,6 @@ from idiolect.types import DatasetRef, PersonId
 class Builder(Protocol):
     """Build one fixed dataset for one person."""
 
-    def build(self, person_id: PersonId, config: DataConfig) -> DatasetRef:
+    def build(self, person_id: PersonId, name: str, config: DataConfig) -> DatasetRef:
         """Build and return one dataset."""
         ...

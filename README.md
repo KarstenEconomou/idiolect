@@ -1,15 +1,15 @@
 # idiolect
 
-Idiolect collects Signal group messages for a local ML pipeline. It stores allowed raw events and normalized records in DuckDB.
+Idiolect collects Signal group messages for a local ML pipeline. It stores allowed raw events and identity-linked records in DuckDB. Native mentions and reply snapshots remain available for target-relative training context.
 
 ```text
 signal-cli → group allowlist → normalized records → DuckDB
                                                    │
                                                    v
-                              Parquet → PEFT → evaluation
+                         MLX-LM JSONL → LoRA → evaluation
 ```
 
-Signal collection and DuckDB storage operate now. Dataset creation, training, evaluation, and inference contain typed contracts only.
+Signal collection, DuckDB storage, target-relative rendering, and immutable MLX-LM dataset export operate now. Training, evaluation, and inference contain typed contracts only.
 
 ## Start
 

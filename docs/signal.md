@@ -118,6 +118,16 @@ Show the stored counts:
 uv run idiolect signal stats
 ```
 
+Refresh normalized records from the raw events in DuckDB:
+
+```console
+uv run idiolect signal reindex
+```
+
+Stop continuous collection before you run `reindex`. Start collection again after the command finishes. This rule prevents two processes from writing the same DuckDB file.
+
+Run `reindex` after an update changes Signal normalization. The command does not contact Signal. It keeps the source events and refreshes their normalized messages and reactions.
+
 Import saved `signal-cli` JSON lines:
 
 ```console
@@ -131,7 +141,9 @@ uv run idiolect signal import path/to/events.jsonl
 - The parser accepts only group IDs in `signal.chats`.
 - The parser discards direct messages and messages from other groups.
 - The parser reads incoming messages and sent-message sync events.
-- The parser records text, replies, edits, remote deletes, reactions, and attachment metadata.
+- The parser records text, identity-linked mentions, reply snapshots, edits, remote deletes, reactions, and attachment metadata.
+- The parser keeps original message text and native mention metadata.
+- Mention ranges stay in the UTF-16 units that Signal supplies.
 - The parser does not store attachment bytes.
 - The store writes one source event and its normalized records in one transaction.
 - The event ID is a SHA-256 hash of the source JSON. A second copy of the same event does not create another record.

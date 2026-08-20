@@ -16,9 +16,11 @@ from idiolect.types import (
     ChatId,
     Event,
     EventId,
+    Mention,
     Message,
     MessageId,
     PersonId,
+    Quote,
     Reaction,
     Record,
 )
@@ -228,6 +230,8 @@ class SignalParser:
             raise SignalError("Signal group message has no author")
         chat_id = _chat_id(raw_chat_id)
         author_id = _person_id(raw_author)
+        author_name = _source_name(envelope)
+        is_self = _is_self(envelope)
         event_time = _time(_required_timestamp(envelope, message_data))
 
         reaction = message_data.get("reaction")
@@ -244,18 +248,22 @@ class SignalParser:
                     chat_id=chat_id,
                     author_id=author_id,
                     sent_at=_time(target),
+                    author_name=author_name,
+                    is_self=is_self,
                     deleted_at=event_time,
                 ),
             )
 
         sent_timestamp = edit_target or _required_timestamp(message_data, envelope)
-        text = message_data.get("message")
-        if text is not None and not isinstance(text, str):
+        raw_text = message_data.get("message")
+        if raw_text is not None and not isinstance(raw_text, str):
             raise SignalError("Signal message text must be text or null")
+        mentions = _mentions(raw_text, message_data.get("mentions"))
+        text = raw_text
         attachments = _attachments(message_data.get("attachments"))
         if text is None and not attachments:
             return ()
-        reply_to = _reply_id(message_data.get("quote"), chat_id)
+        reply_to, quote = _reply(message_data.get("quote"), chat_id)
         return (
             Message(
                 id=_message_id(chat_id, author_id, sent_timestamp),
@@ -263,10 +271,14 @@ class SignalParser:
                 chat_id=chat_id,
                 author_id=author_id,
                 sent_at=_time(sent_timestamp),
+                author_name=author_name,
+                is_self=is_self,
                 text=text,
                 reply_to=reply_to,
                 edited_at=event_time if edit_target is not None else None,
                 attachments=attachments,
+                mentions=mentions,
+                quote=quote,
             ),
         )
 
@@ -331,6 +343,16 @@ def _author(envelope: dict[str, Any], root: dict[str, Any]) -> str | None:
     return value if isinstance(value, str) else None
 
 
+def _source_name(envelope: dict[str, Any]) -> str | None:
+    value = envelope.get("sourceName")
+    return value if isinstance(value, str) else None
+
+
+def _is_self(envelope: dict[str, Any]) -> bool:
+    sync = envelope.get("syncMessage")
+    return isinstance(sync, dict) and isinstance(sync.get("sentMessage"), dict)
+
+
 def _required_timestamp(first: dict[str, Any], second: dict[str, Any]) -> int:
     value = first.get("timestamp", second.get("timestamp"))
     return _integer(value, "message timestamp")
@@ -362,14 +384,82 @@ def _message_id(chat_id: ChatId, author_id: PersonId, milliseconds: int) -> Mess
     return MessageId(f"signal-message:{hashlib.sha256(value).hexdigest()}")
 
 
-def _reply_id(value: Any, chat_id: ChatId) -> MessageId | None:
+def _reply(value: Any, chat_id: ChatId) -> tuple[MessageId | None, Quote | None]:
     if not isinstance(value, dict):
-        return None
+        return None, None
     author = value.get("authorUuid") or value.get("authorNumber") or value.get("author")
     timestamp = value.get("id")
     if not isinstance(author, str) or not isinstance(timestamp, int):
+        return None, None
+    raw_text = value.get("text", value.get("message"))
+    if raw_text is not None and not isinstance(raw_text, str):
+        raise SignalError("Signal quote text must be text or null")
+    mentions = _mentions(raw_text, value.get("mentions"))
+    return (
+        _message_id(chat_id, _person_id(author), timestamp),
+        Quote(
+            author_id=_person_id(author),
+            sent_at=_time(timestamp),
+            text=raw_text,
+            mentions=mentions,
+        ),
+    )
+
+
+def _mentions(text: str | None, value: Any) -> tuple[Mention, ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, list):
+        raise SignalError("Signal mentions must be a list")
+    if not value:
+        return ()
+    if text is None:
+        raise SignalError("Signal mentions require message text")
+
+    mentions: list[Mention] = []
+    for item in value:
+        if not isinstance(item, dict):
+            raise SignalError("Signal mention must be an object")
+        start = _integer(item.get("start"), "mention start")
+        length = _integer(item.get("length"), "mention length")
+        identity = item.get("uuid") or item.get("number") or item.get("recipient")
+        if not isinstance(identity, str):
+            raise SignalError("Signal mention has no identity")
+        name = _mention_name(item.get("name"))
+        if start < 0 or length < 1:
+            raise SignalError("Signal mention range is not valid")
+        _utf16_index(text, start)
+        _utf16_index(text, start + length)
+        mentions.append(Mention(_person_id(identity), start, length, name))
+
+    cursor = 0
+    for mention in sorted(mentions, key=lambda item: item.start_utf16):
+        if mention.start_utf16 < cursor:
+            raise SignalError("Signal mention ranges overlap")
+        cursor = mention.start_utf16 + mention.length_utf16
+    return tuple(mentions)
+
+
+def _mention_name(value: Any) -> str | None:
+    if not isinstance(value, str):
         return None
-    return _message_id(chat_id, _person_id(author), timestamp)
+    name = " ".join(value.strip().lstrip("@").split())
+    if not name or name == "\ufffc":
+        return None
+    return name
+
+
+def _utf16_index(text: str, units: int) -> int:
+    used = 0
+    for index, character in enumerate(text):
+        if used == units:
+            return index
+        used += 2 if ord(character) > 0xFFFF else 1
+        if used > units:
+            raise SignalError("Signal mention splits one Unicode character")
+    if used == units:
+        return len(text)
+    raise SignalError("Signal mention range is outside message text")
 
 
 def _attachments(value: Any) -> tuple[Attachment, ...]:

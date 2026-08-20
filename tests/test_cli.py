@@ -15,12 +15,37 @@ def test_import_and_stats_use_configured_store(
         ("--config", str(local_config), "signal", "import", str(signal_events))
     )
     import_output = capsys.readouterr()
+    reindex_code = main(("--config", str(local_config), "signal", "reindex"))
+    reindex_output = capsys.readouterr()
+    people_code = main(("--config", str(local_config), "data", "people"))
+    people_output = capsys.readouterr()
+    build_code = main(
+        (
+            "--config",
+            str(local_config),
+            "data",
+            "build",
+            "--self",
+            "--name",
+            "Karsten",
+        )
+    )
+    build_output = capsys.readouterr()
     stats_code = main(("--config", str(local_config), "signal", "stats"))
     stats_output = capsys.readouterr()
 
     assert import_code == 0
     assert "received=6 stored=4 messages=3 reactions=1 skipped=2 duplicates=0" in import_output.out
     assert import_output.err == ""
+    assert reindex_code == 0
+    assert "scanned=4 updated=4 messages=3 reactions=1 skipped=0" in reindex_output.out
+    assert reindex_output.err == ""
+    assert people_code == 0
+    assert "\tself\t" in people_output.out
+    assert people_output.err == ""
+    assert build_code == 0
+    assert "train=1 valid=0 test=0" in build_output.out
+    assert build_output.err == ""
     assert stats_code == 0
     assert "events=4 messages=2 reactions=1" in stats_output.out
     assert stats_output.err == ""

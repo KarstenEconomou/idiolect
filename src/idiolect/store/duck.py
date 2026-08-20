@@ -13,9 +13,11 @@ from idiolect.types import (
     ChatId,
     Event,
     EventId,
+    Mention,
     Message,
     MessageId,
     PersonId,
+    Quote,
     Reaction,
     Record,
     StoreStats,
@@ -46,6 +48,23 @@ CREATE TABLE IF NOT EXISTS messages (
 
 CREATE INDEX IF NOT EXISTS messages_chat_time ON messages (chat_id, sent_at);
 CREATE INDEX IF NOT EXISTS messages_author_time ON messages (author_id, sent_at);
+
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS author_name VARCHAR;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS is_self BOOLEAN DEFAULT false;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS quote_author_id VARCHAR;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS quote_sent_at TIMESTAMPTZ;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS quote_text VARCHAR;
+
+CREATE TABLE IF NOT EXISTS mentions (
+    message_id VARCHAR NOT NULL,
+    scope VARCHAR NOT NULL CHECK (scope IN ('body', 'quote')),
+    ordinal INTEGER NOT NULL,
+    person_id VARCHAR NOT NULL,
+    start INTEGER NOT NULL,
+    length INTEGER NOT NULL,
+    name VARCHAR,
+    PRIMARY KEY (message_id, scope, ordinal)
+);
 
 CREATE TABLE IF NOT EXISTS attachments (
     message_id VARCHAR NOT NULL,
@@ -121,10 +140,61 @@ class DuckRepository:
             raise StoreError(f"Cannot save event: {event.id}") from error
         return True
 
+    def events(self) -> tuple[Event, ...]:
+        """Return stored source events in storage order."""
+        try:
+            with duckdb.connect(str(self._path), read_only=True) as connection:
+                rows = connection.execute(
+                    """
+                    SELECT id, source, source_id, received_at, payload
+                    FROM events
+                    ORDER BY stored_at, id
+                    """
+                ).fetchall()
+        except duckdb.Error as error:
+            raise StoreError(f"Cannot read source events from: {self._path}") from error
+        return tuple(
+            Event(
+                id=EventId(cast(str, row[0])),
+                source=cast(str, row[1]),
+                source_id=cast(str, row[2]),
+                received_at=cast(datetime, row[3]),
+                payload=cast(bytes, row[4]),
+            )
+            for row in rows
+        )
+
+    def replace(self, event: Event, records: Iterable[Record]) -> None:
+        """Replace normalized records from one stored event."""
+        values = tuple(records)
+        if any(record.event_id != event.id for record in values):
+            raise StoreError("Each record must refer to its source event")
+        try:
+            with duckdb.connect(str(self._path)) as connection:
+                connection.begin()
+                exists = connection.execute(
+                    "SELECT 1 FROM events WHERE id = ?", [str(event.id)]
+                ).fetchone()
+                if exists is None:
+                    raise StoreError(f"Source event does not exist: {event.id}")
+                connection.execute(
+                    "DELETE FROM reactions WHERE event_id = ?", [str(event.id)]
+                )
+                for record in values:
+                    if isinstance(record, Message):
+                        self._save_message(connection, record)
+                    elif isinstance(record, Reaction):
+                        self._save_reaction(connection, record)
+                connection.commit()
+        except duckdb.Error as error:
+            raise StoreError(f"Cannot replace event records: {event.id}") from error
+
     def messages(self, person_id: PersonId | None = None) -> tuple[Message, ...]:
         """Return messages in time order."""
         query = """
-            SELECT id, event_id, chat_id, author_id, sent_at, text, reply_to, edited_at, deleted_at
+            SELECT id, event_id, chat_id, author_id, sent_at, author_name, is_self,
+                   text, reply_to, edited_at, deleted_at, quote_author_id,
+                   quote_sent_at, quote_text
             FROM messages
         """
         parameters: list[str] = []
@@ -165,13 +235,15 @@ class DuckRepository:
         if current is not None and cast(datetime, current[0]) > revision:
             return
         connection.execute("DELETE FROM attachments WHERE message_id = ?", [str(message.id)])
+        connection.execute("DELETE FROM mentions WHERE message_id = ?", [str(message.id)])
         connection.execute("DELETE FROM messages WHERE id = ?", [str(message.id)])
         connection.execute(
             """
             INSERT INTO messages (
-                id, event_id, chat_id, author_id, sent_at, text, reply_to,
-                edited_at, deleted_at, revision_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                id, event_id, chat_id, author_id, sent_at, author_name, is_self,
+                text, reply_to, edited_at, deleted_at, revision_at, quote_author_id,
+                quote_sent_at, quote_text
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 str(message.id),
@@ -179,11 +251,16 @@ class DuckRepository:
                 str(message.chat_id),
                 str(message.author_id),
                 message.sent_at,
+                message.author_name,
+                message.is_self,
                 message.text,
                 str(message.reply_to) if message.reply_to is not None else None,
                 message.edited_at,
                 message.deleted_at,
                 revision,
+                str(message.quote.author_id) if message.quote is not None else None,
+                message.quote.sent_at if message.quote is not None else None,
+                message.quote.text if message.quote is not None else None,
             ],
         )
         for attachment in message.attachments:
@@ -198,6 +275,34 @@ class DuckRepository:
                     attachment.media_type,
                     attachment.name,
                     attachment.size,
+                ],
+            )
+        self._save_mentions(connection, message.id, "body", message.mentions)
+        if message.quote is not None:
+            self._save_mentions(connection, message.id, "quote", message.quote.mentions)
+
+    def _save_mentions(
+        self,
+        connection: duckdb.DuckDBPyConnection,
+        message_id: MessageId,
+        scope: str,
+        mentions: tuple[Mention, ...],
+    ) -> None:
+        for ordinal, mention in enumerate(mentions):
+            connection.execute(
+                """
+                INSERT INTO mentions (
+                    message_id, scope, ordinal, person_id, start, length, name
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    str(message_id),
+                    scope,
+                    ordinal,
+                    str(mention.person_id),
+                    mention.start_utf16,
+                    mention.length_utf16,
+                    mention.name,
                 ],
             )
 
@@ -235,16 +340,28 @@ class DuckRepository:
             """,
             [str(message_id)],
         ).fetchall()
+        body_mentions = self._mentions(connection, message_id, "body")
+        quote_mentions = self._mentions(connection, message_id, "quote")
+        quote = None
+        if row[11] is not None and row[12] is not None:
+            quote = Quote(
+                author_id=PersonId(cast(str, row[11])),
+                sent_at=cast(datetime, row[12]),
+                text=cast(str | None, row[13]),
+                mentions=quote_mentions,
+            )
         return Message(
             id=message_id,
             event_id=EventId(cast(str, row[1])),
             chat_id=ChatId(cast(str, row[2])),
             author_id=PersonId(cast(str, row[3])),
             sent_at=cast(datetime, row[4]),
-            text=cast(str | None, row[5]),
-            reply_to=MessageId(cast(str, row[6])) if row[6] is not None else None,
-            edited_at=cast(datetime | None, row[7]),
-            deleted_at=cast(datetime | None, row[8]),
+            author_name=cast(str | None, row[5]),
+            is_self=cast(bool, row[6]),
+            text=cast(str | None, row[7]),
+            reply_to=MessageId(cast(str, row[8])) if row[8] is not None else None,
+            edited_at=cast(datetime | None, row[9]),
+            deleted_at=cast(datetime | None, row[10]),
             reactions=tuple(
                 Reaction(
                     event_id=EventId(cast(str, item[0])),
@@ -266,4 +383,31 @@ class DuckRepository:
                 )
                 for item in attachment_rows
             ),
+            mentions=body_mentions,
+            quote=quote,
+        )
+
+    def _mentions(
+        self,
+        connection: duckdb.DuckDBPyConnection,
+        message_id: MessageId,
+        scope: str,
+    ) -> tuple[Mention, ...]:
+        rows = connection.execute(
+            """
+            SELECT person_id, start, length, name
+            FROM mentions
+            WHERE message_id = ? AND scope = ?
+            ORDER BY ordinal
+            """,
+            [str(message_id), scope],
+        ).fetchall()
+        return tuple(
+            Mention(
+                person_id=PersonId(cast(str, item[0])),
+                start_utf16=cast(int, item[1]),
+                length_utf16=cast(int, item[2]),
+                name=cast(str | None, item[3]),
+            )
+            for item in rows
         )

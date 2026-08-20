@@ -44,6 +44,26 @@ class Attachment:
 
 
 @dataclass(frozen=True, slots=True)
+class Mention:
+    """Keep one identity-linked text mention."""
+
+    person_id: PersonId
+    start_utf16: int
+    length_utf16: int
+    name: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class Quote:
+    """Keep the source snapshot for one reply."""
+
+    author_id: PersonId
+    sent_at: datetime
+    text: str | None = None
+    mentions: tuple[Mention, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class Reaction:
     """Keep one message reaction."""
 
@@ -65,12 +85,16 @@ class Message:
     chat_id: ChatId
     author_id: PersonId
     sent_at: datetime
+    author_name: str | None = None
+    is_self: bool = False
     text: str | None = None
     reply_to: MessageId | None = None
     edited_at: datetime | None = None
     deleted_at: datetime | None = None
     reactions: tuple[Reaction, ...] = ()
     attachments: tuple[Attachment, ...] = ()
+    mentions: tuple[Mention, ...] = ()
+    quote: Quote | None = None
 
 
 type Record = Message | Reaction
@@ -91,6 +115,14 @@ class Example:
 
     context: tuple[Message, ...]
     target: Message
+
+
+@dataclass(frozen=True, slots=True)
+class ChatExample:
+    """Keep one rendered chat training example."""
+
+    prompt: str
+    completion: str
 
 
 @dataclass(frozen=True, slots=True)

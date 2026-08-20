@@ -23,6 +23,14 @@ class Repository(Protocol):
         """Save one event and return true for a new event."""
         ...
 
+    def events(self) -> Iterable[Event]:
+        """Return stored source events in storage order."""
+        ...
+
+    def replace(self, event: Event, records: Iterable[Record]) -> None:
+        """Replace normalized records from one stored event."""
+        ...
+
     def messages(self, person_id: PersonId | None = None) -> Iterable[Message]:
         """Return messages in time order."""
         ...

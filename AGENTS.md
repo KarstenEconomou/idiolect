@@ -2,7 +2,7 @@
 
 ## Project
 
-Idiolect is a Python 3.14 package for a local-first ML pipeline. It will collect Signal group messages, normalize them, store them in DuckDB, build immutable Parquet datasets, and train one Hugging Face PEFT adapter per person for contextual reply generation.
+Idiolect is a Python 3.14 package for a local-first ML pipeline. It collects Signal group messages, stores source and normalized data in DuckDB, builds immutable MLX-LM JSONL datasets, and trains one adapter per person for contextual reply generation.
 
 Code lives in `src/idiolect/`. Tests mirror it in `tests/`. Keep Signal, storage, dataset, training, evaluation, and inference code behind the existing typed ports. Do not add working backend code to contract modules.
 
