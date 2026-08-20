@@ -8,28 +8,33 @@
      ╰─╯
 ```
 
-Idiolect is a local-first ML pipeline for experiments with the writing style of a
-consenting Signal user. It collects allowlisted group messages, preserves native
-mention and reply context, builds immutable target-specific datasets, trains
-MLX-LM LoRA adapters, and generates reproducible local predictions.
+Idiolect is a local-first ML pipeline for fine-tuning models to reproduce
+individual writing styles, linguistic patterns, and conversational behavior.
+It collects allowlisted Signal group messages, preserves native
+mention and reply context, builds immutable target-specific datasets, uses
+MLX-LM QLoRA to train adapters, and generates reproducible local predictions.
 
-```mermaid
-flowchart LR
-    signal["Signal groups"] --> collect["signal-cli collector"]
-    collect --> normalize["Allowlist and normalization"]
-    normalize --> store[("DuckDB")]
-    store --> render["Target-relative context"]
-    render --> data["Immutable JSONL dataset"]
-
-    data --> train["MLX-LM LoRA training"]
-    train --> adapter["Verified adapter run"]
-
-    data --> base["Recorded base inference"]
-    data --> tuned["Adapter inference"]
-    adapter --> base
-    adapter --> tuned
-    base --> predictions["Content-addressed predictions"]
-    tuned --> predictions
+```text
+Signal groups
+    |
+signal-cli collector
+    |
+allowlist + normalization
+    |
+DuckDB
+    |
+target-relative context
+    |
+immutable JSONL dataset
+    |
+    +----> recorded base inference ----------------+
+    |                                              |
+    +----> MLX-LM QLoRA training                   |
+                  |                                |
+                  +----> adapter inference --------+
+                                                   |
+                                                   v
+                                     content-addressed predictions
 ```
 
 The canonical configuration keeps Signal data, datasets, model files, adapters,
@@ -56,8 +61,8 @@ Install the core environment:
 just sync
 ```
 
-Link `signal-cli` as a secondary Signal device as described in
-[Signal collection](docs/signal.md). Then create the private environment file:
+Link `signal-cli` as a secondary Signal device. See
+[docs/signal.md](docs/signal.md). Then create the private environment file:
 
 ```console
 touch .env
@@ -130,8 +135,8 @@ for a recorded run.
 
 ## Documentation
 
-The [operations index](docs/index.md) is the replication entry point. It links
-the procedures for Signal setup, security, collection, `launchd`, conversation
+See [docs/index.md](docs/index.md) for the replication entry point. It links the
+procedures for Signal setup, security, collection, `launchd`, conversation
 context, dataset construction, training, inference, and development.
 
 Important constraints:
@@ -155,5 +160,5 @@ just check
 uv build
 ```
 
-See [Development and verification](docs/development.md) and
+See [docs/development.md](docs/development.md) and
 [AGENTS.md](AGENTS.md) for repository rules.
