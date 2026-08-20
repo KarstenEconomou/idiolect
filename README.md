@@ -39,7 +39,14 @@ just sync-train
 just train var/data/DATASET_ID
 ```
 
-The training command reads all model, formatting, optimizer, seed, and path choices from the tracked TOML configuration. See [adapter training](docs/train.md).
+Create and run a named experiment configuration:
+
+```console
+just config new qwen3-14b-r16
+just config train qwen3-14b-r16 var/data/DATASET_ID
+```
+
+Training reads all model, formatting, optimizer, seed, and path choices from one complete tracked TOML configuration. See [adapter training](docs/train.md).
 
 Use native command groups for routine operations:
 

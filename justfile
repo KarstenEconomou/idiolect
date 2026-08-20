@@ -1,10 +1,13 @@
 set shell := ["sh", "-eu", "-c"]
 
 # Operate the macOS collector.
-mod collect
+mod collect 'just/collect.just'
 
 # Inspect data and build datasets.
-mod data
+mod data 'just/data.just'
+
+# Manage committed experiment configurations.
+mod config 'just/config.just'
 
 # List available commands.
 default:
@@ -24,6 +27,7 @@ test:
 
 # Check Python style and common errors.
 lint:
+    @for file in justfile just/*.just; do just --justfile "$file" --fmt --check; done
     uv run ruff check .
 
 # Type-check the source and tests.
@@ -33,6 +37,6 @@ typecheck:
 # Run every required quality check.
 check: lint typecheck test
 
-# Train all configured seeds and keep the Mac awake.
+# Train the canonical configuration and keep the Mac awake.
 train dataset:
-    caffeinate -i uv run idiolect train "{{dataset}}"
+    caffeinate -i uv run idiolect --config conf/idiolect.toml train "{{ dataset }}"

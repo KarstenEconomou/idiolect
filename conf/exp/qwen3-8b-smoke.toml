@@ -1,0 +1,76 @@
+# This file contains one complete smoke experiment.
+
+[signal]
+binary = "signal-cli"
+data_dir = "var/signal"
+timeout = 5
+# max_messages = 100
+
+[store]
+root = "var"
+database = "idiolect.duckdb"
+
+[data]
+output = "var/data"
+context = 32
+valid_ratio = 0.1
+test_ratio = 0.1
+
+[train]
+base_model = "mlx-community/Qwen3-8B-4bit"
+model_source = "hub"
+model_revision = "545dc4251c05440727734bcd94334791f6ab0192"
+model_cache = "var/models"
+output = "var/runs"
+adapter_file = "adapters.safetensors"
+command = ["mlx_lm.lora"]
+seeds = [17]
+fine_tune_type = "lora"
+optimizer = "adamw"
+batch_size = 1
+iterations = 20
+learning_rate = 0.00001
+num_layers = 16
+val_batches = 5
+test = false
+test_batches = 5
+max_seq_length = 2048
+grad_checkpoint = false
+grad_accumulation_steps = 8
+clear_cache_threshold = 0
+steps_per_report = 5
+steps_per_eval = 10
+save_every = 20
+mask_prompt = true
+trust_remote_code = false
+schedule = "constant"
+report_to = ""
+project_name = ""
+
+[train.optimizer_options]
+betas = [0.9, 0.98]
+eps = 0.00000001
+weight_decay = 0.0
+bias_correction = true
+
+[train.data]
+format = "chat"
+system_prompt = ""
+prompt_role = "user"
+completion_role = "assistant"
+prompt_prefix = ""
+prompt_suffix = "\n/no_think"
+completion_prefix = "<think>\n\n</think>\n\n"
+completion_suffix = ""
+
+[train.lora]
+keys = ["self_attn.q_proj", "self_attn.v_proj"]
+rank = 8
+scale = 20.0
+dropout = 0.05
+
+[eval]
+
+[infer]
+max_tokens = 128
+temperature = 0.7

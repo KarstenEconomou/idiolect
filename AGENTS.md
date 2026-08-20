@@ -16,7 +16,8 @@ Use `uv` for all Python work and the root `justfile` for checks.
 - `uv build`: build distributions.
 - `just collect status|start|stop`: operate the installed LaunchAgent.
 - `just data people|build`: inspect authors or build a self dataset.
-- `just train <dataset>`: train configured seeds while the Mac stays awake.
+- `just config list|new|train`: manage complete experiment configurations.
+- `just train <dataset>`: train the canonical configuration while the Mac stays awake.
 - `just test`: run pytest.
 - `just lint`: run Ruff.
 - `just typecheck`: run ty.

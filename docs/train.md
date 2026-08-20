@@ -4,7 +4,7 @@
 
 Training is a local batch operation. It reads one immutable dataset and writes one adapter for each configured seed. It does not read Signal or DuckDB.
 
-The tracked TOML configuration contains the complete experiment policy. Python code does not select a model, seed, data format, optimizer value, adapter target, path, or external report service.
+Each tracked TOML configuration contains one complete experiment policy. Python code does not select a model, seed, data format, optimizer value, adapter target, path, or external report service.
 
 ## Install
 
@@ -14,13 +14,37 @@ Install the optional local training packages:
 just sync-train
 ```
 
-The canonical configuration uses `mlx-community/Qwen3-14B-4bit` at a fixed repository revision. The first run downloads the model to `train.model_cache`. The model is approximately 8.3 GB.
+The canonical configuration uses `mlx-community/Qwen3-14B-4bit` at a fixed repository revision. The smoke configuration uses `mlx-community/Qwen3-8B-4bit`. The first run for each model downloads it to `train.model_cache`.
 
 Do not put a model hub token in TOML. Put `HF_TOKEN` in `.env` only if the model requires authentication.
 
 ## Configure
 
-Review every value in the `[train]` tables in `conf/idiolect.toml` before a run. To use a different experiment policy, copy the file to the ignored `conf/local.toml` file and set `IDIOLECT_CONFIG=conf/local.toml`.
+`conf/idiolect.toml` is the canonical configuration. Complete experiment configurations are in `conf/exp/`. Git tracks both locations.
+
+List the available configurations:
+
+```console
+just config list
+```
+
+Create a configuration from the canonical file:
+
+```console
+just config new qwen3-14b-r16
+```
+
+Create a configuration from another experiment:
+
+```console
+just config new qwen3-8b-r16 qwen3-8b-smoke
+```
+
+The command creates `conf/exp/<name>.toml` and stops if the target exists. Names use lowercase letters, numbers, and hyphens. Edit the new file directly. Each file is complete. The configuration system does not merge files or apply experiment overrides.
+
+Use a name that identifies the model and the main changed dimensions. Do not use a sequence number as the only name. Commit a configuration before its training run. Keep a used configuration unchanged. Create another file for another policy.
+
+The file name is a human label. The content-addressed run ID is the technical identity. It includes the complete resolved training policy, dataset digest, model digest, and seed.
 
 The principal values are:
 
@@ -48,10 +72,16 @@ just data build Karsten
 
 Stop collection only during this dataset build. Start collection after the dataset is complete. Training reads only fixed files, so collection can run during training.
 
-Start all configured seed runs:
+Run the canonical configuration:
 
 ```console
 just train var/data/DATASET_ID
+```
+
+Run a named experiment configuration:
+
+```console
+just config train qwen3-8b-smoke var/data/DATASET_ID
 ```
 
 Connect the Mac to power. The recipe uses `caffeinate -i` to prevent idle sleep for the full operation. Training does not use `launchd`.

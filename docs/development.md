@@ -14,7 +14,7 @@ Keep external behavior behind typed ports. Keep adapter code out of contract mod
 
 ## Required checks
 
-Install `just` 1.31.0 or later. On macOS, use the Homebrew package. Do not install the unrelated Python package with the same name.
+Install `just` 1.46.0 or later. On macOS, use the Homebrew package. Do not install the unrelated Python package with the same name.
 
 ```console
 brew install just
@@ -29,7 +29,7 @@ just check
 uv build
 ```
 
-The checks run Ruff, ty, and pytest. The build creates a source archive and a wheel.
+The checks verify Just formatting and run Ruff, ty, and pytest. The build creates a source archive and a wheel.
 
 ## Test rules
 

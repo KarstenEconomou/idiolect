@@ -1,4 +1,5 @@
 set shell := ["sh", "-eu", "-c"]
+set working-directory := ".."
 
 # Show the collector service state.
 status:
