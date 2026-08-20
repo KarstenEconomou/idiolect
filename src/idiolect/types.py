@@ -47,9 +47,13 @@ class Attachment:
 class Reaction:
     """Keep one message reaction."""
 
+    event_id: EventId
+    message_id: MessageId
+    chat_id: ChatId
     author_id: PersonId
     value: str
     sent_at: datetime
+    removed: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,6 +61,7 @@ class Message:
     """Keep one normalized message."""
 
     id: MessageId
+    event_id: EventId
     chat_id: ChatId
     author_id: PersonId
     sent_at: datetime
@@ -66,6 +71,18 @@ class Message:
     deleted_at: datetime | None = None
     reactions: tuple[Reaction, ...] = ()
     attachments: tuple[Attachment, ...] = ()
+
+
+type Record = Message | Reaction
+
+
+@dataclass(frozen=True, slots=True)
+class StoreStats:
+    """Keep counts from the local store."""
+
+    events: int
+    messages: int
+    reactions: int
 
 
 @dataclass(frozen=True, slots=True)

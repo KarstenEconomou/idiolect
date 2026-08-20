@@ -1,72 +1,45 @@
 # idiolect
 
-Idiolect will build language model adapters that reproduce the writing style and conversation behavior of one person. The project is a typed scaffold. It does not yet collect messages, store data, train models, or generate replies.
-
-## Data flow
+Idiolect collects Signal group messages for a local ML pipeline. It stores allowed raw events and normalized records in DuckDB.
 
 ```text
-Signal live input ─┐
-                   ├─> source events ─> normalized messages ─> DuckDB
-Signal file input ─┘                                      │
-                                                          v
-                                    fixed Parquet dataset by person
-                                                          │
-                                                          v
-                                    Hugging Face base model + PEFT
-                                                          │
-                                                          v
-                                      test results + local adapter
+signal-cli → group allowlist → normalized records → DuckDB
+                                                   │
+                                                   v
+                              Parquet → PEFT → evaluation
 ```
 
-DuckDB is the local source of truth. A training run reads only a fixed Parquet dataset. This rule makes each run repeatable and prevents live message changes from changing an active run.
+Signal collection and DuckDB storage operate now. Dataset creation, training, evaluation, and inference contain typed contracts only.
 
-## Packages
+## Start
 
-- `ingest` defines source and parser ports. The Signal module reserves adapters for live data and file data.
-- `store` defines ports for DuckDB, Parquet datasets, and run files.
-- `data` defines the build step for contextual reply datasets.
-- `train` defines the model training port and reserves a Hugging Face PEFT adapter.
-- `eval` defines the model test port.
-- `infer` defines the reply generation port and reserves a Hugging Face adapter.
-- `types.py` contains records that the pipeline shares.
-- `config.py` contains fixed settings for each pipeline stage.
+Read the [operations index](docs/index.md). It contains the complete replication procedure for:
 
-The adapter modules have no implementation. External runtime packages will be added when an adapter gets an implementation. The planned storage packages are DuckDB and PyArrow. The planned model packages are Transformers, Datasets, Torch, and PEFT.
+- Signal device setup and group selection
+- Private configuration and credentials
+- Collection and DuckDB behavior
+- macOS `launchd` operation
+- Development and verification
 
-## Local files
-
-Idiolect will use the ignored `var/` directory by default:
-
-```text
-var/
-├── idiolect.duckdb
-├── data/<dataset-id>/
-│   ├── train.parquet
-│   ├── valid.parquet
-│   ├── test.parquet
-│   └── manifest.json
-├── run/<run-id>/
-│   ├── config.toml
-│   ├── metrics.json
-│   └── adapter/
-└── log/
-```
-
-Do not commit messages, Signal identifiers, datasets, model files, credentials, or local settings. Use operating-system file permissions and disk encryption to protect local data. Idiolect does not enforce consent rules.
-
-## Configuration
-
-Copy `conf/local.toml.example` to `conf/local.toml` when configuration loading is implemented. Commit only safe example files. Put credentials and other secret values in environment variables.
-
-## Development
-
-The project requires Python 3.14 and uses `uv` for all Python commands.
+The minimum interactive commands are:
 
 ```console
 uv sync
-uv run idiolect
+cp conf/local.toml.example conf/local.toml
+set -a
+source .env
+set +a
+uv run idiolect signal groups
+uv run idiolect signal collect --follow
+```
+
+## Develop
+
+The project requires Python 3.14 and uses `uv`.
+
+```console
 just check
 uv build
 ```
 
-`just check` runs Ruff, ty, and pytest. The command-line entry point currently has no operation and writes no output.
+Tests use synthetic fixtures, temporary databases, and fake Signal process boundaries. Do not use live data or model calls in tests.

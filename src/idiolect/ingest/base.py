@@ -3,7 +3,7 @@
 from collections.abc import Iterable
 from typing import Protocol
 
-from idiolect.types import Event, Message
+from idiolect.types import Event, Record
 
 
 class Source(Protocol):
@@ -15,8 +15,8 @@ class Source(Protocol):
 
 
 class Parser(Protocol):
-    """Convert source events to messages."""
+    """Convert source events to records."""
 
-    def messages(self, event: Event) -> Iterable[Message]:
-        """Return messages from one event."""
+    def records(self, event: Event) -> Iterable[Record]:
+        """Return records from one event."""
         ...

@@ -26,7 +26,7 @@ Use focused modules, explicit imports, four-space indentation, and type annotati
 
 Write every Python docstring in ASD-STE100 Simplified Technical English. Add docstrings to modules and public classes, methods, and functions. Use short sentences and one term for one meaning.
 
-Update `README.md` when behavior, setup, configuration, or data flow changes.
+Update `README.md` and the applicable file in `docs/` when behavior, setup, configuration, operation, or data flow changes.
 
 ## Tests
 
@@ -47,6 +47,8 @@ Name files `test_*.py` and tests `test_<behavior>`. Use a regression test for ea
 ## Data and Security
 
 Never commit credentials, local configuration, private messages, Signal identifiers, DuckDB files, Parquet datasets, model weights, adapters, checkpoints, logs, or generated artifacts. Use synthetic data in examples and tests. Put secrets in environment variables and document them with safe placeholders.
+
+Treat `conf/local.toml`, `.env`, `var/`, and the installed `launchd` agent as live private state. Do not read or change this state unless the user requests an operational task. Do not start, stop, install, or remove the collector as part of a code test. Use `docs/` as the source for operating procedures.
 
 ## Changes
 

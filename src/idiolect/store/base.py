@@ -3,22 +3,32 @@
 from collections.abc import Iterable
 from typing import Protocol
 
-from idiolect.types import DatasetRef, Event, Example, Message, PersonId, RunRef, Split
+from idiolect.types import (
+    DatasetRef,
+    Event,
+    Example,
+    Message,
+    PersonId,
+    Record,
+    RunRef,
+    Split,
+    StoreStats,
+)
 
 
 class Repository(Protocol):
     """Store events and normalized messages."""
 
-    def save_events(self, events: Iterable[Event]) -> None:
-        """Save source events."""
-        ...
-
-    def save_messages(self, messages: Iterable[Message]) -> None:
-        """Save normalized messages."""
+    def save(self, event: Event, records: Iterable[Record]) -> bool:
+        """Save one event and return true for a new event."""
         ...
 
     def messages(self, person_id: PersonId | None = None) -> Iterable[Message]:
         """Return messages in time order."""
+        ...
+
+    def stats(self) -> StoreStats:
+        """Return record counts from the store."""
         ...
 
 

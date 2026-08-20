@@ -1,8 +1,11 @@
 # This file contains safe local example settings.
 
 [signal]
-live = false
+binary = "signal-cli"
+data_dir = "var/signal"
 chats = []
+timeout = 5
+# max_messages = 100
 
 [store]
 root = "var"

@@ -2,4 +2,4 @@
 
 from idiolect.cli import main
 
-main()
+raise SystemExit(main())
