@@ -130,8 +130,20 @@ class EvalConfig:
 class InferConfig:
     """Set the text generation options."""
 
+    output: Path | None = None
+    backend: str = ""
+    seeds: tuple[int, ...] = ()
+    max_examples: int = 0
+    max_prompt_tokens: int = 0
     max_tokens: int = 128
     temperature: float = 0.7
+    top_p: float = 0.8
+    top_k: int = 20
+    min_p: float = 0.0
+    min_tokens_to_keep: int = 1
+    repetition_penalty: float = 1.0
+    repetition_context_size: int = 20
+    specified: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True, slots=True)
@@ -232,7 +244,25 @@ def load_config(
     )
     _check_keys(lora_values, {"keys", "rank", "scale", "dropout"}, "train.lora")
     _check_keys(eval_values, {"max_examples"}, "eval")
-    _check_keys(infer_values, {"max_tokens", "temperature"}, "infer")
+    _check_keys(
+        infer_values,
+        {
+            "output",
+            "backend",
+            "seeds",
+            "max_examples",
+            "max_prompt_tokens",
+            "max_tokens",
+            "temperature",
+            "top_p",
+            "top_k",
+            "min_p",
+            "min_tokens_to_keep",
+            "repetition_penalty",
+            "repetition_context_size",
+        },
+        "infer",
+    )
 
     signal = SignalConfig(
         account=env.get("IDIOLECT_SIGNAL_ACCOUNT"),
@@ -308,11 +338,26 @@ def load_config(
     )
     eval_config = EvalConfig(max_examples=_optional_int(eval_values, "max_examples"))
     infer = InferConfig(
+        output=_optional_path(infer_values.get("output")),
+        backend=_str(infer_values, "backend", ""),
+        seeds=tuple(_int_list(infer_values, "seeds")),
+        max_examples=_int(infer_values, "max_examples", 0),
+        max_prompt_tokens=_int(infer_values, "max_prompt_tokens", 0),
         max_tokens=_int(infer_values, "max_tokens", 128),
         temperature=_float(infer_values, "temperature", 0.7),
+        top_p=_float(infer_values, "top_p", 0.8),
+        top_k=_int(infer_values, "top_k", 20),
+        min_p=_float(infer_values, "min_p", 0.0),
+        min_tokens_to_keep=_int(infer_values, "min_tokens_to_keep", 1),
+        repetition_penalty=_float(infer_values, "repetition_penalty", 1.0),
+        repetition_context_size=_int(
+            infer_values, "repetition_context_size", 20
+        ),
+        specified=frozenset(infer_values),
     )
     _validate_signal(signal)
     _validate_train(train)
+    _validate_infer(infer)
     return AppConfig(signal, store, data, train, eval_config, infer)
 
 
@@ -459,3 +504,20 @@ def _validate_train(config: TrainConfig) -> None:
         raise ConfigError("Training seeds must be unique")
     if not 0.0 <= config.lora.dropout < 1.0:
         raise ConfigError("LoRA dropout must be at least zero and less than one")
+
+
+def _validate_infer(config: InferConfig) -> None:
+    if config.seeds and len(set(config.seeds)) != len(config.seeds):
+        raise ConfigError("Inference seeds must be unique")
+    if config.max_examples < 0:
+        raise ConfigError("Inference max_examples must not be negative")
+    if config.max_prompt_tokens < 0 or config.max_tokens < 1:
+        raise ConfigError("Inference token limits are not valid")
+    if config.temperature < 0:
+        raise ConfigError("Inference temperature must not be negative")
+    if not 0.0 <= config.top_p <= 1.0 or not 0.0 <= config.min_p <= 1.0:
+        raise ConfigError("Inference probability limits must be from zero to one")
+    if config.top_k < 0 or config.min_tokens_to_keep < 1:
+        raise ConfigError("Inference token sampling limits are not valid")
+    if config.repetition_penalty <= 0 or config.repetition_context_size < 1:
+        raise ConfigError("Inference repetition settings are not valid")

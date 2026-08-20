@@ -9,6 +9,9 @@ mod data 'just/data.just'
 # Manage committed experiment configurations.
 mod config 'just/config.just'
 
+# Generate text with local models and adapters.
+mod infer 'just/infer.just'
+
 # List available commands.
 default:
     @just --list

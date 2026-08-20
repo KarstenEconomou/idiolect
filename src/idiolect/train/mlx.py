@@ -8,13 +8,21 @@ import shutil
 import subprocess
 import tempfile
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
 
-from idiolect.config import TrainConfig
-from idiolect.types import DatasetRef, RunId, RunRef, Split, TrainResult
+from idiolect.config import TrainConfig, TrainDataConfig
+from idiolect.model import (
+    ModelError,
+    ModelSpec,
+    directory_digest,
+    resolve_model,
+    verify_model,
+)
+from idiolect.prompt import format_row
+from idiolect.types import DatasetId, DatasetRef, RunId, RunRef, Split, TrainResult
 
 _RUN_VERSION = 1
 _REQUIRED_TOML = frozenset(
@@ -68,6 +76,18 @@ class TrainError(RuntimeError):
     """Report an invalid or failed training operation."""
 
 
+@dataclass(frozen=True, slots=True)
+class LoadedRun:
+    """Keep one verified training run and its model policy."""
+
+    ref: RunRef
+    model: ModelSpec
+    model_digest: str
+    data: TrainDataConfig
+    adapter_path: Path
+    adapter_digest: str
+
+
 class CommandRunner(Protocol):
     """Run one local backend command."""
 
@@ -106,12 +126,12 @@ class MlxTrainer:
     def train(self, dataset: DatasetRef, config: TrainConfig) -> TrainResult:
         """Train every configured seed and return the fixed runs."""
         _validate(config)
-        model_path = self._resolver(config)
-        if not model_path.exists():
-            raise TrainError(f"Resolved model path does not exist: {model_path}")
-        _check_remote_code(model_path, config)
-        model_digest = _directory_digest(model_path)
-        dataset_digest = _directory_digest(dataset.path)
+        try:
+            model_path = self._resolver(config)
+            model_digest = verify_model(model_path, _model_spec(config))
+        except ModelError as error:
+            raise TrainError(str(error)) from error
+        dataset_digest = directory_digest(dataset.path)
         runs = tuple(
             self._train_one(
                 dataset,
@@ -266,41 +286,20 @@ def _validate(config: TrainConfig) -> None:
 
 
 def _resolve_model(config: TrainConfig) -> Path:
-    if config.model_source == "path":
-        return Path(config.base_model).expanduser().resolve()
-    cache = _required_path(config.model_cache, "Model cache")
     try:
-        from huggingface_hub import snapshot_download
-    except ImportError as error:
-        raise TrainError(
-            "Training packages are not installed. Run: uv sync --extra train"
-        ) from error
-    try:
-        path = snapshot_download(
-            repo_id=config.base_model,
-            revision=config.model_revision,
-            cache_dir=cache,
-        )
-    except Exception as error:
-        raise TrainError(f"Cannot resolve model: {config.base_model}") from error
-    return Path(path)
+        return resolve_model(_model_spec(config))
+    except ModelError as error:
+        raise TrainError(str(error)) from error
 
 
-def _check_remote_code(model_path: Path, config: TrainConfig) -> None:
-    if config.trust_remote_code:
-        return
-    for name in ("config.json", "tokenizer_config.json", "processor_config.json"):
-        path = model_path / name
-        if not path.exists():
-            continue
-        try:
-            value = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as error:
-            raise TrainError(f"Cannot inspect model configuration: {path}") from error
-        if isinstance(value, dict) and value.get("auto_map"):
-            raise TrainError(
-                f"Model requires remote code but trust_remote_code is false: {path}"
-            )
+def _model_spec(config: TrainConfig) -> ModelSpec:
+    return ModelSpec(
+        config.base_model,
+        config.model_source,
+        config.model_revision,
+        config.model_cache,
+        config.trust_remote_code,
+    )
 
 
 def _run_command(command: Sequence[str], log_path: Path) -> int:
@@ -339,33 +338,13 @@ def _export_data(source: Path, destination: Path, config: TrainConfig) -> dict[s
                 raise TrainError(
                     f"Dataset row text is not valid: {source_path}:{line_number}"
                 )
-            rows.append(_format_row(prompt, completion, config))
+            rows.append(format_row(prompt, completion, config.data))
         target = destination / source_path.name
         _write_jsonl(target, rows)
         counts[split.value] = len(rows)
     if counts.get(Split.TRAIN.value, 0) == 0:
         raise TrainError("Dataset does not contain training examples")
     return counts
-
-
-def _format_row(prompt: str, completion: str, config: TrainConfig) -> Mapping[str, Any]:
-    data = config.data
-    prompt = f"{data.prompt_prefix}{prompt}{data.prompt_suffix}"
-    completion = (
-        f"{data.completion_prefix}{completion}{data.completion_suffix}"
-    )
-    if data.format == "completion":
-        return {"prompt": prompt, "completion": completion}
-    messages = []
-    if data.system_prompt:
-        messages.append({"role": "system", "content": data.system_prompt})
-    messages.extend(
-        (
-            {"role": data.prompt_role, "content": prompt},
-            {"role": data.completion_role, "content": completion},
-        )
-    )
-    return {"messages": messages}
 
 
 def _request(
@@ -442,25 +421,120 @@ def _config_value(config: TrainConfig) -> Mapping[str, Any]:
 
 
 def _load_run(path: Path, run_id: RunId, dataset: DatasetRef) -> RunRef:
+    run = load_run(path)
+    if run.ref.id != run_id:
+        raise TrainError(f"Run manifest does not match its path: {path}")
+    if run.ref.dataset_id != dataset.id:
+        raise TrainError(f"Run manifest does not match the dataset: {path}")
+    return run.ref
+
+
+def load_run(path: Path) -> LoadedRun:
+    """Load and verify one fixed training run."""
     try:
+        run_id = RunId(path.name)
+        if len(path.name) != 64 or any(
+            character not in "0123456789abcdef" for character in path.name
+        ):
+            raise TrainError(f"Run path does not contain an ID: {path}")
         value = json.loads((path / "manifest.json").read_text(encoding="utf-8"))
         if value["run_id"] != str(run_id):
             raise TrainError(f"Run manifest does not match its path: {path}")
-        if value["dataset_id"] != str(dataset.id):
-            raise TrainError(f"Run manifest does not match the dataset: {path}")
         actual_id = hashlib.sha256(_json_bytes(value["recipe"])).hexdigest()
         if actual_id != str(run_id):
             raise TrainError(f"Run recipe does not match its ID: {path}")
-        for name, expected in value["files"].items():
-            actual = hashlib.sha256((path / name).read_bytes()).hexdigest()
+        files = value["files"]
+        if not isinstance(files, dict):
+            raise TypeError
+        actual_names = {
+            item.relative_to(path).as_posix()
+            for item in path.rglob("*")
+            if item.is_file() and item != path / "manifest.json"
+        }
+        if actual_names != set(files):
+            raise TrainError(f"Run files do not match its manifest: {path}")
+        for name, expected in files.items():
+            file_path = _run_file(path, name)
+            actual = hashlib.sha256(file_path.read_bytes()).hexdigest()
             if actual != expected:
-                raise TrainError(f"Run file does not match its manifest: {path / name}")
+                raise TrainError(f"Run file does not match its manifest: {file_path}")
         created_at = datetime.fromisoformat(value["created_at"])
+        dataset_id = value["dataset_id"]
+        if not isinstance(dataset_id, str):
+            raise TypeError
+        recipe = value["recipe"]
+        config = recipe["config"]
+        data = config["data"]
+        model_cache = config["model_cache"]
+        if model_cache is not None and not isinstance(model_cache, str):
+            raise TypeError
+        model = ModelSpec(
+            _manifest_text(config, "base_model"),
+            _manifest_text(config, "model_source"),
+            _manifest_text(config, "model_revision"),
+            Path(model_cache) if model_cache is not None else None,
+            _manifest_bool(config, "trust_remote_code"),
+        )
+        data_config = _run_data_config(data)
+        model_digest = _manifest_text(recipe, "model_digest")
+        adapter_path = path / "adapter"
+        adapter_name = (
+            Path("adapter") / _manifest_text(config, "adapter_file")
+        ).as_posix()
+        _run_file(path, adapter_name)
+        adapter_digest = directory_digest(adapter_path)
     except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError) as error:
         if isinstance(error, TrainError):
             raise
         raise TrainError(f"Cannot read existing run: {path}") from error
-    return RunRef(run_id, dataset.id, path, created_at)
+    ref = RunRef(run_id, DatasetId(dataset_id), path, created_at)
+    return LoadedRun(
+        ref,
+        model,
+        model_digest,
+        data_config,
+        adapter_path,
+        adapter_digest,
+    )
+
+
+def _run_file(root: Path, name: object) -> Path:
+    if not isinstance(name, str):
+        raise TypeError
+    root_path = root.resolve()
+    path = (root / name).resolve()
+    if not path.is_relative_to(root_path) or not path.is_file():
+        raise TrainError(f"Run manifest contains an invalid file path: {name}")
+    return path
+
+
+def _manifest_text(value: object, name: str) -> str:
+    if not isinstance(value, dict) or not isinstance(value.get(name), str):
+        raise TypeError
+    return value[name]
+
+
+def _manifest_bool(value: object, name: str) -> bool:
+    if not isinstance(value, dict) or not isinstance(value.get(name), bool):
+        raise TypeError
+    return value[name]
+
+
+def _run_data_config(value: object) -> TrainDataConfig:
+    if not isinstance(value, dict):
+        raise TypeError
+    names = (
+        "format",
+        "system_prompt",
+        "prompt_role",
+        "completion_role",
+        "prompt_prefix",
+        "prompt_suffix",
+        "completion_prefix",
+        "completion_suffix",
+    )
+    values = {name: _manifest_text(value, name) for name in names}
+    return TrainDataConfig(**values)
 
 
 def _file_hashes(root: Path) -> Mapping[str, str]:
@@ -469,18 +543,6 @@ def _file_hashes(root: Path) -> Mapping[str, str]:
         path.relative_to(root).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
         for path in paths
     }
-
-
-def _directory_digest(root: Path) -> str:
-    digest = hashlib.sha256()
-    for path in sorted(path for path in root.rglob("*") if path.is_file()):
-        digest.update(path.relative_to(root).as_posix().encode())
-        digest.update(b"\0")
-        with path.open("rb") as stream:
-            while block := stream.read(1024 * 1024):
-                digest.update(block)
-        digest.update(b"\0")
-    return digest.hexdigest()
 
 
 def _write_json(path: Path, value: Mapping[str, Any]) -> None:

@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from idiolect.config import LoraConfig, TrainConfig, TrainDataConfig
-from idiolect.train.mlx import MlxTrainer, TrainError
+from idiolect.train.mlx import MlxTrainer, TrainError, load_run
 from idiolect.types import DatasetId, DatasetRef, PersonId
 
 _NOW = datetime(2026, 8, 19, tzinfo=UTC)
@@ -93,6 +93,12 @@ def test_trainer_builds_fixed_qwen_runs_without_changing_source_data(
         "scale": 20.0,
     }
     assert request["report_to"] is None
+
+    loaded = load_run(first_run.path)
+    assert loaded.ref == first_run
+    assert loaded.model.name == "safe/model"
+    assert loaded.data.prompt_suffix == "\n/no_think"
+    assert loaded.adapter_path == first_run.path / "adapter"
 
     (first_run.path / "adapter" / "adapters.safetensors").write_bytes(b"changed")
     with pytest.raises(TrainError, match="does not match its manifest"):

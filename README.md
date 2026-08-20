@@ -6,10 +6,10 @@ Idiolect collects Signal group messages for a local ML pipeline. It stores allow
 signal-cli → group allowlist → normalized records → DuckDB
                                                    │
                                                    v
-                         MLX-LM JSONL → LoRA → evaluation
+                   MLX-LM JSONL → LoRA → inference → evaluation
 ```
 
-The package implements Signal collection, DuckDB storage, target-relative rendering, immutable dataset export, and local MLX-LM adapter training. Evaluation and inference contain typed contracts only.
+The package implements Signal collection, DuckDB storage, target-relative rendering, immutable dataset export, local MLX-LM adapter training, and reproducible local inference. Evaluation contains a typed contract.
 
 ## Start
 
@@ -47,6 +47,15 @@ just config train qwen3-14b-r16 var/data/DATASET_ID
 ```
 
 Training reads all model, formatting, optimizer, seed, and path choices from one complete tracked TOML configuration. See [adapter training](docs/train.md).
+
+Generate paired predictions from one fixed dataset split:
+
+```console
+just infer base var/data/DATASET_ID test
+just infer run var/runs/RUN_ID var/data/DATASET_ID test
+```
+
+Inference reads its complete policy from TOML and writes private content-addressed artifacts under `var/infer/`. See [local inference](docs/infer.md).
 
 Use native command groups for routine operations:
 

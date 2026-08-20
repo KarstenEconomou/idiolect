@@ -1,9 +1,12 @@
 """Test the Signal command-line workflow."""
 
+import io
+import json
 from pathlib import Path
 
 import idiolect.cli
 from idiolect.cli import main
+from idiolect.infer.base import Prediction
 from idiolect.types import RunId, RunRef, TrainResult
 
 
@@ -127,4 +130,48 @@ def test_train_command_uses_fixed_dataset_and_config(
     assert len(seen) == 1
     assert seen[0][0].path == dataset_path
     assert "run=run-id" in output.out
+    assert output.err == ""
+
+
+def test_infer_text_reads_stdin_and_writes_json_lines(
+    local_config: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    """Check that one-shot inference keeps prompt text out of arguments."""
+    seen = []
+
+    class FakeInferencer:
+        """Return one prediction without model work."""
+
+        def __init__(self, backend) -> None:
+            """Accept the configured backend boundary."""
+
+        def text(self, target, prompt, config) -> tuple[Prediction, ...]:
+            """Record the prompt and return one fixed prediction."""
+            seen.append((target, prompt, config))
+            return (
+                Prediction("example", 0, 101, 202, "reply", "stop", 8, 2),
+            )
+
+    monkeypatch.setattr(idiolect.cli, "configured_target", lambda config: "base")
+    monkeypatch.setattr(idiolect.cli, "MlxBackend", object)
+    monkeypatch.setattr(idiolect.cli, "LocalInferencer", FakeInferencer)
+    monkeypatch.setattr(idiolect.cli.sys, "stdin", io.StringIO("private prompt"))
+
+    code = main(("--config", str(local_config), "infer", "text", "--base"))
+
+    output = capsys.readouterr()
+    assert code == 0
+    assert seen[0][1] == "private prompt"
+    assert json.loads(output.out) == {
+        "example_id": "example",
+        "index": 0,
+        "seed": 101,
+        "rng_seed": 202,
+        "text": "reply",
+        "finish_reason": "stop",
+        "prompt_tokens": 8,
+        "generated_tokens": 2,
+    }
     assert output.err == ""

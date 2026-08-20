@@ -7,13 +7,14 @@ This directory contains the replication record for the current system.
 - [Conversation context](context.md): Preserve names, mentions, and replies for training.
 - [Dataset build](dataset.md): Build immutable target-specific MLX-LM files.
 - [Adapter training](train.md): Configure and run local QLoRA adapters.
+- [Local inference](infer.md): Generate fixed base and adapter predictions.
 - [Security](security.md): Separate public settings from private data.
 - [macOS service](launchd.md): Run collection with `launchd`.
 - [Development](development.md): Verify changes without live data or model calls.
 
 ## Current state
 
-The package implements the Signal collector, DuckDB store, context renderer, dataset builder, and MLX-LM trainer. Evaluation and inference contain contracts only.
+The package implements the Signal collector, DuckDB store, context renderer, dataset builder, MLX-LM trainer, and local inference runner. Evaluation contains a contract only.
 
 The collector uses this flow:
 

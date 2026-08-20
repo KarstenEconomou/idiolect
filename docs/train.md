@@ -119,3 +119,5 @@ Use a small dataset only to verify the operation. Do not interpret style quality
 5. Do not change the test set or use it to select a checkpoint.
 
 Do not publish a dataset, adapter, generated message, run log, or manifest. An adapter can retain private training information.
+
+Use the [local inference procedure](infer.md) to generate paired base and adapter predictions. Use `--base-of` when the baseline must use the model snapshot and text format recorded by one run.

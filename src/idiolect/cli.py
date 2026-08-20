@@ -1,13 +1,14 @@
 """Run the Idiolect command-line interface."""
 
 import argparse
+import json
 import os
 import sys
 from collections.abc import Sequence
-from dataclasses import replace
+from dataclasses import asdict, replace
 from pathlib import Path
 
-from idiolect.config import ConfigError, load_config
+from idiolect.config import ConfigError, TrainConfig, load_config
 from idiolect.data.local import (
     DataError,
     LocalBuilder,
@@ -15,6 +16,14 @@ from idiolect.data.local import (
     resolve_self,
     summarize_people,
 )
+from idiolect.infer.base import ModelTarget
+from idiolect.infer.local import (
+    InferenceError,
+    LocalInferencer,
+    configured_target,
+    recorded_target,
+)
+from idiolect.infer.mlx import MlxBackend
 from idiolect.ingest import harvest
 from idiolect.ingest.harvest import reindex
 from idiolect.ingest.signal import (
@@ -68,6 +77,32 @@ def main(argv: Sequence[str] | None = None) -> int:
             for run in result.runs:
                 print(f"run={run.id} dataset={run.dataset_id} path={run.path}")
             return 0
+        if arguments.command == "infer":
+            target = _inference_target(arguments, config.train)
+            inferencer = LocalInferencer(MlxBackend())
+            if arguments.infer_command == "text":
+                prompt = _read_prompt(arguments.input)
+                for prediction in inferencer.text(target, prompt, config.infer):
+                    print(
+                        json.dumps(
+                            asdict(prediction),
+                            ensure_ascii=False,
+                            separators=(",", ":"),
+                        )
+                    )
+                return 0
+            dataset = load_dataset(arguments.dataset).dataset
+            result = inferencer.dataset(
+                target,
+                dataset,
+                arguments.split,
+                config.infer,
+            )
+            print(
+                f"inference={result.id} predictions={result.predictions} "
+                f"path={result.path}"
+            )
+            return 0
         if arguments.signal_command == "groups":
             source = SignalSource(config.signal)
             for group in source.groups():
@@ -118,7 +153,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             f"skipped={result.skipped} duplicates={result.duplicates}"
         )
         return 0
-    except (ConfigError, DataError, SignalError, StoreError, TrainError) as error:
+    except (
+        ConfigError,
+        DataError,
+        InferenceError,
+        SignalError,
+        StoreError,
+        TrainError,
+    ) as error:
         print(f"error: {error}", file=sys.stderr)
         return 2
     except KeyboardInterrupt:
@@ -168,4 +210,68 @@ def _parser() -> argparse.ArgumentParser:
     build.add_argument("--name", required=True, help="target name in model text")
     train = commands.add_parser("train", help="train configured local adapters")
     train.add_argument("dataset", type=Path, help="immutable dataset directory")
+    infer = commands.add_parser("infer", help="generate local model text")
+    infer_commands = infer.add_subparsers(dest="infer_command", required=True)
+    infer_text = infer_commands.add_parser("text", help="generate one private prompt")
+    _inference_target_options(infer_text)
+    infer_text.add_argument(
+        "input",
+        type=Path,
+        nargs="?",
+        default=Path("-"),
+        help="UTF-8 prompt file or - for standard input",
+    )
+    infer_data = infer_commands.add_parser(
+        "data",
+        help="generate one immutable dataset split",
+    )
+    _inference_target_options(infer_data)
+    infer_data.add_argument("dataset", type=Path, help="immutable dataset directory")
+    infer_data.add_argument(
+        "--split",
+        type=Split,
+        choices=tuple(Split),
+        required=True,
+        help="dataset split",
+    )
     return parser
+
+
+def _inference_target_options(parser: argparse.ArgumentParser) -> None:
+    target = parser.add_mutually_exclusive_group(required=True)
+    target.add_argument(
+        "--base",
+        action="store_true",
+        help="use the base model in the selected configuration",
+    )
+    target.add_argument(
+        "--base-of",
+        type=Path,
+        metavar="RUN",
+        help="use the base model recorded by a run",
+    )
+    target.add_argument(
+        "--run",
+        type=Path,
+        help="use the adapter recorded by a run",
+    )
+
+
+def _inference_target(
+    arguments: argparse.Namespace,
+    config: TrainConfig,
+) -> ModelTarget:
+    if arguments.base:
+        return configured_target(config)
+    if arguments.base_of is not None:
+        return recorded_target(arguments.base_of, adapter=False)
+    if arguments.run is None:
+        raise InferenceError("Inference run is not configured")
+    return recorded_target(arguments.run, adapter=True)
+
+
+def _read_prompt(path: Path) -> str:
+    try:
+        return sys.stdin.read() if path == Path("-") else path.read_text(encoding="utf-8")
+    except OSError as error:
+        raise InferenceError(f"Cannot read inference prompt: {path}") from error

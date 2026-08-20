@@ -121,6 +121,21 @@ keys = ["self_attn.q_proj", "self_attn.v_proj"]
 rank = 8
 scale = 20.0
 dropout = 0.05
+
+[infer]
+output = "var/infer"
+backend = "mlx-lm"
+seeds = [101, 202]
+max_examples = 100
+max_prompt_tokens = 1920
+max_tokens = 128
+temperature = 0.7
+top_p = 0.8
+top_k = 20
+min_p = 0.0
+min_tokens_to_keep = 1
+repetition_penalty = 1.0
+repetition_context_size = 20
 """,
         encoding="utf-8",
     )
@@ -132,6 +147,8 @@ dropout = 0.05
     assert dict(config.train.optimizer_options)["betas"] == (0.9, 0.98)
     assert config.train.data.prompt_suffix == "\n/no_think"
     assert config.train.lora.rank == 8
+    assert config.infer.seeds == (101, 202)
+    assert config.infer.max_prompt_tokens == 1920
 
 
 def test_training_rejects_two_run_limits(tmp_path: Path) -> None:
@@ -140,4 +157,13 @@ def test_training_rejects_two_run_limits(tmp_path: Path) -> None:
     path.write_text("[train]\nepochs = 2\niterations = 100\n", encoding="utf-8")
 
     with pytest.raises(ConfigError, match="epochs or iterations"):
+        load_config(path, {})
+
+
+def test_inference_rejects_duplicate_seeds(tmp_path: Path) -> None:
+    """Check that one generation seed cannot occur twice."""
+    path = tmp_path / "invalid.toml"
+    path.write_text("[infer]\nseeds = [101, 101]\n", encoding="utf-8")
+
+    with pytest.raises(ConfigError, match="Inference seeds must be unique"):
         load_config(path, {})

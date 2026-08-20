@@ -9,6 +9,7 @@ from typing import NewType
 ChatId = NewType("ChatId", str)
 DatasetId = NewType("DatasetId", str)
 EventId = NewType("EventId", str)
+InferenceId = NewType("InferenceId", str)
 MessageId = NewType("MessageId", str)
 PersonId = NewType("PersonId", str)
 RunId = NewType("RunId", str)
@@ -150,6 +151,16 @@ class TrainResult:
     """Keep the completed runs for one configured experiment."""
 
     runs: tuple[RunRef, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class InferenceRef:
+    """Point to one fixed inference batch."""
+
+    id: InferenceId
+    path: Path
+    created_at: datetime
+    predictions: int
 
 
 @dataclass(frozen=True, slots=True)
