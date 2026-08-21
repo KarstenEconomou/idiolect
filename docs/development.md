@@ -9,7 +9,7 @@
 - `data` builds fixed training examples.
 - `train` defines the training port and implements the MLX-LM backend.
 - `infer` defines generation ports and implements verified local MLX-LM inference.
-- `eval` defines the model test port.
+- `eval` defines scoring ports and implements immutable policy and panel evaluation.
 
 Keep external behavior behind typed ports. Keep adapter code out of contract modules.
 
@@ -36,7 +36,12 @@ The checks verify Just formatting and run Ruff, ty, and pytest. The build create
 
 Use only synthetic Signal JSON fixtures. Use a fake command runner for `signal-cli`. Use `tmp_path` for DuckDB and configuration files.
 
-Do not read `.env`, `conf/idiolect.toml`, `conf/local.toml`, `var/`, or the installed launch agent in a test. Use fixture configuration files. Do not call Signal, a model hub, or another network service. Do not run a real model, model download, training operation, inference operation, or GPU operation. Use fake model resolvers, training commands, and inference sessions.
+Do not read `.env`, `conf/idiolect.toml`, `conf/local.toml`, `var/`, or the
+installed launch agent in a test. Use fixture configuration files. Do not call
+Signal, a model hub, or another network service. Do not run a real model, model
+download, training operation, inference operation, evaluation operation, or GPU
+operation. Use fake model resolvers, training commands, inference sessions, and
+scoring sessions.
 
 Each test must detect a possible implementation defect. Test the group allowlist, command safety options, message normalization, edit order, delete tombstones, reaction links, transaction behavior, duplicate events, strict configuration, and CLI results.
 

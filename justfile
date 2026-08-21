@@ -12,6 +12,9 @@ mod config 'just/config.just'
 # Generate text with local models and adapters.
 mod infer 'just/infer.just'
 
+# Evaluate trained model policies.
+mod eval 'just/eval.just'
+
 # List available commands.
 default:
     @just --list

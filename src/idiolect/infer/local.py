@@ -243,6 +243,16 @@ def recorded_target(
     )
 
 
+def load_inference(path: Path) -> InferenceRef:
+    """Load and verify one immutable inference artifact."""
+    name = path.name
+    if len(name) != 64 or any(
+        character not in "0123456789abcdef" for character in name
+    ):
+        raise InferenceError(f"Inference path does not contain an ID: {path}")
+    return _load_artifact(path, InferenceId(name))
+
+
 def _validate(config: InferConfig, backend_version: str) -> None:
     missing = sorted(_REQUIRED_TOML - config.specified) if config.specified else []
     if missing:

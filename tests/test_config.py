@@ -1,10 +1,12 @@
 """Test local configuration behavior."""
 
+import json
 from pathlib import Path
 
 import pytest
 
 from idiolect.config import ConfigError, load_config
+from idiolect.train.mlx import training_policy
 
 
 def test_environment_replaces_sensitive_signal_values(local_config: Path) -> None:
@@ -122,6 +124,26 @@ rank = 8
 scale = 20.0
 dropout = 0.05
 
+[eval]
+output = "var/eval"
+backend = "mlx-lm"
+suite = "fidelity"
+split = "valid"
+max_examples = 100
+bootstrap_seed = 7
+bootstrap_samples = 1000
+confidence_level = 0.95
+long_match_chars = 50
+max_empty_rate = 0.0
+max_format_violation_rate = 0.0
+max_truncation_rate = 0.05
+max_memorization_rate_delta = 0.0
+ballot_seed = 11
+ballots_per_rater = 40
+control_fraction = 0.2
+min_panel_raters = 3
+min_primary_comparisons = 60
+
 [infer]
 output = "var/infer"
 backend = "mlx-lm"
@@ -147,8 +169,15 @@ repetition_context_size = 20
     assert dict(config.train.optimizer_options)["betas"] == (0.9, 0.98)
     assert config.train.data.prompt_suffix == "\n/no_think"
     assert config.train.lora.rank == 8
+    assert config.eval.suite == "fidelity"
+    assert config.eval.split == "valid"
+    assert config.eval.bootstrap_samples == 1000
+    assert config.eval.ballots_per_rater == 40
     assert config.infer.seeds == (101, 202)
     assert config.infer.max_prompt_tokens == 1920
+
+    policy = training_policy(config.train)
+    assert policy == json.loads(json.dumps(policy))
 
 
 def test_training_rejects_two_run_limits(tmp_path: Path) -> None:

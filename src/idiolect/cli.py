@@ -16,6 +16,9 @@ from idiolect.data.local import (
     resolve_self,
     summarize_people,
 )
+from idiolect.eval.local import EvaluationError, LocalEvaluator
+from idiolect.eval.mlx import EvalBackendError, MlxScoreBackend
+from idiolect.eval.panel import collect_judgments, create_panel
 from idiolect.infer.base import ModelTarget
 from idiolect.infer.local import (
     InferenceError,
@@ -33,7 +36,7 @@ from idiolect.ingest.signal import (
     SignalSource,
 )
 from idiolect.store.duck import DuckRepository, StoreError
-from idiolect.train.mlx import MlxTrainer, TrainError
+from idiolect.train.mlx import MlxTrainer, TrainError, load_run, training_policy
 from idiolect.types import PersonId, Split
 
 
@@ -103,6 +106,40 @@ def main(argv: Sequence[str] | None = None) -> int:
                 f"path={result.path}"
             )
             return 0
+        if arguments.command == "eval":
+            if arguments.eval_command == "policy":
+                dataset = load_dataset(arguments.dataset).dataset
+                runs = tuple(load_run(path) for path in arguments.runs)
+                if any(run.policy != training_policy(config.train) for run in runs):
+                    raise EvaluationError(
+                        "Selected configuration does not match the training runs"
+                    )
+                result = LocalEvaluator(
+                    MlxScoreBackend(),
+                    LocalInferencer(MlxBackend()),
+                ).evaluate(runs, dataset, config.eval, config.infer)
+                state = "eligible" if result.eligible else "ineligible"
+                print(f"evaluation={result.id} state={state} path={result.path}")
+                return 0
+            if arguments.eval_command == "rate":
+                result = collect_judgments(
+                    arguments.evaluation,
+                    arguments.rater,
+                    config.eval,
+                )
+                print(
+                    f"judgment={result.id} judgments={result.judgments} "
+                    f"path={result.path}"
+                )
+                return 0
+            result = create_panel(
+                arguments.evaluation,
+                arguments.judgments,
+                config.eval,
+            )
+            state = "complete" if result.complete else "incomplete"
+            print(f"panel={result.id} state={state} path={result.path}")
+            return 0
         if arguments.signal_command == "groups":
             source = SignalSource(config.signal)
             for group in source.groups():
@@ -156,6 +193,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     except (
         ConfigError,
         DataError,
+        EvalBackendError,
+        EvaluationError,
         InferenceError,
         SignalError,
         StoreError,
@@ -233,6 +272,36 @@ def _parser() -> argparse.ArgumentParser:
         choices=tuple(Split),
         required=True,
         help="dataset split",
+    )
+    evaluate = commands.add_parser("eval", help="evaluate model fidelity")
+    eval_commands = evaluate.add_subparsers(dest="eval_command", required=True)
+    eval_policy = eval_commands.add_parser(
+        "policy",
+        help="compare one complete training policy with its base",
+    )
+    eval_policy.add_argument("dataset", type=Path, help="immutable dataset directory")
+    eval_policy.add_argument(
+        "runs",
+        type=Path,
+        nargs="+",
+        help="complete same-policy training run set",
+    )
+    eval_rate = eval_commands.add_parser(
+        "rate",
+        help="complete one private familiar-rater session",
+    )
+    eval_rate.add_argument("evaluation", type=Path, help="evaluation directory")
+    eval_rate.add_argument("--rater", required=True, help="pseudonymous rater ID")
+    eval_panel = eval_commands.add_parser(
+        "panel",
+        help="summarize familiar-rater judgments",
+    )
+    eval_panel.add_argument("evaluation", type=Path, help="evaluation directory")
+    eval_panel.add_argument(
+        "judgments",
+        type=Path,
+        nargs="+",
+        help="judgment artifact directories",
     )
     return parser
 

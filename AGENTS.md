@@ -2,7 +2,7 @@
 
 ## Project
 
-Idiolect is a Python 3.14 package for a local-first ML pipeline. It collects allowlisted Signal group messages, stores source and normalized data in DuckDB, builds immutable target-specific JSONL datasets, trains content-addressed MLX-LM LoRA adapters, and generates verified local predictions. Evaluation has a typed contract but no runner.
+Idiolect is a Python 3.14 package for a local-first ML pipeline. It collects allowlisted Signal group messages, stores source and normalized data in DuckDB, builds immutable target-specific JSONL datasets, trains content-addressed MLX-LM LoRA adapters, generates verified local predictions, and evaluates adapter policies against their recorded base models with automatic metrics and private familiar-panel judgments.
 
 Code lives in `src/idiolect/`. Tests mirror it in `tests/`. Public configuration lives in `conf/`. Operational and replication procedures live in `docs/`. Just modules live in `just/`.
 
@@ -13,7 +13,7 @@ Keep stage boundaries explicit:
 - `data` renders target-relative context and builds datasets.
 - `train` defines training contracts and implements MLX-LM training.
 - `infer` defines generation contracts and implements MLX-LM inference.
-- `eval` defines evaluation contracts.
+- `eval` defines scoring contracts, runs immutable local policy evaluations, and collects and summarizes private familiar-panel judgments.
 - `config.py`, `model.py`, `prompt.py`, and `types.py` contain shared policy and data contracts.
 
 Keep external systems behind the existing typed ports. Keep protocol modules free of backend behavior. Keep the CLI thin and put application behavior in its stage module.
@@ -32,6 +32,9 @@ Use `uv` for all Python work and the root `justfile` for checks.
 - `just config list`, `new`, or `train`: manage complete experiment configurations.
 - `just train <dataset>`: train the canonical configuration while the Mac stays awake.
 - `just infer base`, `base-of`, or `run`: generate one dataset split while the Mac stays awake.
+- `just eval policy <dataset> <runs...>`: compare one complete training policy with its recorded base.
+- `just eval rate <evaluation> <rater>`: complete one private blind familiar-rater session.
+- `just eval panel <evaluation> <judgments...>`: summarize familiar-rater judgments.
 - `just test`: run pytest.
 - `just lint`: run Ruff.
 - `just typecheck`: run ty.
@@ -45,7 +48,7 @@ Use focused modules, explicit imports, four-space indentation, and type annotati
 
 Write every Python docstring in ASD-STE100 Simplified Technical English. Add docstrings to modules and public classes, methods, and functions. Use short sentences and one term for one meaning.
 
-Treat TOML as the complete experiment policy. Do not add an implicit model, formatting, optimizer, sampling, seed, path, or reporting choice in code. Reject missing, unknown, or incompatible settings at the boundary. Keep dataset, run, and inference artifacts immutable and content-addressed.
+Treat TOML as the complete experiment policy. Do not add an implicit model, formatting, optimizer, sampling, seed, path, or reporting choice in code. Reject missing, unknown, or incompatible settings at the boundary. Keep dataset, run, inference, evaluation, judgment, and panel artifacts immutable and content-addressed.
 
 Update `README.md` and the applicable file in `docs/` when behavior, setup, configuration, operation, or data flow changes.
 

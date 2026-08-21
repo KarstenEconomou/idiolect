@@ -1,0 +1,177 @@
+# Model Evaluation
+
+## Purpose
+
+Evaluation tests whether one complete training policy improves the probability
+and observable behavior of replies that the target person could plausibly send.
+It compares every configured training seed with the exact base model recorded by
+the runs.
+
+The `fidelity` suite uses the validation split only. It does not read Signal or
+DuckDB. It reads a verified dataset, verified training runs, and immutable
+inference artifacts.
+
+Evaluation does not produce one fidelity score. Open conversation has many valid
+replies, and one recorded reply is not a complete reference distribution. Read
+the likelihood, voice, behavior, privacy, diversity, and human results together.
+
+## Configuration
+
+Each complete TOML file contains a required `[eval]` table. It selects:
+
+- the private output directory, MLX-LM backend, and metric suite;
+- `split = "valid"` and the stable example limit;
+- the bootstrap seed, replication count, and confidence level;
+- the minimum long training-text match;
+- eligibility limits for empty output, format violations, truncation, and new
+  training-text matches;
+- the blind-ballot seed, ballot count, control fraction, and panel minimums.
+
+`max_examples = 0` selects all validation examples. A positive value selects
+examples by stable hash. The existing `[infer]` table supplies generation seeds,
+token limits, and sampling behavior. Evaluation records the effective values in
+its recipe.
+
+Do not change a used experiment configuration. Create a complete new
+configuration when the policy changes.
+
+## Automatic policy evaluation
+
+Install the optional local model packages:
+
+```console
+just sync-train
+```
+
+Supply every run produced by the configuration. For the canonical three-seed
+policy:
+
+```console
+just eval policy var/data/DATASET_ID \
+  var/runs/RUN_ID_ONE \
+  var/runs/RUN_ID_TWO \
+  var/runs/RUN_ID_THREE
+```
+
+Select the complete experiment configuration that created the runs:
+
+```console
+IDIOLECT_CONFIG=conf/exp/qwen3-8b-smoke.toml \
+  just eval policy var/data/DATASET_ID var/runs/RUN_ID_ONE
+```
+
+The command rejects a selected configuration whose training policy does not
+match the recorded runs. Use the same configuration for rating and panel
+commands because it also contains the fixed ballot policy.
+
+The runner rejects a partial seed set. It also rejects runs with different
+datasets, models, text formats, training policies, or sequence limits.
+
+The operation performs these tests:
+
+1. Score the real held-out reply with the base and every adapter. Only reply and
+   reply-termination tokens contribute to negative log-likelihood. Static model
+   prefill text does not contribute. Report macro mean NLL across examples and
+   token-weighted corpus perplexity as separate values.
+2. Generate the same examples with identical derived random streams.
+3. Compare message length, line structure, punctuation, capitalization, emoji,
+   mentions, URLs, repeated characters, and character three-grams.
+4. Detect empty text, unknown mentions, template leakage, multi-role output,
+   truncation, duplicates, and seed instability.
+5. Compare normalized generated text with training completions. Report exact
+   duplicates and long contiguous matches. A sparse rolling-hash index finds
+   candidates, and exact string matching verifies each reported match.
+6. Apply configured validity and privacy-regression gates.
+
+The automatic bootstrap resamples conversation examples. Tokens, generated
+samples, and training seeds are not independent observations. Reports show each
+run, an equally weighted policy estimate, paired macro-NLL confidence intervals,
+token-weighted corpus perplexity, and run spread.
+
+A policy is `eligible` only when all automatic gates pass. Eligibility is not a
+claim that the model has the target's voice and is not a complete privacy audit.
+Use the familiar-panel result as separate evidence.
+
+## Output
+
+Automatic evaluation writes:
+
+```text
+var/eval/<evaluation-id>/
+├── examples.jsonl
+├── manifest.json
+├── metrics.json
+└── report.md
+```
+
+The evaluation ID includes the dataset and run digests, selected examples,
+inference policy, evaluation policy, metric suite, and backend versions. An equal
+request returns the existing verified directory.
+
+`examples.jsonl` contains identifiers, scores, numeric diagnostics, and failure
+flags. It does not copy prompts, human replies, or generated replies. The
+manifest points to the private source artifacts used by the blind workflow.
+
+## Familiar-panel evaluation
+
+Use raters who know the target's writing. Every rater must consent and must
+already have permission to view the sampled conversation contexts. Do not show a
+group conversation to a rater merely because that person knows the target.
+
+Run one terminal session on the data owner's Mac:
+
+```console
+just eval rate var/eval/EVALUATION_ID rater-01
+```
+
+The terminal shows randomized A/B replies and asks which reply:
+
+- the target would be more likely to send in this context;
+- sounds more like the target;
+- fits the conversation better.
+
+Most ballots compare the policy with the base. The configured control fraction
+compares the real human reply with either the policy or base. Human controls
+calibrate interpretation. They are not attention tests, because more than one
+reply can be valid.
+
+The command writes a pseudonymous immutable artifact under
+`var/eval/judgments/`. It does not store prompts or reply text. Use a stable
+pseudonym that does not contain a name, phone number, or Signal identifier.
+Panel construction reconstructs the fixed ballot schedule from the verified
+evaluation sources. It rejects missing, duplicate, changed, or unknown ballot
+answers even when an artifact is internally content-addressed.
+
+After the configured panel completes its sessions, create a report:
+
+```console
+just eval panel var/eval/EVALUATION_ID \
+  var/eval/judgments/JUDGMENT_ID_ONE \
+  var/eval/judgments/JUDGMENT_ID_TWO \
+  var/eval/judgments/JUDGMENT_ID_THREE
+```
+
+The panel report contains policy/base wins, ties, neither choices, two-way
+example-and-rater bootstrap confidence intervals, human-control recovery, A/B
+position preference, and finite-sample nominal Krippendorff agreement for each
+rating dimension. It remains `incomplete` until both configured panel minimums
+are met.
+
+## Interpretation
+
+Prefer evidence that converges:
+
+- lower adapter completion NLL than the base across training seeds;
+- panel preference for the policy on target likelihood and voice without a
+  contextual-fit regression;
+- voice features closer to held-out human messages;
+- no format, truncation, repetition, or memorization gate failure;
+- limited run-to-run variation.
+
+Do not select a model from one metric. Character n-grams can measure topic as
+well as style. Low likelihood can reward the one observed reply even when other
+replies are valid. Familiar raters can prefer polished text that does not match
+the target. The separate dimensions expose these failure modes.
+
+All evaluation, judgment, and panel files are private. Do not publish a report,
+manifest, prompt, completion, prediction, or rater artifact.

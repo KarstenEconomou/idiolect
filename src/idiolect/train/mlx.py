@@ -8,7 +8,7 @@ import shutil
 import subprocess
 import tempfile
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import asdict, dataclass
+from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
@@ -22,6 +22,7 @@ from idiolect.model import (
     verify_model,
 )
 from idiolect.prompt import format_row
+from idiolect.train.base import LoadedRun
 from idiolect.types import DatasetId, DatasetRef, RunId, RunRef, Split, TrainResult
 
 _RUN_VERSION = 1
@@ -74,18 +75,6 @@ _REQUIRED_TOML = frozenset(
 
 class TrainError(RuntimeError):
     """Report an invalid or failed training operation."""
-
-
-@dataclass(frozen=True, slots=True)
-class LoadedRun:
-    """Keep one verified training run and its model policy."""
-
-    ref: RunRef
-    model: ModelSpec
-    model_digest: str
-    data: TrainDataConfig
-    adapter_path: Path
-    adapter_digest: str
 
 
 class CommandRunner(Protocol):
@@ -407,17 +396,20 @@ def _recipe(
         "dataset_digest": dataset_digest,
         "model_digest": model_digest,
         "seed": seed,
-        "config": _config_value(config),
+        "config": training_policy(config),
     }
 
 
-def _config_value(config: TrainConfig) -> Mapping[str, Any]:
+def training_policy(config: TrainConfig) -> Mapping[str, Any]:
+    """Return the recorded value for one training policy."""
     value = asdict(config)
     value.pop("specified")
     value["model_cache"] = str(config.model_cache) if config.model_cache else None
     value["output"] = str(config.output) if config.output else None
     value["optimizer_options"] = dict(config.optimizer_options)
-    return value
+    return json.loads(
+        json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+    )
 
 
 def _load_run(path: Path, run_id: RunId, dataset: DatasetRef) -> RunRef:
@@ -483,6 +475,12 @@ def load_run(path: Path) -> LoadedRun:
         ).as_posix()
         _run_file(path, adapter_name)
         adapter_digest = directory_digest(adapter_path)
+        seed = recipe["seed"]
+        max_seq_length = config["max_seq_length"]
+        if not isinstance(seed, int) or isinstance(seed, bool):
+            raise TypeError
+        if not isinstance(max_seq_length, int) or isinstance(max_seq_length, bool):
+            raise TypeError
     except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError) as error:
         if isinstance(error, TrainError):
             raise
@@ -495,6 +493,9 @@ def load_run(path: Path) -> LoadedRun:
         data_config,
         adapter_path,
         adapter_digest,
+        config,
+        seed,
+        max_seq_length,
     )
 
 

@@ -2,12 +2,14 @@
 
 import io
 import json
+from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 import idiolect.cli
 from idiolect.cli import main
 from idiolect.infer.base import Prediction
-from idiolect.types import RunId, RunRef, TrainResult
+from idiolect.types import EvaluationId, EvaluationRef, RunId, RunRef, TrainResult
 
 
 def test_import_and_stats_use_configured_store(
@@ -174,4 +176,69 @@ def test_infer_text_reads_stdin_and_writes_json_lines(
         "prompt_tokens": 8,
         "generated_tokens": 2,
     }
+    assert output.err == ""
+
+
+def test_eval_policy_uses_every_supplied_run(
+    local_config: Path,
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    """Check that the CLI passes the complete run set to evaluation."""
+    seen = []
+    evaluation_path = tmp_path / "eval" / "evaluation-id"
+    current_policy = idiolect.cli.training_policy(
+        idiolect.cli.load_config(local_config).train
+    )
+    recorded_policy = json.loads(json.dumps(current_policy))
+
+    class FakeEvaluator:
+        """Return one fixed evaluation without model work."""
+
+        def __init__(self, scorer, inferencer) -> None:
+            """Accept local backend boundaries."""
+
+        def evaluate(self, runs, dataset, config, infer) -> EvaluationRef:
+            """Record the policy inputs and return one result."""
+            seen.append((runs, dataset, config, infer))
+            return EvaluationRef(
+                EvaluationId("evaluation-id"),
+                evaluation_path,
+                datetime(2026, 8, 20, tzinfo=UTC),
+                True,
+            )
+
+    monkeypatch.setattr(
+        idiolect.cli,
+        "load_dataset",
+        lambda path: SimpleNamespace(dataset="fixed-dataset"),
+    )
+    monkeypatch.setattr(
+        idiolect.cli,
+        "load_run",
+        lambda path: SimpleNamespace(name=path.name, policy=recorded_policy),
+    )
+    monkeypatch.setattr(idiolect.cli, "MlxScoreBackend", object)
+    monkeypatch.setattr(idiolect.cli, "MlxBackend", object)
+    monkeypatch.setattr(idiolect.cli, "LocalInferencer", lambda backend: "inferencer")
+    monkeypatch.setattr(idiolect.cli, "LocalEvaluator", FakeEvaluator)
+
+    code = main(
+        (
+            "--config",
+            str(local_config),
+            "eval",
+            "policy",
+            "dataset",
+            "run-17",
+            "run-42",
+        )
+    )
+
+    output = capsys.readouterr()
+    assert code == 0
+    assert tuple(value.name for value in seen[0][0]) == ("run-17", "run-42")
+    assert seen[0][1] == "fixed-dataset"
+    assert "state=eligible" in output.out
     assert output.err == ""

@@ -123,7 +123,25 @@ class TrainConfig:
 class EvalConfig:
     """Set the model test options."""
 
-    max_examples: int | None = None
+    output: Path | None = None
+    backend: str = ""
+    suite: str = ""
+    split: str = ""
+    max_examples: int = 0
+    bootstrap_seed: int = 0
+    bootstrap_samples: int = 0
+    confidence_level: float = 0.0
+    long_match_chars: int = 0
+    max_empty_rate: float = 0.0
+    max_format_violation_rate: float = 0.0
+    max_truncation_rate: float = 0.0
+    max_memorization_rate_delta: float = 0.0
+    ballot_seed: int = 0
+    ballots_per_rater: int = 0
+    control_fraction: float = 0.0
+    min_panel_raters: int = 0
+    min_primary_comparisons: int = 0
+    specified: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True, slots=True)
@@ -243,7 +261,30 @@ def load_config(
         "train.data",
     )
     _check_keys(lora_values, {"keys", "rank", "scale", "dropout"}, "train.lora")
-    _check_keys(eval_values, {"max_examples"}, "eval")
+    _check_keys(
+        eval_values,
+        {
+            "output",
+            "backend",
+            "suite",
+            "split",
+            "max_examples",
+            "bootstrap_seed",
+            "bootstrap_samples",
+            "confidence_level",
+            "long_match_chars",
+            "max_empty_rate",
+            "max_format_violation_rate",
+            "max_truncation_rate",
+            "max_memorization_rate_delta",
+            "ballot_seed",
+            "ballots_per_rater",
+            "control_fraction",
+            "min_panel_raters",
+            "min_primary_comparisons",
+        },
+        "eval",
+    )
     _check_keys(
         infer_values,
         {
@@ -336,7 +377,33 @@ def load_config(
         ),
         specified=_train_keys(train_values, train_data_values, lora_values),
     )
-    eval_config = EvalConfig(max_examples=_optional_int(eval_values, "max_examples"))
+    eval_config = EvalConfig(
+        output=_optional_path(eval_values.get("output")),
+        backend=_str(eval_values, "backend", ""),
+        suite=_str(eval_values, "suite", ""),
+        split=_str(eval_values, "split", ""),
+        max_examples=_int(eval_values, "max_examples", 0),
+        bootstrap_seed=_int(eval_values, "bootstrap_seed", 0),
+        bootstrap_samples=_int(eval_values, "bootstrap_samples", 0),
+        confidence_level=_float(eval_values, "confidence_level", 0.0),
+        long_match_chars=_int(eval_values, "long_match_chars", 0),
+        max_empty_rate=_float(eval_values, "max_empty_rate", 0.0),
+        max_format_violation_rate=_float(
+            eval_values, "max_format_violation_rate", 0.0
+        ),
+        max_truncation_rate=_float(eval_values, "max_truncation_rate", 0.0),
+        max_memorization_rate_delta=_float(
+            eval_values, "max_memorization_rate_delta", 0.0
+        ),
+        ballot_seed=_int(eval_values, "ballot_seed", 0),
+        ballots_per_rater=_int(eval_values, "ballots_per_rater", 0),
+        control_fraction=_float(eval_values, "control_fraction", 0.0),
+        min_panel_raters=_int(eval_values, "min_panel_raters", 0),
+        min_primary_comparisons=_int(
+            eval_values, "min_primary_comparisons", 0
+        ),
+        specified=frozenset(eval_values),
+    )
     infer = InferConfig(
         output=_optional_path(infer_values.get("output")),
         backend=_str(infer_values, "backend", ""),
@@ -357,6 +424,7 @@ def load_config(
     )
     _validate_signal(signal)
     _validate_train(train)
+    _validate_eval(eval_config)
     _validate_infer(infer)
     return AppConfig(signal, store, data, train, eval_config, infer)
 
@@ -521,3 +589,24 @@ def _validate_infer(config: InferConfig) -> None:
         raise ConfigError("Inference token sampling limits are not valid")
     if config.repetition_penalty <= 0 or config.repetition_context_size < 1:
         raise ConfigError("Inference repetition settings are not valid")
+
+
+def _validate_eval(config: EvalConfig) -> None:
+    if config.max_examples < 0:
+        raise ConfigError("Evaluation max_examples must not be negative")
+    if config.bootstrap_samples < 0 or config.long_match_chars < 0:
+        raise ConfigError("Evaluation sample limits must not be negative")
+    if config.ballots_per_rater < 0:
+        raise ConfigError("Evaluation ballots_per_rater must not be negative")
+    if config.min_panel_raters < 0 or config.min_primary_comparisons < 0:
+        raise ConfigError("Evaluation panel limits must not be negative")
+    rates = (
+        config.confidence_level,
+        config.max_empty_rate,
+        config.max_format_violation_rate,
+        config.max_truncation_rate,
+        config.max_memorization_rate_delta,
+        config.control_fraction,
+    )
+    if any(not 0.0 <= value <= 1.0 for value in rates):
+        raise ConfigError("Evaluation rates must be from zero to one")

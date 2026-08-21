@@ -1,15 +1,19 @@
 """Define records for Idiolect data."""
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import NewType
+from typing import Any, NewType
 
 ChatId = NewType("ChatId", str)
 DatasetId = NewType("DatasetId", str)
 EventId = NewType("EventId", str)
 InferenceId = NewType("InferenceId", str)
+EvaluationId = NewType("EvaluationId", str)
+JudgmentId = NewType("JudgmentId", str)
+PanelId = NewType("PanelId", str)
 MessageId = NewType("MessageId", str)
 PersonId = NewType("PersonId", str)
 RunId = NewType("RunId", str)
@@ -169,3 +173,73 @@ class Metric:
 
     name: str
     value: float
+    target: str
+    unit: str
+    samples: int
+    lower: float | None = None
+    upper: float | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class Interval:
+    """Keep one estimate and its confidence interval."""
+
+    value: float
+    lower: float
+    upper: float
+
+
+@dataclass(frozen=True, slots=True)
+class GateResult:
+    """Keep one evaluation eligibility gate result."""
+
+    value: float
+    limit: float
+    passed: bool
+
+
+@dataclass(frozen=True, slots=True)
+class EvaluationReport:
+    """Keep one typed automatic evaluation report."""
+
+    suite: str
+    eligible: bool
+    examples: int
+    training_runs: int
+    generation_seeds: int
+    gates: Mapping[str, GateResult]
+    likelihood: Mapping[str, Any]
+    voice_profiles: Mapping[str, Any]
+    behavior: Mapping[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class EvaluationRef:
+    """Point to one fixed automatic evaluation."""
+
+    id: EvaluationId
+    path: Path
+    created_at: datetime
+    eligible: bool
+
+
+@dataclass(frozen=True, slots=True)
+class JudgmentRef:
+    """Point to one fixed familiar-rater judgment set."""
+
+    id: JudgmentId
+    evaluation_id: EvaluationId
+    path: Path
+    created_at: datetime
+    judgments: int
+
+
+@dataclass(frozen=True, slots=True)
+class PanelRef:
+    """Point to one fixed familiar-panel report."""
+
+    id: PanelId
+    evaluation_id: EvaluationId
+    path: Path
+    created_at: datetime
+    complete: bool

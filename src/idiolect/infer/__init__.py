@@ -5,6 +5,7 @@ from idiolect.infer.local import (
     InferenceError,
     LocalInferencer,
     configured_target,
+    load_inference,
     recorded_target,
 )
 
@@ -16,5 +17,6 @@ __all__ = [
     "Prediction",
     "TargetMode",
     "configured_target",
+    "load_inference",
     "recorded_target",
 ]

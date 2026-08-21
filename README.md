@@ -35,12 +35,19 @@ immutable JSONL dataset
                                                    |
                                                    v
                                      content-addressed predictions
+                                                   |
+                                                   v
+                                      validation fidelity evaluation
 ```
 
 The canonical configuration keeps Signal data, datasets, model files, adapters,
-and predictions under the ignored `var/` directory. The repository tracks public
-settings in `conf/idiolect.toml` and complete experiment settings in `conf/exp/`.
-Evaluation has a typed contract but no evaluation runner.
+predictions, evaluations, judgments, and panel reports under the ignored `var/`
+directory. The repository tracks public settings in `conf/idiolect.toml` and
+complete experiment settings in `conf/exp/`.
+The evaluation runner compares a complete adapter policy with its exact recorded
+base. It reports token-weighted corpus perplexity, paired example-level
+likelihood, verified training-text matches, and private blind familiar-panel
+judgments with example-and-rater uncertainty.
 
 ## Requirements
 
@@ -48,7 +55,7 @@ Evaluation has a typed contract but no evaluation runner.
 - [`uv`](https://docs.astral.sh/uv/)
 - [`just`](https://just.systems/) 1.46.0 or later
 - A current `signal-cli` release and a local QR code tool for collection
-- An Apple silicon Mac for the MLX-LM training and inference workflow
+- An Apple silicon Mac for MLX-LM training, inference, and automatic evaluation
 
 Run commands from the repository root. Use only messages from people who consent
 to the collection and model experiment.
@@ -129,6 +136,15 @@ just infer base-of var/runs/RUN_ID var/data/DATASET_ID test qwen3-8b-smoke
 just infer run var/runs/RUN_ID var/data/DATASET_ID test qwen3-8b-smoke
 ```
 
+Evaluate every configured training seed together on the fixed validation split:
+
+```console
+just eval policy var/data/DATASET_ID var/runs/RUN_ID_ONE var/runs/RUN_ID_TWO
+```
+
+Then collect private familiar-rater judgments and build a panel report. See
+[docs/eval.md](docs/eval.md) for the consent, interpretation, and command rules.
+
 Use `just config new NAME` to copy the complete canonical configuration before
 you define another experiment. Do not change a configuration after you use it
 for a recorded run.
@@ -137,17 +153,17 @@ for a recorded run.
 
 See [docs/index.md](docs/index.md) for the replication entry point. It links the
 procedures for Signal setup, security, collection, `launchd`, conversation
-context, dataset construction, training, inference, and development.
+context, dataset construction, training, inference, evaluation, and development.
 
 Important constraints:
 
 - The collector receives new queued events. It does not import existing phone
   history.
 - Stop the continuous collector during `reindex` and dataset construction.
-- Collection can continue during training and inference because those operations
+- Collection can continue during training, inference, and evaluation because those operations
   use immutable files.
-- Keep the Mac on, awake, and logged in for the LaunchAgent. Training and
-  inference recipes use `caffeinate`.
+- Keep the Mac on, awake, and logged in for the LaunchAgent. Training, inference,
+  and automatic evaluation recipes use `caffeinate`.
 - Treat raw events and hashed records as private data.
 
 ## Develop

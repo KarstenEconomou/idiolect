@@ -20,6 +20,7 @@ class ModelInput:
 
     turns: tuple[Turn, ...]
     has_prefill: bool
+    completion_role: str = "assistant"
 
 
 def format_prompt(prompt: str, config: TrainDataConfig) -> ModelInput:
@@ -37,7 +38,7 @@ def format_prompt(prompt: str, config: TrainDataConfig) -> ModelInput:
     has_prefill = bool(config.completion_prefix)
     if has_prefill:
         turns.append(Turn(completion_role, config.completion_prefix))
-    return ModelInput(tuple(turns), has_prefill)
+    return ModelInput(tuple(turns), has_prefill, completion_role)
 
 
 def format_row(

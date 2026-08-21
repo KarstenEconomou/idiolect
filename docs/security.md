@@ -45,7 +45,16 @@ The DuckDB file contains raw messages and original Signal identifiers. Hashed no
 
 The log files can contain command errors and local paths. Keep `var/log/` private.
 
-Model snapshots, model-specific datasets, adapters, run logs, run manifests, prompts, predictions, and inference manifests are private. An adapter or generated result can retain source text. Keep external experiment reporting disabled unless you approve the service and its data flow.
+Model snapshots, model-specific datasets, adapters, run logs, run manifests,
+prompts, predictions, inference manifests, evaluation reports, judgments, and
+panel artifacts are private. An adapter or generated result can retain source
+text. Keep external experiment reporting disabled unless you approve the
+service and its data flow.
+
+Familiar-panel raters must consent and must have permission to view every
+conversation context shown to them. A rater's familiarity with the target does
+not grant access to another group's messages. Run ratings on the data owner's
+Mac and use pseudonyms that do not contain Signal identifiers or contact data.
 
 Use disk encryption. Limit local file access. Do not include `var/`, `.env`, or `conf/local.toml` in a public archive.
 

@@ -112,12 +112,15 @@ All output is private. Git ignores `var/`, model files, adapters, checkpoints, a
 
 Use a small dataset only to verify the operation. Do not interpret style quality from a few messages.
 
-1. Record output from the unmodified model on fixed test prompts.
+1. Keep the validation examples and inference sampling policy fixed.
 2. Run a short 8B smoke experiment with a separate TOML policy.
 3. Run the configured 14B experiment when the corpus is sufficient.
-4. Compare test loss, blind human preference, style statistics, mention behavior, reply behavior, and training-text overlap.
-5. Do not change the test set or use it to select a checkpoint.
+4. Evaluate the complete training-seed set against its exact base on validation data.
+5. Compare conditional likelihood, blind familiar-panel preference, voice
+   statistics, behavior, seed stability, and training-text overlap.
 
 Do not publish a dataset, adapter, generated message, run log, or manifest. An adapter can retain private training information.
 
-Use the [local inference procedure](infer.md) to generate paired base and adapter predictions. Use `--base-of` when the baseline must use the model snapshot and text format recorded by one run.
+Use the [evaluation procedure](eval.md) for policy selection. Use the
+[local inference procedure](infer.md) for manual prompts and fixed split
+generation.
