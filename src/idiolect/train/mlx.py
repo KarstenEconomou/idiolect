@@ -25,7 +25,7 @@ from idiolect.prompt import PromptError, format_row, validate_prompt_config
 from idiolect.train.base import LoadedRun
 from idiolect.types import DatasetId, DatasetRef, RunId, RunRef, Split, TrainResult
 
-_RUN_VERSION = 1
+_RUN_VERSION = 2
 _REQUIRED_TOML = frozenset(
     {
         "base_model",
@@ -98,6 +98,24 @@ class ModelResolver(Protocol):
         ...
 
 
+class Tokenizer(Protocol):
+    """Format model messages as token identifiers."""
+
+    has_chat_template: bool
+
+    def apply_chat_template(self, messages: Any, **options: Any) -> Any:
+        """Return tokens for one sequence of chat messages."""
+        ...
+
+
+class TokenizerLoader(Protocol):
+    """Load one tokenizer without loading model weights."""
+
+    def __call__(self, path: Path, trust_remote_code: bool, /) -> Tokenizer:
+        """Return the tokenizer for one local model."""
+        ...
+
+
 class MlxTrainer:
     """Train content-addressed MLX-LM adapters."""
 
@@ -105,22 +123,39 @@ class MlxTrainer:
         self,
         runner: CommandRunner | None = None,
         resolver: ModelResolver | None = None,
+        tokenizer_loader: TokenizerLoader | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         """Set the external boundaries for model training."""
         self._runner = _run_command if runner is None else runner
         self._resolver = _resolve_model if resolver is None else resolver
+        self._tokenizer_loader = (
+            _load_tokenizer if tokenizer_loader is None else tokenizer_loader
+        )
         self._clock = _utc_now if clock is None else clock
 
     def train(self, dataset: DatasetRef, config: TrainConfig) -> TrainResult:
         """Train every configured seed and return the fixed runs."""
         _validate(config)
+        model_path: Path | None = None
         try:
             model_path = self._resolver(config)
             model_digest = verify_model(model_path, _model_spec(config))
+            tokenizer = self._tokenizer_loader(
+                model_path,
+                config.trust_remote_code,
+            )
         except ModelError as error:
             raise TrainError(str(error)) from error
+        except TrainError:
+            raise
+        except Exception as error:
+            location = str(model_path) if model_path is not None else config.base_model
+            raise TrainError(f"Cannot load training tokenizer: {location}") from error
+        if not tokenizer.has_chat_template:
+            raise TrainError("Training tokenizer does not have a chat template")
         dataset_digest = directory_digest(dataset.path)
+        prepared = _prepare_data(dataset.path, config, tokenizer)
         runs = tuple(
             self._train_one(
                 dataset,
@@ -129,6 +164,7 @@ class MlxTrainer:
                 model_digest,
                 dataset_digest,
                 seed,
+                prepared,
             )
             for seed in config.seeds
         )
@@ -142,6 +178,7 @@ class MlxTrainer:
         model_digest: str,
         dataset_digest: str,
         seed: int,
+        prepared: Mapping[Split, tuple[Mapping[str, Any], ...]],
     ) -> RunRef:
         """Train or return one content-addressed seed run."""
         recipe = _recipe(dataset, config, model_digest, dataset_digest, seed)
@@ -155,7 +192,7 @@ class MlxTrainer:
         temporary = Path(tempfile.mkdtemp(prefix=".train-", dir=output))
         try:
             data_path = temporary / "data"
-            counts = _export_data(dataset.path, data_path, config)
+            counts = _export_data(data_path, prepared)
             adapter_path = temporary / "adapter"
             adapter_path.mkdir(mode=0o700)
             request = _request(config, model_path, data_path, adapter_path, seed, counts)
@@ -261,6 +298,8 @@ def _validate(config: TrainConfig) -> None:
         raise TrainError("Training test_batches must be -1 or greater than zero")
     if config.clear_cache_threshold < 0:
         raise TrainError("Training clear_cache_threshold must not be negative")
+    if not config.mask_prompt:
+        raise TrainError("Training must mask the prompt for target-only supervision")
 
 
 def _resolve_model(config: TrainConfig) -> Path:
@@ -268,6 +307,19 @@ def _resolve_model(config: TrainConfig) -> Path:
         return resolve_model(_model_spec(config))
     except ModelError as error:
         raise TrainError(str(error)) from error
+
+
+def _load_tokenizer(path: Path, trust_remote_code: bool) -> Tokenizer:
+    try:
+        from mlx_lm.utils import load_tokenizer
+    except ImportError as error:
+        raise TrainError(
+            "Training packages are not installed. Run: uv sync --extra train"
+        ) from error
+    return load_tokenizer(
+        path,
+        tokenizer_config_extra={"trust_remote_code": trust_remote_code},
+    )
 
 
 def _model_spec(config: TrainConfig) -> ModelSpec:
@@ -293,9 +345,12 @@ def _run_command(command: Sequence[str], log_path: Path) -> int:
     return result.returncode
 
 
-def _export_data(source: Path, destination: Path, config: TrainConfig) -> dict[str, int]:
-    destination.mkdir(mode=0o700)
-    counts: dict[str, int] = {}
+def _prepare_data(
+    source: Path,
+    config: TrainConfig,
+    tokenizer: Tokenizer,
+) -> Mapping[Split, tuple[Mapping[str, Any], ...]]:
+    prepared: dict[Split, tuple[Mapping[str, Any], ...]] = {}
     for split in Split:
         source_path = source / f"{split.value}.jsonl"
         if not source_path.exists():
@@ -316,13 +371,88 @@ def _export_data(source: Path, destination: Path, config: TrainConfig) -> dict[s
                 raise TrainError(
                     f"Dataset row text is not valid: {source_path}:{line_number}"
                 )
-            rows.append(format_row(prompt, completion, config.data))
-        target = destination / source_path.name
-        _write_jsonl(target, rows)
-        counts[split.value] = len(rows)
-    if counts.get(Split.TRAIN.value, 0) == 0:
+            row = format_row(prompt, completion, config.data)
+            _validate_row_tokens(
+                row,
+                tokenizer,
+                config.max_seq_length,
+                source_path,
+                line_number,
+            )
+            rows.append(row)
+        prepared[split] = tuple(rows)
+    if len(prepared.get(Split.TRAIN, ())) == 0:
         raise TrainError("Dataset does not contain training examples")
+    if len(prepared[Split.TRAIN]) < config.batch_size:
+        raise TrainError("Dataset has fewer training examples than batch_size")
+    if len(prepared.get(Split.VALID, ())) == 0:
+        raise TrainError("Dataset does not contain validation examples")
+    if config.test and len(prepared.get(Split.TEST, ())) == 0:
+        raise TrainError("Dataset does not contain test examples")
+    return prepared
+
+
+def _export_data(
+    destination: Path,
+    prepared: Mapping[Split, tuple[Mapping[str, Any], ...]],
+) -> dict[str, int]:
+    destination.mkdir(mode=0o700)
+    counts = {}
+    for split in Split:
+        rows = prepared.get(split)
+        if rows is None:
+            continue
+        _write_jsonl(destination / f"{split.value}.jsonl", rows)
+        counts[split.value] = len(rows)
     return counts
+
+
+def _validate_row_tokens(
+    row: Mapping[str, Any],
+    tokenizer: Tokenizer,
+    max_seq_length: int,
+    path: Path,
+    line_number: int,
+) -> None:
+    messages = row.get("messages")
+    if messages is None:
+        messages = [
+            {"role": "user", "content": row["prompt"]},
+            {"role": "assistant", "content": row["completion"]},
+        ]
+    try:
+        tokens = tokenizer.apply_chat_template(messages, return_dict=False)
+        add_generation_prompt = messages[-1].get("role") == "assistant"
+        prompt_tokens = tokenizer.apply_chat_template(
+            messages[:-1],
+            add_generation_prompt=add_generation_prompt,
+            return_dict=False,
+        )
+    except Exception as error:
+        raise TrainError(
+            f"Cannot tokenize dataset row: {path}:{line_number}"
+        ) from error
+    if not _tokens(tokens) or not _tokens(prompt_tokens):
+        raise TrainError(f"Tokenizer returned invalid tokens: {path}:{line_number}")
+    if len(tokens) <= len(prompt_tokens):
+        raise TrainError(
+            f"Dataset completion does not contain supervised tokens: {path}:{line_number}"
+        )
+    if tokens[: len(prompt_tokens)] != prompt_tokens:
+        raise TrainError(
+            f"Tokenizer changed tokens at the completion boundary: {path}:{line_number}"
+        )
+    if len(tokens) > max_seq_length:
+        raise TrainError(
+            "Dataset row exceeds max_seq_length at "
+            f"{path}:{line_number}: {len(tokens)} > {max_seq_length}"
+        )
+
+
+def _tokens(value: Any) -> bool:
+    return isinstance(value, list) and bool(value) and all(
+        isinstance(token, int) and not isinstance(token, bool) for token in value
+    )
 
 
 def _request(

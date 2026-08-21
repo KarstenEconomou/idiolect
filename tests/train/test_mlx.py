@@ -33,6 +33,19 @@ class FakeRunner:
         return 0
 
 
+class FakeTokenizer:
+    """Return deterministic token counts without model files."""
+
+    has_chat_template = True
+
+    def apply_chat_template(self, messages, **options):
+        """Return one token for each content character and message marker."""
+        size = sum(len(message["content"]) + 1 for message in messages)
+        if options.get("add_generation_prompt"):
+            size += 1
+        return list(range(size))
+
+
 def test_trainer_builds_fixed_qwen_runs_without_changing_source_data(
     tmp_path: Path,
 ) -> None:
@@ -45,6 +58,7 @@ def test_trainer_builds_fixed_qwen_runs_without_changing_source_data(
     trainer = MlxTrainer(
         runner=runner,
         resolver=lambda _config: model,
+        tokenizer_loader=lambda _path, _trust: FakeTokenizer(),
         clock=lambda: _NOW,
     )
 
@@ -119,6 +133,32 @@ def test_trainer_rejects_incomplete_policy_before_model_work(tmp_path: Path) -> 
         MlxTrainer(resolver=resolver).train(dataset, TrainConfig())
 
     assert resolved is False
+
+
+def test_trainer_requires_target_only_supervision(tmp_path: Path) -> None:
+    """Check that prompt text cannot contribute to the LoRA loss."""
+    config = replace(_config(tmp_path), mask_prompt=False)
+
+    with pytest.raises(TrainError, match="must mask the prompt"):
+        MlxTrainer().train(_dataset(tmp_path), config)
+
+
+def test_trainer_rejects_rows_that_mlx_lm_would_truncate(tmp_path: Path) -> None:
+    """Check that right truncation cannot remove completion tokens."""
+    dataset = _dataset(tmp_path)
+    model = tmp_path / "model"
+    model.mkdir()
+    runner = FakeRunner()
+    config = replace(_config(tmp_path), max_seq_length=5)
+
+    with pytest.raises(TrainError, match="exceeds max_seq_length"):
+        MlxTrainer(
+            runner=runner,
+            resolver=lambda _config: model,
+            tokenizer_loader=lambda _path, _trust: FakeTokenizer(),
+        ).train(dataset, config)
+
+    assert runner.commands == []
 
 
 def test_trainer_does_not_fill_an_omitted_toml_choice(tmp_path: Path) -> None:

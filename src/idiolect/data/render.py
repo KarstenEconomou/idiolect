@@ -2,8 +2,17 @@
 
 import json
 from collections.abc import Mapping, Sequence
+from datetime import datetime
 
-from idiolect.types import ChatExample, Example, Mention, Message, MessageId, PersonId
+from idiolect.types import (
+    ChatExample,
+    Example,
+    Mention,
+    Message,
+    MessageId,
+    PersonId,
+    Reaction,
+)
 
 
 class RenderError(ValueError):
@@ -16,12 +25,15 @@ def render_example(
     person_names: Mapping[PersonId, str],
 ) -> ChatExample:
     """Render one example from the target person's view."""
-    name = _clean_name(target_name)
+    name = normalize_person_name(target_name)
     target_id = example.target.author_id
     messages = {message.id: message for message in example.context}
     lines = [f"You are {name}. Write only {name}'s next message.", "", "Conversation:"]
-    for message in example.context:
-        lines.extend(_message_lines(message, target_id, name, person_names, messages))
+    for item in _timeline(example):
+        if isinstance(item, Message):
+            lines.extend(_message_lines(item, target_id, name, person_names, messages))
+        else:
+            lines.extend(_reaction_lines(item, target_id, name, person_names, messages))
 
     target_text = example.target.text
     if target_text is None:
@@ -52,11 +64,65 @@ def _message_lines(
     meta = [author]
     if any(mention.person_id == target_id for mention in message.mentions):
         meta.append(f"mentions @{target_name}")
+    if message.attachments and message.text is not None:
+        label = "attachment" if len(message.attachments) == 1 else "attachments"
+        meta.append(f"{len(message.attachments)} {label}")
     reply = _reply_text(message, target_id, target_name, person_names, messages)
     if reply is not None:
         meta.append(reply)
     body = _message_text(message, target_id, target_name, person_names)
     return "", f"[{' | '.join(meta)}]", body
+
+
+def _reaction_lines(
+    reaction: Reaction,
+    target_id: PersonId,
+    target_name: str,
+    person_names: Mapping[PersonId, str],
+    messages: Mapping[MessageId, Message],
+) -> tuple[str, ...]:
+    author = _person_name(
+        reaction.author_id,
+        target_id,
+        target_name,
+        person_names,
+    )
+    message = messages.get(reaction.message_id)
+    if message is None:
+        subject = "an earlier message"
+    else:
+        subject_author = _person_name(
+            message.author_id,
+            target_id,
+            target_name,
+            person_names,
+        )
+        subject = f"{subject_author}'s message"
+    value = json.dumps(reaction.value, ensure_ascii=False)
+    if reaction.removed:
+        action = f"removed {value} reaction from"
+    else:
+        action = f"reacted {value} to"
+    return "", f"[{author} {action} {subject}]"
+
+
+def _timeline(example: Example) -> tuple[Message | Reaction, ...]:
+    values: list[Message | Reaction] = list(example.context)
+    context_ids = {message.id for message in example.context}
+    for message in example.context:
+        values.extend(
+            reaction
+            for reaction in message.reactions
+            if reaction.message_id in context_ids
+            and reaction.sent_at < example.target.sent_at
+        )
+    return tuple(sorted(values, key=_timeline_key))
+
+
+def _timeline_key(value: Message | Reaction) -> tuple[datetime, int, str]:
+    if isinstance(value, Message):
+        return value.sent_at, 0, str(value.id)
+    return value.sent_at, 1, str(value.event_id)
 
 
 def _message_text(
@@ -123,13 +189,12 @@ def _render_text(
     target_name: str,
     person_names: Mapping[PersonId, str],
 ) -> str:
+    validate_mentions(text, mentions)
     parts: list[str] = []
     cursor = 0
     for mention in sorted(mentions, key=lambda item: item.start_utf16):
         start = _utf16_index(text, mention.start_utf16)
         end = _utf16_index(text, mention.start_utf16 + mention.length_utf16)
-        if start < cursor:
-            raise RenderError("A mention range is not valid for its message")
         prefix = text[cursor:start]
         source = text[start:end]
         if prefix.endswith("@") and not source.startswith("@"):
@@ -152,16 +217,34 @@ def _person_name(
         return target_name
     configured = person_names.get(person_id)
     if configured is not None:
-        return _clean_name(configured)
+        return normalize_person_name(configured)
     raise RenderError("Add a stable pseudonym for each non-target person")
 
 
-def _clean_name(value: str) -> str:
+def normalize_person_name(value: str) -> str:
+    """Return one safe and stable person name for model text."""
     name = " ".join(value.strip().lstrip("@").split())
     name = name.replace("[", "(").replace("]", ")").replace("|", "/")
     if not name:
         raise RenderError("A person name must contain text")
     return name
+
+
+def validate_mentions(text: str | None, mentions: Sequence[Mention]) -> None:
+    """Verify native mention ranges for one source text."""
+    if not mentions:
+        return
+    if text is None:
+        raise RenderError("Mentions require message text")
+    cursor = 0
+    for mention in sorted(mentions, key=lambda item: item.start_utf16):
+        if mention.start_utf16 < 0 or mention.length_utf16 < 1:
+            raise RenderError("A mention range is not valid for its message")
+        start = _utf16_index(text, mention.start_utf16)
+        end = _utf16_index(text, mention.start_utf16 + mention.length_utf16)
+        if start < cursor:
+            raise RenderError("A mention range is not valid for its message")
+        cursor = end
 
 
 def _utf16_index(text: str, units: int) -> int:

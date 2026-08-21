@@ -1,15 +1,24 @@
 """Test local dataset construction."""
 
+import hashlib
 import json
 import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from idiolect.config import DataConfig
-from idiolect.data.local import DataError, LocalBuilder, resolve_self, summarize_people
+from idiolect.data.local import (
+    DataError,
+    LocalBuilder,
+    load_dataset,
+    resolve_self,
+    summarize_people,
+)
 from idiolect.types import (
+    Attachment,
     ChatId,
     EventId,
     Mention,
@@ -83,12 +92,169 @@ def test_builder_writes_immutable_leakage_safe_mlx_data(tmp_path: Path) -> None:
     manifest = json.loads(
         (first.dataset.path / "manifest.json").read_text(encoding="utf-8")
     )
-    assert manifest["recipe"]["split"] == "chronological-purged-context-v1"
+    assert manifest["recipe"]["split"] == "chronological-purged-causal-context-v2"
     assert manifest["counts"] == {"test": 2, "train": 6, "valid": 2}
+    index = _read_jsonl(first.dataset.path / "index.jsonl")
+    assert len(index) == 10
+    assert index[0]["target_message_id"] == "target-message-00"
 
     (first.dataset.path / "train.jsonl").write_text("changed\n", encoding="utf-8")
     with pytest.raises(DataError, match="does not match its manifest"):
         builder.build(_TARGET, "Karsten", config)
+
+
+def test_builder_uses_only_clean_targets_and_causal_context(tmp_path: Path) -> None:
+    """Check target eligibility and future-revision exclusion."""
+    future = _NOW + timedelta(seconds=20)
+    messages = (
+        Message(
+            id=MessageId("future-edit"),
+            event_id=EventId("event-future-edit"),
+            chat_id=_CHAT,
+            author_id=_FRIEND,
+            sent_at=_NOW,
+            text="future edit text",
+            edited_at=future,
+        ),
+        Message(
+            id=MessageId("future-delete"),
+            event_id=EventId("event-future-delete"),
+            chat_id=_CHAT,
+            author_id=_FRIEND,
+            sent_at=_NOW + timedelta(seconds=1),
+            deleted_at=future,
+        ),
+        Message(
+            id=MessageId("same-time-before-by-id"),
+            event_id=EventId("event-same-time"),
+            chat_id=_CHAT,
+            author_id=_FRIEND,
+            sent_at=_NOW + timedelta(seconds=5),
+            text="ambiguous same-time text",
+        ),
+        Message(
+            id=MessageId("target-clean-one"),
+            event_id=EventId("event-clean-one"),
+            chat_id=_CHAT,
+            author_id=_TARGET,
+            sent_at=_NOW + timedelta(seconds=5),
+            text="clean one",
+        ),
+        Message(
+            id=MessageId("target-edited"),
+            event_id=EventId("event-edited"),
+            chat_id=_CHAT,
+            author_id=_TARGET,
+            sent_at=_NOW + timedelta(seconds=6),
+            text="edited label",
+            edited_at=_NOW + timedelta(seconds=7),
+        ),
+        Message(
+            id=MessageId("target-attachment"),
+            event_id=EventId("event-attachment"),
+            chat_id=_CHAT,
+            author_id=_TARGET,
+            sent_at=_NOW + timedelta(seconds=8),
+            text="caption",
+            attachments=(Attachment("attachment"),),
+        ),
+        Message(
+            id=MessageId("target-placeholder"),
+            event_id=EventId("event-placeholder"),
+            chat_id=_CHAT,
+            author_id=_TARGET,
+            sent_at=_NOW + timedelta(seconds=9),
+            text=" \ufffc ",
+        ),
+        Message(
+            id=MessageId("target-clean-two"),
+            event_id=EventId("event-clean-two"),
+            chat_id=_CHAT,
+            author_id=_TARGET,
+            sent_at=_NOW + timedelta(seconds=10),
+            text="clean two",
+        ),
+    )
+    builder = LocalBuilder(
+        FakeRepository(messages),  # ty: ignore[invalid-argument-type]
+        tmp_path / "data",
+        clock=lambda: _NOW,
+    )
+
+    result = builder.build(
+        _TARGET,
+        " @Karsten ",
+        DataConfig(context=8, valid_ratio=0, test_ratio=0),
+    )
+
+    rows = _read_jsonl(result.dataset.path / "train.jsonl")
+    assert [row["completion"] for row in rows] == ["clean one", "clean two"]
+    assert "future edit text" not in rows[0]["prompt"]
+    assert "ambiguous same-time text" not in rows[0]["prompt"]
+    assert "future edit text" not in rows[1]["prompt"]
+    manifest = json.loads(
+        (result.dataset.path / "manifest.json").read_text(encoding="utf-8")
+    )
+    assert manifest["recipe"]["target_name"] == "Karsten"
+    assert manifest["selection"] == {
+        "attachment": 1,
+        "deleted": 0,
+        "edited": 1,
+        "excluded": 3,
+        "included": 2,
+        "no_text": 0,
+        "no_visible_text": 1,
+        "target_messages": 5,
+    }
+
+
+def test_dataset_loader_rejects_unrecorded_files(tmp_path: Path) -> None:
+    """Check that extra files cannot enter an immutable dataset."""
+    builder = LocalBuilder(
+        FakeRepository(_conversation(1)),  # ty: ignore[invalid-argument-type]
+        tmp_path / "data",
+        clock=lambda: _NOW,
+    )
+    result = builder.build(
+        _TARGET,
+        "Karsten",
+        DataConfig(context=1, valid_ratio=0, test_ratio=0),
+    )
+    (result.dataset.path / "extra.txt").write_text("unexpected", encoding="utf-8")
+
+    with pytest.raises(DataError, match="files do not match"):
+        load_dataset(result.dataset.path)
+
+
+def test_dataset_id_commits_to_canonical_rows(tmp_path: Path) -> None:
+    """Check a coordinated file and manifest change against the dataset ID."""
+    builder = LocalBuilder(
+        FakeRepository(_conversation(1)),  # ty: ignore[invalid-argument-type]
+        tmp_path / "data",
+        clock=lambda: _NOW,
+    )
+    result = builder.build(
+        _TARGET,
+        "Karsten",
+        DataConfig(context=1, valid_ratio=0, test_ratio=0),
+    )
+    split_path = result.dataset.path / "train.jsonl"
+    split_path.write_text(
+        '{"prompt":"changed","completion":"changed"}\n',
+        encoding="utf-8",
+    )
+    manifest_path = result.dataset.path / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["files"]["train.jsonl"] = hashlib.sha256(
+        split_path.read_bytes()
+    ).hexdigest()
+    manifest_path.write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(DataError, match="identity does not match"):
+        load_dataset(result.dataset.path)
 
 
 def test_people_find_the_one_local_account() -> None:
@@ -136,6 +302,6 @@ def _conversation(target_count: int) -> tuple[Message, ...]:
     return tuple(messages)
 
 
-def _read_jsonl(path: Path) -> list[dict[str, str]]:
+def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     """Read one generated JSON Lines file."""
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]

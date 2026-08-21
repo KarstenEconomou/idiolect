@@ -33,6 +33,18 @@ The renderer identifies these cases:
 - the target response replies to a selected message;
 - the reply target is not available.
 
+## Attachments and reactions
+
+An attachment-only context message becomes `[attachment]`. When source text is
+a caption, the renderer preserves the text and marks the message header with
+the attachment count. Attachment names and media bytes do not enter model text.
+
+The renderer interleaves stored reaction and reaction-removal events with
+messages by event time. It includes only reactions strictly before the target
+message. The reaction author and referenced message author use the same
+target-relative names as message headers. Reactions are context only; they are
+not training completions.
+
 ## Training form
 
 The target name appears in the instruction, message text, and addressing metadata.

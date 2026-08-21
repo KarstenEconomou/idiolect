@@ -28,6 +28,10 @@ Git ignores `var/`. The collector creates the DuckDB file with mode `0600`. Crea
 
 `reactions` contains each reaction event. It contains the source event ID, target message ID, hashed chat ID, hashed author ID, value, time, and remove state.
 
+The message table represents the current stored revision. Dataset construction
+uses the revision timestamps to prevent a later edit or deletion from appearing
+in an earlier prompt. Raw events remain the source for reindexing.
+
 ## Write rules
 
 The store starts one transaction for each accepted source event.

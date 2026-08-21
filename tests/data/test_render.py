@@ -6,6 +6,7 @@ import pytest
 
 from idiolect.data.render import RenderError, render_example
 from idiolect.types import (
+    Attachment,
     ChatId,
     EventId,
     Example,
@@ -14,6 +15,7 @@ from idiolect.types import (
     MessageId,
     PersonId,
     Quote,
+    Reaction,
 )
 
 _NOW = datetime(2026, 1, 1, tzinfo=UTC)
@@ -94,6 +96,69 @@ def test_renderer_requires_stable_non_target_names() -> None:
 
     with pytest.raises(RenderError, match="stable pseudonym"):
         render_example(Example((context,), target), "Karsten", {})
+
+
+def test_renderer_marks_media_that_accompanies_context_text() -> None:
+    """Check that a caption does not hide its attachment context."""
+    context = Message(
+        id=MessageId("context"),
+        event_id=EventId("event-context"),
+        chat_id=_CHAT,
+        author_id=_FRIEND,
+        sent_at=_NOW,
+        text="look at this",
+        attachments=(Attachment("attachment"),),
+    )
+    target = _message("target-message", _TARGET, "wow", 1)
+
+    rendered = render_example(
+        Example((context,), target),
+        "Karsten",
+        {_FRIEND: "friend"},
+    )
+
+    assert "[friend | 1 attachment]\nlook at this" in rendered.prompt
+
+
+def test_renderer_interleaves_only_causal_reactions() -> None:
+    """Check reaction timing and target-relative identity labels."""
+    context_id = MessageId("context")
+    context = Message(
+        id=context_id,
+        event_id=EventId("event-context"),
+        chat_id=_CHAT,
+        author_id=_FRIEND,
+        sent_at=_NOW,
+        text="news",
+        reactions=(
+            Reaction(
+                EventId("reaction-before"),
+                context_id,
+                _CHAT,
+                _TARGET,
+                "👍",
+                _NOW + timedelta(seconds=1),
+            ),
+            Reaction(
+                EventId("reaction-after"),
+                context_id,
+                _CHAT,
+                _FRIEND,
+                "❌",
+                _NOW + timedelta(seconds=3),
+            ),
+        ),
+    )
+    target = _message("target-message", _TARGET, "nice", 2)
+
+    rendered = render_example(
+        Example((context,), target),
+        "Karsten",
+        {_FRIEND: "friend"},
+    )
+
+    assert "[Karsten reacted \"👍\" to friend's message]" in rendered.prompt
+    assert "❌" not in rendered.prompt
 
 
 def _message(

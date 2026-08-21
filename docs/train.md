@@ -4,6 +4,10 @@
 
 Training is a local batch operation. It reads one immutable dataset and writes one adapter for each configured seed. It does not read Signal or DuckDB.
 
+LoRA receives loss only on the formatted target completion. `mask_prompt` must
+be `true`. This prevents the adapter from learning to reproduce the dataset
+instruction, other participants, and context scaffolding as output behavior.
+
 Each tracked TOML configuration contains one complete experiment policy. Python code does not select a model, seed, data format, optimizer value, adapter target, path, or external report service.
 
 ## Install
@@ -59,6 +63,14 @@ The principal values are:
 - `report_to`: Select an external report service. An empty value disables all report services.
 
 The canonical configuration uses Qwen non-thinking text. It adds `/no_think` to each prompt and an empty thinking block before each completion. This change occurs only in the private run copy. The immutable canonical dataset does not change.
+
+Before model work, the trainer loads only the recorded model tokenizer and
+formats every train, validation, and test row exactly as MLX-LM will. It rejects
+a row when the full token sequence exceeds `max_seq_length` or the completion
+does not contain supervised tokens. This check is strict because MLX-LM
+truncates long sequences from the right, where the target completion occurs.
+The trainer also requires at least `batch_size` training rows, a validation
+split, and a test split when `test = true`.
 
 `trust_remote_code = false` rejects a model configuration that declares an `auto_map` code loader. Keep this value false unless you audit and accept the model code.
 
