@@ -1,4 +1,5 @@
 set shell := ["sh", "-eu", "-c"]
+set positional-arguments
 
 # Operate the macOS collector.
 mod collect 'just/collect.just'
@@ -20,12 +21,20 @@ default:
     @just --list
 
 # Install the core project environment.
-sync:
+setup:
     uv sync
 
 # Install the local training environment.
-sync-train:
+setup-train:
     uv sync --extra train
+
+# Run the Idiolect command-line interface.
+idiolect *arguments:
+    uv run idiolect "$@"
+
+# Build the source archive and wheel.
+build:
+    uv build
 
 # Run the complete test suite.
 test:

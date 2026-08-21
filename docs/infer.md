@@ -7,7 +7,7 @@ Inference generates text from one fixed model target. It reads explicit prompt t
 The implementation uses MLX-LM. Install the local model packages:
 
 ```console
-just sync-train
+just setup-train
 ```
 
 ## Configuration
@@ -37,13 +37,13 @@ Put private prompt text in an ignored file:
 ```console
 mkdir -p var/prompts
 $EDITOR var/prompts/check.txt
-uv run idiolect infer text --base var/prompts/check.txt
+just idiolect infer text --base var/prompts/check.txt
 ```
 
 Use standard input for text that must not enter a process argument:
 
 ```console
-uv run idiolect infer text --base
+just idiolect infer text --base
 ```
 
 Enter the prompt and send end-of-file. The command writes one JSON Lines record for each configured seed. It does not store the prompt or result.
@@ -51,8 +51,8 @@ Enter the prompt and send end-of-file. The command writes one JSON Lines record 
 Use a run target:
 
 ```console
-uv run idiolect infer text --base-of var/runs/RUN_ID var/prompts/check.txt
-uv run idiolect infer text --run var/runs/RUN_ID var/prompts/check.txt
+just idiolect infer text --base-of var/runs/RUN_ID var/prompts/check.txt
+just idiolect infer text --run var/runs/RUN_ID var/prompts/check.txt
 ```
 
 ## Dataset Batch

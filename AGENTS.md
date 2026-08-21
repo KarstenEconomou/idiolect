@@ -20,27 +20,30 @@ Keep external systems behind the existing typed ports. Keep protocol modules fre
 
 ## Commands
 
-Use `uv` for all Python work and the root `justfile` for checks.
+Use the root `justfile` as the project command interface. Its recipes use `uv`
+for Python environment and package operations.
 
-- `uv sync`: update the local environment.
-- `uv sync --extra train`: install optional local MLX-LM training packages.
-- `uv run idiolect`: run the CLI.
-- `uv build`: build distributions.
+- `just setup`: update the local environment.
+- `just setup-train`: install optional local MLX-LM training packages.
+- `just idiolect`: run the CLI.
+- `just build`: build distributions.
 - `just collect status`, `start`, or `stop`: operate the installed LaunchAgent.
-- `just data people`: list normalized authors.
+- `just idiolect data people`: list normalized authors.
 - `just data build <name>`: build a dataset for the linked Signal user.
 - `just config list`, `new`, or `train`: manage complete experiment configurations.
 - `just train <dataset>`: train the canonical configuration while the Mac stays awake.
 - `just infer base`, `base-of`, or `run`: generate one dataset split while the Mac stays awake.
 - `just eval policy <dataset> <runs...>`: compare one complete training policy with its recorded base.
-- `just eval rate <evaluation> <rater>`: complete one private blind familiar-rater session.
-- `just eval panel <evaluation> <judgments...>`: summarize familiar-rater judgments.
+- `just idiolect eval rate`: complete one private blind familiar-rater session.
+- `just idiolect eval panel`: summarize familiar-rater judgments.
 - `just test`: run pytest.
 - `just lint`: run Ruff.
 - `just typecheck`: run ty.
 - `just check`: run all required checks.
 
-Add packages with `uv add` or `uv add --dev`. Never edit `uv.lock` by hand. Run `just check` before handoff.
+Use `uv` directly only for dependency maintenance. Add packages with `uv add`
+or `uv add --dev`. Never edit `uv.lock` by hand. Run `just check` before
+handoff.
 
 ## Code
 

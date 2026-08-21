@@ -57,7 +57,7 @@ Supply a stable pseudonym for every other person across one dataset. The rendere
 Raw stored events keep their original mention and quote data. Rebuild normalized records from these events:
 
 ```console
-uv run idiolect signal reindex
+just idiolect signal reindex
 ```
 
 Stop continuous collection before this command. Start collection again after it finishes. The command reads the local DuckDB event table. It does not read the phone and does not contact Signal.

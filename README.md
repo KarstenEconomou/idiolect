@@ -60,12 +60,16 @@ judgments with example-and-rater uncertainty.
 Run commands from the repository root. Use only messages from people who consent
 to the collection and model experiment.
 
+Use the root `justfile` as the project command interface. Its recipes manage the
+Python environment with `uv`. Use `uv` directly only when you change project
+dependencies.
+
 ## Set up
 
 Install the core environment:
 
 ```console
-just sync
+just setup
 ```
 
 Link `signal-cli` as a secondary Signal device. See
@@ -95,7 +99,7 @@ set +a
 List groups, then add the selected IDs to `.env`:
 
 ```console
-uv run idiolect signal groups
+just idiolect signal groups
 ```
 
 ```sh
@@ -110,21 +114,21 @@ Collect queued messages once, or use the documented macOS LaunchAgent for
 continuous collection:
 
 ```console
-uv run idiolect signal collect
+just idiolect signal collect
 just collect status
 ```
 
 Build an immutable dataset for the linked Signal user:
 
 ```console
-just data people
+just idiolect data people
 just data build TARGET_NAME
 ```
 
 Install MLX-LM and run a short tracked experiment:
 
 ```console
-just sync-train
+just setup-train
 just config train qwen3-8b-smoke var/data/DATASET_ID
 ```
 
@@ -173,7 +177,7 @@ storage, and fake external boundaries.
 
 ```console
 just check
-uv build
+just build
 ```
 
 See [docs/development.md](docs/development.md) and

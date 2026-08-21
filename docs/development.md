@@ -22,12 +22,16 @@ brew install just
 just --version
 ```
 
+Use the root `justfile` as the project command interface. Its recipes use `uv`
+for Python environment and package operations. Use `uv` directly only for
+dependency maintenance.
+
 Run:
 
 ```console
-just sync
+just setup
 just check
-uv build
+just build
 ```
 
 The checks verify Just formatting and run Ruff, ty, and pytest. The build creates a source archive and a wheel.
@@ -50,8 +54,8 @@ Each test must detect a possible implementation defect. Test the group allowlist
 Run these checks manually. Do not put them in pytest.
 
 ```console
-uv run idiolect signal groups
-uv run idiolect signal stats
+just idiolect signal groups
+just idiolect signal stats
 just collect status
 tail -f var/log/collect.err.log
 ```

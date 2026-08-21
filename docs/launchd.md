@@ -10,7 +10,10 @@ The Idiolect agent has the label `com.idiolect.collect`. It runs this operation:
 uv run idiolect --config /absolute/repository/path/conf/idiolect.toml signal collect --follow
 ```
 
-The agent sources `.env`, selects the canonical configuration, sets the repository as its working directory, and uses explicit command paths. It writes logs to `var/log/`.
+This is the agent process command. Interactive repository commands use `just`.
+The agent sources `.env`, selects the canonical configuration, sets the
+repository as its working directory, and uses explicit command paths. It writes
+logs to `var/log/`.
 
 ## Agent fields
 

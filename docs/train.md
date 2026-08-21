@@ -11,7 +11,7 @@ Each tracked TOML configuration contains one complete experiment policy. Python 
 Install the optional local training packages:
 
 ```console
-just sync-train
+just setup-train
 ```
 
 The canonical configuration uses `mlx-community/Qwen3-14B-4bit` at a fixed repository revision. The smoke configuration uses `mlx-community/Qwen3-8B-4bit`. The first run for each model downloads it to `train.model_cache`.

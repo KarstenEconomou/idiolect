@@ -25,7 +25,7 @@ Refresh records once after an update changes normalization:
 set -a
 source .env
 set +a
-uv run idiolect signal reindex
+just idiolect signal reindex
 ```
 
 The command rebuilds normalized records from immutable raw events.
@@ -35,7 +35,7 @@ The command rebuilds normalized records from immutable raw events.
 List normalized authors:
 
 ```console
-just data people
+just idiolect data people
 ```
 
 The output contains the hashed person ID, `self` or `member`, message count, and latest source display name. The command does not print a phone number or Signal UUID.
@@ -51,7 +51,7 @@ The recipe builds data for the local Signal account. Use the direct CLI command 
 Use a normalized person ID for another consenting person:
 
 ```console
-uv run idiolect data build --person PERSON_ID --name TARGET_NAME
+just idiolect data build --person PERSON_ID --name TARGET_NAME
 ```
 
 The name becomes model text. The person ID remains the identity key.

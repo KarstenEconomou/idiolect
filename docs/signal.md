@@ -6,13 +6,14 @@ Install these components:
 
 - Python 3.14
 - `uv`
+- `just` 1.46.0 or later
 - A current `signal-cli` release
 - A local QR code tool, such as `qrencode`
 
 Run all commands from the repository root.
 
 ```console
-uv sync
+just setup
 mkdir -m 700 -p var/signal
 ```
 
@@ -72,7 +73,7 @@ Signal environment values take priority over the same TOML values. The loader re
 List the Signal groups:
 
 ```console
-uv run idiolect signal groups
+just idiolect signal groups
 ```
 
 The output format is:
@@ -95,31 +96,31 @@ Keep the outer single quotes. Use double quotes around each ID. Do not use a tra
 Run one bounded receive operation:
 
 ```console
-uv run idiolect signal collect
+just idiolect signal collect
 ```
 
 Run continuous collection:
 
 ```console
-uv run idiolect signal collect --follow
+just idiolect signal collect --follow
 ```
 
 Set explicit bounds when necessary:
 
 ```console
-uv run idiolect signal collect --timeout 30 --max-messages 100
+just idiolect signal collect --timeout 30 --max-messages 100
 ```
 
 Show the stored counts:
 
 ```console
-uv run idiolect signal stats
+just idiolect signal stats
 ```
 
 Refresh normalized records from the raw events in DuckDB:
 
 ```console
-uv run idiolect signal reindex
+just idiolect signal reindex
 ```
 
 Stop continuous collection before you run `reindex`. Start collection again after the command finishes. This rule prevents two processes from writing the same DuckDB file.
@@ -129,7 +130,7 @@ Run `reindex` after an update changes Signal normalization. The command does not
 Import saved `signal-cli` JSON lines:
 
 ```console
-uv run idiolect signal import path/to/events.jsonl
+just idiolect signal import path/to/events.jsonl
 ```
 
 ## Collector behavior

@@ -40,7 +40,7 @@ configuration when the policy changes.
 Install the optional local model packages:
 
 ```console
-just sync-train
+just setup-train
 ```
 
 Supply every run produced by the configuration. For the canonical three-seed
@@ -121,7 +121,7 @@ group conversation to a rater merely because that person knows the target.
 Run one terminal session on the data owner's Mac:
 
 ```console
-just eval rate var/eval/EVALUATION_ID rater-01
+just idiolect eval rate var/eval/EVALUATION_ID --rater rater-01
 ```
 
 The terminal shows randomized A/B replies and asks which reply:
@@ -145,7 +145,7 @@ answers even when an artifact is internally content-addressed.
 After the configured panel completes its sessions, create a report:
 
 ```console
-just eval panel var/eval/EVALUATION_ID \
+just idiolect eval panel var/eval/EVALUATION_ID \
   var/eval/judgments/JUDGMENT_ID_ONE \
   var/eval/judgments/JUDGMENT_ID_TWO \
   var/eval/judgments/JUDGMENT_ID_THREE
