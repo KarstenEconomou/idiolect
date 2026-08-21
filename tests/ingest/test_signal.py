@@ -73,7 +73,7 @@ def test_source_uses_safe_receive_options(signal_events: Path) -> None:
     ]
 
 
-def test_source_lists_group_ids_for_allowlist() -> None:
+def test_source_lists_group_ids_for_whitelist() -> None:
     """Check the group data that a user needs for configuration."""
     runner = FakeRunner(
         output=(

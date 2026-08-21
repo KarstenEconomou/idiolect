@@ -10,7 +10,7 @@
 
 Idiolect is a local-first ML pipeline for fine-tuning models to reproduce
 individual writing styles, linguistic patterns, and conversational behavior.
-It collects allowlisted Signal group messages, preserves native
+It collects whitelisted Signal group messages, preserves native
 mention and reply context, builds immutable target-specific datasets, uses
 MLX-LM QLoRA to train adapters, and generates reproducible local predictions.
 
@@ -19,7 +19,7 @@ Signal groups
     |
 signal-cli collector
     |
-allowlist + normalization
+whitelist + normalization
     |
 DuckDB
     |

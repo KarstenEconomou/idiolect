@@ -67,12 +67,12 @@ def test_missing_config_has_actionable_error(tmp_path: Path, capsys) -> None:
     assert "Configuration file does not exist" in output.err
 
 
-def test_message_processing_requires_a_chat_allowlist(
+def test_message_processing_requires_a_chat_whitelist(
     tmp_path: Path,
     signal_events: Path,
     capsys,
 ) -> None:
-    """Check that message input cannot run without an allowlist."""
+    """Check that message input cannot run without a whitelist."""
     config = tmp_path / "empty.toml"
     config.write_text("[signal]\n", encoding="utf-8")
 

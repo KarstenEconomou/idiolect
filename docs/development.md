@@ -47,7 +47,7 @@ download, training operation, inference operation, evaluation operation, or GPU
 operation. Use fake model resolvers, training commands, inference sessions, and
 scoring sessions.
 
-Each test must detect a possible implementation defect. Test the group allowlist, command safety options, message normalization, edit order, delete tombstones, reaction links, transaction behavior, duplicate events, strict configuration, and CLI results.
+Each test must detect a possible implementation defect. Test the group whitelist, command safety options, message normalization, edit order, delete tombstones, reaction links, transaction behavior, duplicate events, strict configuration, and CLI results.
 
 ## Operational checks
 

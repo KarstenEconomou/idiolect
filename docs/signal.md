@@ -62,7 +62,7 @@ These environment values are available:
 |---|---|
 | `IDIOLECT_CONFIG` | Select an optional alternate TOML configuration path. |
 | `IDIOLECT_SIGNAL_ACCOUNT` | Set the Signal account identifier. |
-| `IDIOLECT_SIGNAL_CHATS` | Replace the Signal chat allowlist with a JSON list. |
+| `IDIOLECT_SIGNAL_CHATS` | Replace the Signal chat whitelist with a JSON list. |
 | `IDIOLECT_SIGNAL_BIN` | Set the absolute `signal-cli` path. |
 | `IDIOLECT_SIGNAL_DATA_DIR` | Set the private Signal data directory. |
 
@@ -137,7 +137,7 @@ just idiolect signal import path/to/events.jsonl
 
 - The source runs `signal-cli --output json receive`.
 - The source does not download attachments, stories, avatars, or stickers.
-- The parser accepts only group IDs in the configured chat allowlist.
+- The parser accepts only group IDs in the configured chat whitelist.
 - The parser discards direct messages and messages from other groups.
 - The parser reads incoming messages and sent-message sync events.
 - The parser records text, identity-linked mentions, reply snapshots, edits, remote deletes, reactions, and attachment metadata.
@@ -155,6 +155,6 @@ The collector does not import the history that is already on the phone. It store
 
 Signal can queue events while collection is off. Do not depend on an unlimited queue period. Long downtime can cause gaps.
 
-An event from a group that is not on the allowlist is consumed and discarded. If you add that group later, Idiolect cannot restore the discarded event.
+An event from a group that is not on the whitelist is consumed and discarded. If you add that group later, Idiolect cannot restore the discarded event.
 
 Only one collector must use a `signal-cli` data directory at one time.

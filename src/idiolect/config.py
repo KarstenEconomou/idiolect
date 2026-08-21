@@ -489,7 +489,7 @@ def _str_list(values: Mapping[str, Any], name: str) -> list[str]:
 
 
 def _signal_chats(value: str | None) -> tuple[ChatId, ...]:
-    """Load the private Signal chat allowlist."""
+    """Load the private Signal chat whitelist."""
     if value is None:
         return ()
     try:

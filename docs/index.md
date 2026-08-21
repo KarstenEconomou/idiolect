@@ -25,7 +25,7 @@ The collector uses this flow:
 signal-cli JSON line
         │
         v
-validate and apply group allowlist
+validate and apply group whitelist
         │
         v
 create raw event and identity-linked record

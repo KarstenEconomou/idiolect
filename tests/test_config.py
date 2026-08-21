@@ -41,13 +41,13 @@ def test_signal_chat_environment_rejects_invalid_lists(
     local_config: Path,
     value: str,
 ) -> None:
-    """Check that an invalid private allowlist stops configuration."""
+    """Check that an invalid private whitelist stops configuration."""
     with pytest.raises(ConfigError, match="must be a JSON list"):
         load_config(local_config, {"IDIOLECT_SIGNAL_CHATS": value})
 
 
 def test_signal_chat_environment_rejects_duplicates(local_config: Path) -> None:
-    """Check that one chat cannot occur twice in the allowlist."""
+    """Check that one chat cannot occur twice in the whitelist."""
     with pytest.raises(ConfigError, match="must not contain duplicate"):
         load_config(
             local_config,

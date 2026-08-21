@@ -2,7 +2,7 @@
 
 ## Project
 
-Idiolect is a Python 3.14 package for a local-first ML pipeline. It collects allowlisted Signal group messages, stores source and normalized data in DuckDB, builds immutable target-specific JSONL datasets, trains content-addressed MLX-LM LoRA adapters, generates verified local predictions, and evaluates adapter policies against their recorded base models with automatic metrics and private familiar-panel judgments.
+Idiolect is a Python 3.14 package for a local-first ML pipeline. It collects whitelisted Signal group messages, stores source and normalized data in DuckDB, builds immutable target-specific JSONL datasets, trains content-addressed MLX-LM LoRA adapters, generates verified local predictions, and evaluates adapter policies against their recorded base models with automatic metrics and private familiar-panel judgments.
 
 Code lives in `src/idiolect/`. Tests mirror it in `tests/`. Public configuration lives in `conf/`. Operational and replication procedures live in `docs/`. Just modules live in `just/`.
 
