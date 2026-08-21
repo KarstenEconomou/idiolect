@@ -139,13 +139,24 @@ class FakeInferencer:
     ) -> InferenceRef:
         """Write fixed predictions for every selected row and seed."""
         rows = _dataset_rows(dataset)
-        recipe = {"target": target.id}
-        identity = hashlib.sha256(_json_bytes(recipe)).hexdigest()
-        path = self.root / identity
-        path.mkdir(parents=True, exist_ok=True)
+        examples = [
+            (index, _example_id(dataset, index, prompt))
+            for index, prompt, _ in rows
+        ]
+        recipe = {
+            "target": target.id,
+            "examples": [
+                {"index": index, "example_id": example_id}
+                for index, example_id in examples
+            ],
+            "config": {
+                "seeds": list(config.seeds),
+                "max_prompt_tokens": config.max_prompt_tokens,
+                "max_tokens": config.max_tokens,
+            },
+        }
         values = []
-        for index, prompt, _ in rows:
-            example_id = _example_id(dataset, index, prompt)
+        for index, example_id in examples:
             for seed in config.seeds:
                 if target.adapter_path is None:
                     text = "Base response"
@@ -158,25 +169,30 @@ class FakeInferencer:
                         example_id,
                         index,
                         seed,
-                        seed,
+                        _rng_seed(seed, example_id),
                         text,
                         "stop",
                         8,
                         3,
                     )
                 )
+        prediction_content = "".join(
+            json.dumps(asdict(value)) + "\n" for value in values
+        )
+        counts = {"examples": len(rows), "predictions": len(values)}
+        files = {
+            "pred.jsonl": hashlib.sha256(prediction_content.encode()).hexdigest()
+        }
+        content = {"recipe": recipe, "counts": counts, "files": files}
+        identity = hashlib.sha256(_json_bytes(content)).hexdigest()
+        path = self.root / identity
+        path.mkdir(parents=True, exist_ok=True)
         prediction_path = path / "pred.jsonl"
-        with prediction_path.open("w", encoding="utf-8") as stream:
-            for value in values:
-                stream.write(json.dumps(asdict(value)) + "\n")
+        prediction_path.write_text(prediction_content, encoding="utf-8")
         manifest = {
             "inference_id": identity,
             "created_at": _NOW.isoformat(),
-            "recipe": recipe,
-            "counts": {"examples": len(rows), "predictions": len(values)},
-            "files": {
-                "pred.jsonl": hashlib.sha256(prediction_path.read_bytes()).hexdigest()
-            },
+            **content,
         }
         (path / "manifest.json").write_text(
             json.dumps(manifest, indent=2, sort_keys=True) + "\n",
@@ -436,18 +452,18 @@ def _runs(tmp_path: Path, dataset: DatasetRef) -> tuple[LoadedRun, ...]:
     return tuple(values)
 
 
-def _target(path: Path, adapter: bool) -> ModelTarget:
+def _target(run: LoadedRun, adapter: bool) -> ModelTarget:
     return ModelTarget(
-        f"{path.name}:{adapter}",
+        f"{run.ref.path.name}:{adapter}",
         TargetMode.RUN_ADAPTER if adapter else TargetMode.RUN_BASE,
-        path,
+        run.ref.path,
         "model-digest",
         TrainDataConfig(
             format="chat",
             prompt_role="user",
             completion_role="assistant",
         ),
-        adapter_path=path / "adapter" if adapter else None,
+        adapter_path=run.adapter_path if adapter else None,
     )
 
 
@@ -511,6 +527,11 @@ def _example_id(dataset: DatasetRef, index: int, prompt: str) -> str:
         "prompt_digest": hashlib.sha256(prompt.encode()).hexdigest(),
     }
     return hashlib.sha256(_json_bytes(identity)).hexdigest()
+
+
+def _rng_seed(seed: int, example_id: str) -> int:
+    value = hashlib.sha256(f"{seed}:{example_id}".encode()).digest()
+    return int.from_bytes(value[:8], "big") & 0x7FFF_FFFF
 
 
 def _forge_judgment(tmp_path: Path, source: Path) -> Path:

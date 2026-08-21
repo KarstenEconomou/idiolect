@@ -1,6 +1,7 @@
 """Load and define settings for each pipeline stage."""
 
 import json
+import math
 import os
 import tomllib
 from collections.abc import Mapping
@@ -581,6 +582,14 @@ def _validate_infer(config: InferConfig) -> None:
         raise ConfigError("Inference max_examples must not be negative")
     if config.max_prompt_tokens < 0 or config.max_tokens < 1:
         raise ConfigError("Inference token limits are not valid")
+    values = (
+        config.temperature,
+        config.top_p,
+        config.min_p,
+        config.repetition_penalty,
+    )
+    if any(not math.isfinite(value) for value in values):
+        raise ConfigError("Inference sampling values must be finite")
     if config.temperature < 0:
         raise ConfigError("Inference temperature must not be negative")
     if not 0.0 <= config.top_p <= 1.0 or not 0.0 <= config.min_p <= 1.0:

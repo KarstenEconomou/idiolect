@@ -21,7 +21,7 @@ from idiolect.data.local import load_dataset
 from idiolect.eval.base import CompletionScore, ScoreBackend
 from idiolect.eval.text import TrainingMatchIndex, normalize_text
 from idiolect.infer.base import ModelTarget, Prediction
-from idiolect.infer.local import load_inference, recorded_target
+from idiolect.infer.local import RecordedTargetResolver, load_inference
 from idiolect.model import directory_digest
 from idiolect.prompt import format_prompt
 from idiolect.train.base import LoadedRun
@@ -115,7 +115,7 @@ class LocalEvaluator:
         self,
         scorer: ScoreBackend,
         inferencer: DatasetInferencer,
-        target_loader: Callable[[Path, bool], ModelTarget] = recorded_target,
+        target_loader: Callable[[LoadedRun, bool], ModelTarget] | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         """Set the scoring and generation boundaries."""
@@ -141,9 +141,12 @@ class LocalEvaluator:
         )
         effective_infer = replace(infer, max_examples=config.max_examples)
 
-        base_target = self._target_loader(ordered[0].ref.path, False)
+        target_loader = self._target_loader
+        if target_loader is None:
+            target_loader = RecordedTargetResolver().target
+        base_target = target_loader(ordered[0], False)
         adapter_targets = tuple(
-            self._target_loader(run.ref.path, True) for run in ordered
+            target_loader(run, True) for run in ordered
         )
         base_inference = self._inferencer.dataset(
             base_target, verified, Split.VALID, effective_infer

@@ -81,10 +81,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 print(f"run={run.id} dataset={run.dataset_id} path={run.path}")
             return 0
         if arguments.command == "infer":
-            target = _inference_target(arguments, config.train)
             inferencer = LocalInferencer(MlxBackend())
+            inferencer.validate(config.infer)
             if arguments.infer_command == "text":
                 prompt = _read_prompt(arguments.input)
+                target = _inference_target(arguments, config.train)
                 for prediction in inferencer.text(target, prompt, config.infer):
                     print(
                         json.dumps(
@@ -95,6 +96,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     )
                 return 0
             dataset = load_dataset(arguments.dataset).dataset
+            target = _inference_target(arguments, config.train)
             result = inferencer.dataset(
                 target,
                 dataset,
@@ -342,5 +344,5 @@ def _inference_target(
 def _read_prompt(path: Path) -> str:
     try:
         return sys.stdin.read() if path == Path("-") else path.read_text(encoding="utf-8")
-    except OSError as error:
+    except (OSError, UnicodeError) as error:
         raise InferenceError(f"Cannot read inference prompt: {path}") from error

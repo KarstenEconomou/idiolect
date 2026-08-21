@@ -196,3 +196,25 @@ def test_inference_rejects_duplicate_seeds(tmp_path: Path) -> None:
 
     with pytest.raises(ConfigError, match="Inference seeds must be unique"):
         load_config(path, {})
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    (
+        ("temperature", "nan"),
+        ("temperature", "+inf"),
+        ("repetition_penalty", "nan"),
+        ("repetition_penalty", "+inf"),
+    ),
+)
+def test_inference_rejects_non_finite_sampling_values(
+    tmp_path: Path,
+    name: str,
+    value: str,
+) -> None:
+    """Check that non-finite sampling values stop configuration."""
+    path = tmp_path / "invalid.toml"
+    path.write_text(f"[infer]\n{name} = {value}\n", encoding="utf-8")
+
+    with pytest.raises(ConfigError, match="must be finite"):
+        load_config(path, {})

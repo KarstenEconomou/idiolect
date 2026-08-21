@@ -21,7 +21,7 @@ from idiolect.model import (
     resolve_model,
     verify_model,
 )
-from idiolect.prompt import format_row
+from idiolect.prompt import PromptError, format_row, validate_prompt_config
 from idiolect.train.base import LoadedRun
 from idiolect.types import DatasetId, DatasetRef, RunId, RunRef, Split, TrainResult
 
@@ -251,21 +251,10 @@ def _validate(config: TrainConfig) -> None:
         raise TrainError("This training backend requires fine_tune_type = lora")
     if config.schedule != "constant":
         raise TrainError("This training backend supports schedule = constant")
-    if config.data.format not in {"chat", "completion"}:
-        raise TrainError("Training data format must be chat or completion")
-    if config.data.format == "chat":
-        if not config.data.prompt_role:
-            missing.append("train.data.prompt_role")
-        if not config.data.completion_role:
-            missing.append("train.data.completion_role")
-        if missing:
-            raise TrainError(
-                f"Training configuration is incomplete: {', '.join(missing)}"
-            )
-        if config.data.prompt_role not in {"system", "user", "assistant"}:
-            raise TrainError("Training prompt_role is not valid")
-        if config.data.completion_role not in {"system", "user", "assistant"}:
-            raise TrainError("Training completion_role is not valid")
+    try:
+        validate_prompt_config(config.data)
+    except PromptError as error:
+        raise TrainError(str(error)) from error
     if config.val_batches == 0 or config.val_batches < -1:
         raise TrainError("Training val_batches must be -1 or greater than zero")
     if config.test_batches == 0 or config.test_batches < -1:

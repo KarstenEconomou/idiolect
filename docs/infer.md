@@ -88,9 +88,11 @@ var/infer/<inference-id>/
 └── pred.jsonl
 ```
 
-The inference ID includes the dataset digest, split, selected example IDs, target digests, frozen text format, inference policy, and MLX package versions. An equal request returns the existing verified artifact.
+The inference ID commits to the prediction-file digest and its counts. The recorded recipe includes the dataset digest, split, selected example IDs and source indexes, target digests, frozen text format, inference policy, and complete MLX text runtime fingerprint. The fingerprint covers MLX-LM, MLX, Transformers, tokenizers, Jinja, Python, and the operating-system platform.
 
-Each prediction contains the source index and digest, configured seed, derived MLX seed, generated text, finish reason, and token counts. It does not contain the source prompt or expected completion. The manifest refers to the immutable dataset for these values.
+Before generation, inference searches for a verified artifact with an equal recipe. It returns that artifact when exactly one match exists. Concurrent equal operations that produce equal content return the same artifact. More than one verified result for one recipe is an error because it indicates nondeterministic generation or an incomplete runtime fingerprint.
+
+Each prediction contains the source index and digest, configured seed, derived MLX seed, generated text, finish reason, and token counts. The artifact reader verifies the complete prediction schema, order, seeds, finish reasons, token limits, counts, and recipe alignment. It does not contain the source prompt or expected completion. The manifest refers to the immutable dataset for these values.
 
 The derived seed is a hash of the configured seed and example ID. Equal examples use equal random streams across base and adapter targets. Input order does not change the seed.
 

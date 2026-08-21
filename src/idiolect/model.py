@@ -2,7 +2,10 @@
 
 import hashlib
 import json
+import platform
+import sys
 from dataclasses import dataclass
+from importlib.metadata import version
 from pathlib import Path
 
 
@@ -19,6 +22,22 @@ class ModelSpec:
     revision: str
     cache: Path | None
     trust_remote_code: bool
+
+
+def mlx_runtime_fingerprint() -> str:
+    """Return the complete MLX text runtime fingerprint."""
+    packages = ("mlx-lm", "mlx", "transformers", "tokenizers", "jinja2")
+    values = [f"{name}={version(name)}" for name in packages]
+    values.extend(
+        (
+            f"python={platform.python_version()}",
+            f"implementation={sys.implementation.name}",
+            f"system={platform.system()}",
+            f"release={platform.release()}",
+            f"machine={platform.machine()}",
+        )
+    )
+    return ";".join(values)
 
 
 def resolve_model(spec: ModelSpec) -> Path:

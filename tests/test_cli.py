@@ -149,6 +149,9 @@ def test_infer_text_reads_stdin_and_writes_json_lines(
         def __init__(self, backend) -> None:
             """Accept the configured backend boundary."""
 
+        def validate(self, config) -> None:
+            """Accept the complete inference policy."""
+
         def text(self, target, prompt, config) -> tuple[Prediction, ...]:
             """Record the prompt and return one fixed prediction."""
             seen.append((target, prompt, config))
@@ -177,6 +180,45 @@ def test_infer_text_reads_stdin_and_writes_json_lines(
         "generated_tokens": 2,
     }
     assert output.err == ""
+
+
+def test_infer_text_reports_invalid_utf8_before_model_access(
+    local_config: Path,
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    """Check that an invalid prompt file returns one controlled error."""
+    prompt = tmp_path / "invalid.txt"
+    prompt.write_bytes(b"\xff")
+    called = False
+
+    def target(config):
+        nonlocal called
+        called = True
+        return "unused"
+
+    class FakeInferencer:
+        """Validate configuration without model packages."""
+
+        def __init__(self, backend) -> None:
+            """Accept one fake backend."""
+
+        def validate(self, config) -> None:
+            """Accept one complete inference policy."""
+
+    monkeypatch.setattr(idiolect.cli, "configured_target", target)
+    monkeypatch.setattr(idiolect.cli, "MlxBackend", object)
+    monkeypatch.setattr(idiolect.cli, "LocalInferencer", FakeInferencer)
+
+    code = main(
+        ("--config", str(local_config), "infer", "text", "--base", str(prompt))
+    )
+
+    output = capsys.readouterr()
+    assert code == 2
+    assert "Cannot read inference prompt" in output.err
+    assert called is False
 
 
 def test_eval_policy_uses_every_supplied_run(

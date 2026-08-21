@@ -2,11 +2,12 @@
 
 import contextlib
 import sys
-from importlib.metadata import PackageNotFoundError, version
+from importlib.metadata import PackageNotFoundError
 from typing import Any
 
 from idiolect.eval.base import CompletionScore, ScoreSession
 from idiolect.infer.base import ModelTarget
+from idiolect.model import mlx_runtime_fingerprint
 from idiolect.prompt import ModelInput, Turn
 
 
@@ -21,7 +22,7 @@ class MlxScoreBackend:
     def version(self) -> str:
         """Return the installed backend versions."""
         try:
-            return f"mlx-lm={version('mlx-lm')};mlx={version('mlx')}"
+            return mlx_runtime_fingerprint()
         except PackageNotFoundError as error:
             raise EvalBackendError(
                 "Evaluation packages are not installed. Run: uv sync --extra train"

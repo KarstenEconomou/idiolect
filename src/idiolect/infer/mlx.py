@@ -2,7 +2,7 @@
 
 import contextlib
 import sys
-from importlib.metadata import PackageNotFoundError, version
+from importlib.metadata import PackageNotFoundError
 from typing import Any
 
 from idiolect.config import InferConfig
@@ -12,6 +12,7 @@ from idiolect.infer.base import (
     Session,
 )
 from idiolect.infer.local import InferenceError
+from idiolect.model import mlx_runtime_fingerprint
 from idiolect.prompt import ModelInput
 
 
@@ -22,7 +23,7 @@ class MlxBackend:
     def version(self) -> str:
         """Return the installed MLX-LM version."""
         try:
-            return f"mlx-lm={version('mlx-lm')};mlx={version('mlx')}"
+            return mlx_runtime_fingerprint()
         except PackageNotFoundError as error:
             raise InferenceError(
                 "Inference packages are not installed. Run: uv sync --extra train"

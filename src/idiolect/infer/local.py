@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import math
 import os
 import shutil
 import tempfile
@@ -9,7 +10,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeGuard
 
 from idiolect.config import InferConfig, TrainConfig
 from idiolect.data.local import load_dataset
@@ -26,7 +27,8 @@ from idiolect.model import (
     resolve_model,
     verify_model,
 )
-from idiolect.prompt import format_prompt
+from idiolect.prompt import PromptError, format_prompt, validate_prompt_config
+from idiolect.train.base import LoadedRun
 from idiolect.train.mlx import TrainError, load_run
 from idiolect.types import DatasetRef, InferenceId, InferenceRef, Split
 
@@ -66,6 +68,10 @@ class LocalInferencer:
         self._backend = backend
         self._clock = _utc_now if clock is None else clock
 
+    def validate(self, config: InferConfig) -> None:
+        """Verify one complete inference policy."""
+        _validate(config, self._backend.version)
+
     def text(
         self,
         target: ModelTarget,
@@ -101,33 +107,40 @@ class LocalInferencer:
             self._backend.version,
             selected,
         )
-        inference_id = InferenceId(hashlib.sha256(_json_bytes(recipe)).hexdigest())
         output = _required_output(config)
-        destination = output / str(inference_id)
-        if destination.exists():
-            return _load_artifact(destination, inference_id)
+        existing = _find_artifact(output, recipe)
+        if existing is not None:
+            return existing
 
         predictions = self._generate(target, selected, config)
         created_at = self._clock()
         output.mkdir(mode=0o700, parents=True, exist_ok=True)
         temporary = Path(tempfile.mkdtemp(prefix=".infer-", dir=output))
+        destination: Path | None = None
         try:
             rows_value = [_prediction_value(value) for value in predictions]
             prediction_path = temporary / "pred.jsonl"
             _write_jsonl(prediction_path, rows_value)
+            counts = {
+                "examples": len(selected),
+                "predictions": len(predictions),
+            }
+            files = {
+                "pred.jsonl": hashlib.sha256(prediction_path.read_bytes()).hexdigest()
+            }
+            identity = {
+                "recipe": recipe,
+                "counts": counts,
+                "files": files,
+            }
+            inference_id = InferenceId(
+                hashlib.sha256(_json_bytes(identity)).hexdigest()
+            )
+            destination = output / str(inference_id)
             manifest = {
                 "inference_id": str(inference_id),
                 "created_at": created_at.isoformat(),
-                "recipe": recipe,
-                "counts": {
-                    "examples": len(selected),
-                    "predictions": len(predictions),
-                },
-                "files": {
-                    "pred.jsonl": hashlib.sha256(
-                        prediction_path.read_bytes()
-                    ).hexdigest()
-                },
+                **identity,
             }
             _write_json(temporary / "manifest.json", manifest)
             temporary.rename(destination)
@@ -136,8 +149,14 @@ class LocalInferencer:
             raise
         except (OSError, TypeError, ValueError) as error:
             shutil.rmtree(temporary, ignore_errors=True)
+            if destination is not None and destination.exists():
+                return _load_artifact(
+                    destination,
+                    InferenceId(destination.name),
+                    expected_recipe=recipe,
+                )
             raise InferenceError(
-                f"Cannot create inference artifact: {destination}"
+                f"Cannot create inference artifact: {destination or output}"
             ) from error
         return InferenceRef(inference_id, destination, created_at, len(predictions))
 
@@ -147,12 +166,24 @@ class LocalInferencer:
         examples: Sequence[tuple[int, str, str]],
         config: InferConfig,
     ) -> tuple[Prediction, ...]:
+        try:
+            validate_prompt_config(target.data)
+        except PromptError as error:
+            raise InferenceError(str(error)) from error
         session = self._backend.load(target)
         predictions = []
         try:
             for index, example_id, prompt in examples:
                 model_input = format_prompt(prompt, target.data)
                 prompt_tokens = session.count_tokens(model_input)
+                if (
+                    not isinstance(prompt_tokens, int)
+                    or isinstance(prompt_tokens, bool)
+                    or prompt_tokens < 1
+                ):
+                    raise InferenceError(
+                        f"Inference backend returned invalid prompt tokens at example {index}"
+                    )
                 if prompt_tokens > config.max_prompt_tokens:
                     raise InferenceError(
                         "Inference prompt exceeds max_prompt_tokens at "
@@ -166,18 +197,18 @@ class LocalInferencer:
                         raise InferenceError(
                             f"Inference backend changed prompt tokens at example {index}"
                         )
-                    predictions.append(
-                        Prediction(
-                            example_id,
-                            index,
-                            seed,
-                            rng_seed,
-                            result.text,
-                            result.finish_reason,
-                            result.prompt_tokens,
-                            result.generated_tokens,
-                        )
+                    prediction = Prediction(
+                        example_id,
+                        index,
+                        seed,
+                        rng_seed,
+                        result.text,
+                        result.finish_reason,
+                        result.prompt_tokens,
+                        result.generated_tokens,
                     )
+                    _validate_prediction(prediction, config)
+                    predictions.append(prediction)
         except KeyboardInterrupt:
             raise
         except InferenceError:
@@ -194,6 +225,12 @@ def configured_target(
     resolver: Callable[[ModelSpec], Path] = resolve_model,
 ) -> ModelTarget:
     """Resolve and verify the configured base target."""
+    try:
+        validate_prompt_config(config.data)
+    except PromptError as error:
+        raise InferenceError(str(error)) from error
+    if not config.base_model:
+        raise InferenceError("Inference base model is not configured")
     spec = _model_spec(config)
     try:
         path = resolver(spec)
@@ -225,36 +262,58 @@ def recorded_target(
     """Resolve and verify one target from a fixed training run."""
     try:
         run = load_run(path)
-        model_path = resolver(run.model)
-        verify_model(model_path, run.model, run.model_digest)
-    except (ModelError, TrainError) as error:
+        return RecordedTargetResolver(resolver).target(run, adapter)
+    except (InferenceError, TrainError) as error:
         raise InferenceError(str(error)) from error
-    mode = TargetMode.RUN_ADAPTER if adapter else TargetMode.RUN_BASE
-    return ModelTarget(
-        id=f"{run.ref.id}:{mode.value}",
-        mode=mode,
-        model_path=model_path,
-        model_digest=run.model_digest,
-        data=run.data,
-        trust_remote_code=run.model.trust_remote_code,
-        adapter_path=run.adapter_path if adapter else None,
-        adapter_digest=run.adapter_digest if adapter else None,
-        run_id=str(run.ref.id),
-    )
+
+
+class RecordedTargetResolver:
+    """Resolve verified targets and reuse model verification."""
+
+    def __init__(
+        self,
+        resolver: Callable[[ModelSpec], Path] = resolve_model,
+    ) -> None:
+        """Set the model resolver and create an empty verification cache."""
+        self._resolver = resolver
+        self._models: dict[tuple[ModelSpec, str], Path] = {}
+
+    def target(self, run: LoadedRun, adapter: bool) -> ModelTarget:
+        """Build one target from one verified training run."""
+        try:
+            validate_prompt_config(run.data)
+            key = (run.model, run.model_digest)
+            model_path = self._models.get(key)
+            if model_path is None:
+                model_path = self._resolver(run.model)
+                verify_model(model_path, run.model, run.model_digest)
+                self._models[key] = model_path
+        except (ModelError, PromptError) as error:
+            raise InferenceError(str(error)) from error
+        mode = TargetMode.RUN_ADAPTER if adapter else TargetMode.RUN_BASE
+        return ModelTarget(
+            id=f"{run.ref.id}:{mode.value}",
+            mode=mode,
+            model_path=model_path,
+            model_digest=run.model_digest,
+            data=run.data,
+            trust_remote_code=run.model.trust_remote_code,
+            adapter_path=run.adapter_path if adapter else None,
+            adapter_digest=run.adapter_digest if adapter else None,
+            run_id=str(run.ref.id),
+        )
 
 
 def load_inference(path: Path) -> InferenceRef:
     """Load and verify one immutable inference artifact."""
     name = path.name
-    if len(name) != 64 or any(
-        character not in "0123456789abcdef" for character in name
-    ):
+    if not _is_digest(name):
         raise InferenceError(f"Inference path does not contain an ID: {path}")
     return _load_artifact(path, InferenceId(name))
 
 
 def _validate(config: InferConfig, backend_version: str) -> None:
-    missing = sorted(_REQUIRED_TOML - config.specified) if config.specified else []
+    missing = sorted(_REQUIRED_TOML - config.specified)
     if missing:
         raise InferenceError(
             f"Inference configuration is incomplete: {', '.join(missing)}"
@@ -267,8 +326,28 @@ def _validate(config: InferConfig, backend_version: str) -> None:
         raise InferenceError("Inference backend version is not available")
     if not config.seeds:
         raise InferenceError("Inference seeds are not configured")
-    if config.max_prompt_tokens < 1:
-        raise InferenceError("Inference max_prompt_tokens must be greater than zero")
+    if len(set(config.seeds)) != len(config.seeds):
+        raise InferenceError("Inference seeds must be unique")
+    if config.max_examples < 0:
+        raise InferenceError("Inference max_examples must not be negative")
+    if config.max_prompt_tokens < 1 or config.max_tokens < 1:
+        raise InferenceError("Inference token limits are not valid")
+    sampling = (
+        config.temperature,
+        config.top_p,
+        config.min_p,
+        config.repetition_penalty,
+    )
+    if any(not math.isfinite(value) for value in sampling):
+        raise InferenceError("Inference sampling values must be finite")
+    if config.temperature < 0:
+        raise InferenceError("Inference temperature must not be negative")
+    if not 0.0 <= config.top_p <= 1.0 or not 0.0 <= config.min_p <= 1.0:
+        raise InferenceError("Inference probability limits must be from zero to one")
+    if config.top_k < 0 or config.min_tokens_to_keep < 1:
+        raise InferenceError("Inference token sampling limits are not valid")
+    if config.repetition_penalty <= 0 or config.repetition_context_size < 1:
+        raise InferenceError("Inference repetition settings are not valid")
 
 
 def _model_spec(config: TrainConfig) -> ModelSpec:
@@ -288,8 +367,12 @@ def _dataset_rows(
     path = dataset.path / f"{split.value}.jsonl"
     if not path.is_file():
         raise InferenceError(f"Dataset split does not exist: {split.value}")
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeError) as error:
+        raise InferenceError(f"Cannot read dataset split: {split.value}") from error
     result = []
-    for index, line in enumerate(path.read_text(encoding="utf-8").splitlines()):
+    for index, line in enumerate(lines):
         try:
             value = json.loads(line)
             prompt = value["prompt"]
@@ -345,7 +428,9 @@ def _recipe(
         "dataset_id": str(dataset.id),
         "dataset_digest": dataset_digest,
         "split": split.value,
-        "examples": [value[1] for value in rows],
+        "examples": [
+            {"index": value[0], "example_id": value[1]} for value in rows
+        ],
         "target": {
             "id": target.id,
             "mode": target.mode.value,
@@ -369,17 +454,64 @@ def _required_output(config: InferConfig) -> Path:
     return config.output.expanduser().resolve()
 
 
-def _load_artifact(path: Path, inference_id: InferenceId) -> InferenceRef:
+def _find_artifact(
+    output: Path,
+    recipe: Mapping[str, Any],
+) -> InferenceRef | None:
+    if not output.is_dir():
+        return None
+    matches = []
+    try:
+        paths = sorted(output.iterdir())
+    except OSError as error:
+        raise InferenceError(f"Cannot inspect inference output: {output}") from error
+    for path in paths:
+        if not path.is_dir() or not _is_digest(path.name):
+            continue
+        try:
+            value = json.loads((path / "manifest.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError, json.JSONDecodeError):
+            continue
+        if not isinstance(value, dict) or not _same_json(value.get("recipe"), recipe):
+            continue
+        matches.append(
+            _load_artifact(
+                path,
+                InferenceId(path.name),
+                expected_recipe=recipe,
+            )
+        )
+    if len(matches) > 1:
+        raise InferenceError("More than one inference artifact has the same recipe")
+    return matches[0] if matches else None
+
+
+def _load_artifact(
+    path: Path,
+    inference_id: InferenceId,
+    expected_recipe: Mapping[str, Any] | None = None,
+) -> InferenceRef:
     try:
         value = json.loads((path / "manifest.json").read_text(encoding="utf-8"))
+        if not isinstance(value, dict) or set(value) != {
+            "inference_id",
+            "created_at",
+            "recipe",
+            "counts",
+            "files",
+        }:
+            raise TypeError
         if value["inference_id"] != str(inference_id):
             raise InferenceError(f"Inference manifest does not match its path: {path}")
-        actual_id = hashlib.sha256(_json_bytes(value["recipe"])).hexdigest()
+        recipe = value["recipe"]
+        counts = _artifact_counts(value["counts"])
+        files = _artifact_files(value["files"])
+        identity = {"recipe": recipe, "counts": counts, "files": files}
+        actual_id = hashlib.sha256(_json_bytes(identity)).hexdigest()
         if actual_id != str(inference_id):
-            raise InferenceError(f"Inference recipe does not match its ID: {path}")
-        files = value["files"]
-        if not isinstance(files, dict):
-            raise TypeError
+            raise InferenceError(f"Inference content does not match its ID: {path}")
+        if expected_recipe is not None and not _same_json(recipe, expected_recipe):
+            raise InferenceError(f"Inference recipe does not match its request: {path}")
         actual_names = {
             item.relative_to(path).as_posix()
             for item in path.rglob("*")
@@ -395,12 +527,165 @@ def _load_artifact(path: Path, inference_id: InferenceId) -> InferenceRef:
                     f"Inference file does not match its manifest: {file_path}"
                 )
         created_at = datetime.fromisoformat(value["created_at"])
-        predictions = int(value["counts"]["predictions"])
+        if created_at.tzinfo is None or created_at.utcoffset() is None:
+            raise TypeError
+        predictions = _read_predictions(path / "pred.jsonl")
+        _validate_artifact_predictions(recipe, counts, predictions)
     except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError) as error:
         if isinstance(error, InferenceError):
             raise
         raise InferenceError(f"Cannot read inference artifact: {path}") from error
-    return InferenceRef(inference_id, path, created_at, predictions)
+    return InferenceRef(inference_id, path, created_at, len(predictions))
+
+
+def _artifact_counts(value: object) -> dict[str, int]:
+    if not isinstance(value, dict) or set(value) != {"examples", "predictions"}:
+        raise TypeError
+    if not all(_is_nonnegative_int(item) for item in value.values()):
+        raise TypeError
+    return {"examples": value["examples"], "predictions": value["predictions"]}
+
+
+def _artifact_files(value: object) -> dict[str, str]:
+    if not isinstance(value, dict) or set(value) != {"pred.jsonl"}:
+        raise TypeError
+    digest = value["pred.jsonl"]
+    if not isinstance(digest, str) or not _is_digest(digest):
+        raise TypeError
+    return {"pred.jsonl": digest}
+
+
+def _read_predictions(path: Path) -> tuple[Prediction, ...]:
+    values = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        value = json.loads(line)
+        if not isinstance(value, dict) or set(value) != {
+            "example_id",
+            "index",
+            "seed",
+            "rng_seed",
+            "text",
+            "finish_reason",
+            "prompt_tokens",
+            "generated_tokens",
+        }:
+            raise TypeError
+        values.append(Prediction(**value))
+    return tuple(values)
+
+
+def _validate_artifact_predictions(
+    recipe: object,
+    counts: Mapping[str, int],
+    predictions: Sequence[Prediction],
+) -> None:
+    if not isinstance(recipe, dict):
+        raise TypeError
+    examples = recipe.get("examples")
+    config = recipe.get("config")
+    if not isinstance(examples, list) or not isinstance(config, dict):
+        raise TypeError
+    seeds = config.get("seeds")
+    max_prompt_tokens = config.get("max_prompt_tokens")
+    max_tokens = config.get("max_tokens")
+    if (
+        not isinstance(seeds, list)
+        or not all(_is_int(seed) for seed in seeds)
+        or not _is_positive_int(max_prompt_tokens)
+        or not _is_positive_int(max_tokens)
+    ):
+        raise TypeError
+    expected = []
+    for example in examples:
+        if not isinstance(example, dict) or set(example) != {"index", "example_id"}:
+            raise TypeError
+        index = example["index"]
+        example_id = example["example_id"]
+        if (
+            not _is_nonnegative_int(index)
+            or not isinstance(example_id, str)
+            or not _is_digest(example_id)
+        ):
+            raise TypeError
+        expected.extend((index, example_id, seed) for seed in seeds)
+    if len(set(expected)) != len(expected):
+        raise TypeError
+    if counts != {"examples": len(examples), "predictions": len(expected)}:
+        raise InferenceError("Inference counts do not match its recipe")
+    if len(predictions) != len(expected):
+        raise InferenceError("Inference predictions do not match its counts")
+    for prediction, (index, example_id, seed) in zip(
+        predictions, expected, strict=True
+    ):
+        _validate_prediction_values(
+            prediction,
+            max_prompt_tokens,
+            max_tokens,
+        )
+        if (
+            prediction.index != index
+            or prediction.example_id != example_id
+            or prediction.seed != seed
+            or prediction.rng_seed != _rng_seed(seed, example_id)
+        ):
+            raise InferenceError("Inference prediction does not match its recipe")
+
+
+def _validate_prediction(value: Prediction, config: InferConfig) -> None:
+    _validate_prediction_values(
+        value,
+        config.max_prompt_tokens,
+        config.max_tokens,
+    )
+
+
+def _validate_prediction_values(
+    value: Prediction,
+    max_prompt_tokens: int,
+    max_tokens: int,
+) -> None:
+    if not isinstance(value.example_id, str) or not _is_digest(value.example_id):
+        raise InferenceError("Inference backend returned an invalid example ID")
+    if not _is_nonnegative_int(value.index) or not _is_int(value.seed):
+        raise InferenceError("Inference backend returned invalid prediction identity")
+    if not _is_nonnegative_int(value.rng_seed) or value.rng_seed > 0x7FFF_FFFF:
+        raise InferenceError("Inference backend returned an invalid random seed")
+    if not isinstance(value.text, str):
+        raise InferenceError("Inference backend returned invalid text")
+    if value.finish_reason not in {"stop", "length"}:
+        raise InferenceError("Inference backend returned an invalid finish reason")
+    if (
+        not _is_positive_int(value.prompt_tokens)
+        or value.prompt_tokens > max_prompt_tokens
+        or not _is_positive_int(value.generated_tokens)
+        or value.generated_tokens > max_tokens
+    ):
+        raise InferenceError("Inference backend returned invalid token counts")
+
+
+def _is_int(value: object) -> TypeGuard[int]:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _is_nonnegative_int(value: object) -> bool:
+    return _is_int(value) and value >= 0
+
+
+def _is_positive_int(value: object) -> bool:
+    return _is_int(value) and value > 0
+
+
+def _is_digest(value: str) -> bool:
+    return len(value) == 64 and all(
+        character in "0123456789abcdef" for character in value
+    )
+
+
+def _same_json(first: object, second: object) -> bool:
+    try:
+        return _json_bytes(first) == _json_bytes(second)
+    except (TypeError, ValueError):
+        return False
 
 
 def _artifact_file(root: Path, name: object) -> Path:
