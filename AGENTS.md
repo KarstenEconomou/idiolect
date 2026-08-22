@@ -76,10 +76,10 @@ examples and tests, and process data only from consenting participants.
 
 Keep public, reproducible settings in `conf/idiolect.toml` and `conf/exp/`. Keep
 secrets and Signal identifiers in environment variables or a system secret
-store. Treat `.env`, optional `conf/local.toml`, `var/`, user files, and the
-installed LaunchAgent as live private state. Do not read or change them unless
-the user requests an operational task. Do not operate the collector as part of
-code verification. Use `docs/` as the source for operational procedures.
+store. Treat `.env`, `var/`, user files, and the installed LaunchAgent as live
+private state. Do not read or change them unless the user requests an
+operational task. Do not operate the collector as part of code verification.
+Use `docs/` as the source for operational procedures.
 
 ## Changes and handoff
 

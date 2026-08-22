@@ -39,7 +39,9 @@ chmod 600 .env
 
 `IDIOLECT_SIGNAL_CHATS` is a JSON list of group IDs. The account number and group IDs are private metadata. They are not enough to authenticate a Signal device, but they must not be public.
 
-Use the ignored `conf/local.toml` file only when you need a complete local configuration that differs from the canonical file. Set `IDIOLECT_CONFIG` to select it. Keep private values in `.env` or a system secret store.
+Keep machine-local and private values in `.env` or a system secret store. Use
+`IDIOLECT_CONFIG` only to select a public configuration such as a tracked
+experiment policy under `conf/exp/`.
 
 ## Key material and data
 
@@ -62,6 +64,7 @@ conversation context shown to them. A rater's familiarity with the target does
 not grant access to another group's messages. Run ratings on the data owner's
 Mac and use pseudonyms that do not contain Signal identifiers or contact data.
 
-Use disk encryption. Limit local file access. Do not include `var/`, `.env`, or `conf/local.toml` in a public archive.
+Use disk encryption. Limit local file access. Do not include `var/` or `.env` in
+a public archive.
 
 Git ignore rules reduce accidental commits. They do not remove an item from Git history. If a credential enters Git history, revoke or replace the credential.

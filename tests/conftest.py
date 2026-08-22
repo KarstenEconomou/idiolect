@@ -35,7 +35,7 @@ def configured_signal_environment(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.fixture
 def local_config(tmp_path: Path) -> Path:
     """Create a safe configuration file for one test."""
-    path = tmp_path / "local.toml"
+    path = tmp_path / "test.toml"
     path.write_text(
         f"""
 [signal]
