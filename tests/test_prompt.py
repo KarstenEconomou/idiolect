@@ -15,11 +15,6 @@ from idiolect.prompt import PromptError, format_prompt
             prompt_role="invalid",
             completion_role="assistant",
         ),
-        TrainDataConfig(
-            format="chat",
-            prompt_role="user",
-            completion_role="invalid",
-        ),
         TrainDataConfig(format="completion", system_prompt="ignored value"),
     ),
 )

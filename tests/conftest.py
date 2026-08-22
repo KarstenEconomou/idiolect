@@ -24,10 +24,17 @@ def signal_mentions() -> Path:
 
 
 @pytest.fixture
-def local_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Create safe settings for one test."""
+def configured_signal_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Set explicit synthetic Signal values for a CLI test."""
     monkeypatch.setenv("IDIOLECT_SIGNAL_ACCOUNT", "+10000000000")
+    monkeypatch.setenv("IDIOLECT_SIGNAL_BIN", "signal-cli-test")
+    monkeypatch.setenv("IDIOLECT_SIGNAL_DATA_DIR", "safe-signal-data")
     monkeypatch.setenv("IDIOLECT_SIGNAL_CHATS", '["group-allowed"]')
+
+
+@pytest.fixture
+def local_config(tmp_path: Path) -> Path:
+    """Create a safe configuration file for one test."""
     path = tmp_path / "local.toml"
     path.write_text(
         f"""

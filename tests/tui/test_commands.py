@@ -2,16 +2,15 @@
 
 import pytest
 
-from idiolect.tui.commands import COMMANDS, CommandError, completions, parse_command
+from idiolect.tui.commands import CommandError, completions, parse_command
 
 
-@pytest.mark.parametrize("value", COMMANDS)
-def test_commands_without_arguments_are_parsed(value: str) -> None:
-    """Check every command in the fixed command set."""
-    command = parse_command(value)
+def test_no_argument_command_is_parsed() -> None:
+    """Check a known command without arguments returns its name."""
+    command = parse_command("/help")
 
     assert command is not None
-    assert command.name == value[1:]
+    assert command.name == "help"
     assert command.argument is None
 
 

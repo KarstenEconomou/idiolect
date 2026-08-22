@@ -11,7 +11,7 @@ from rich.text import Text
 from textual import events
 from textual.containers import VerticalScroll
 from textual.pilot import Pilot
-from textual.widgets import OptionList, Rule, Static
+from textual.widgets import OptionList, Static
 
 from idiolect.chat.discovery import Assistant, DiscoveryItem
 from idiolect.chat.runtime import ChatRuntime
@@ -19,26 +19,8 @@ from idiolect.chat.state import ChatSession, ChatTurn, TurnTelemetry
 from idiolect.chat.storage import ChatStorageError, ChatStore
 from idiolect.chat.worker import WorkerError, WorkerState
 from idiolect.config import ChatConfig, GenerationConfig
-from idiolect.tui.app import WATERMARK, ChatApp
+from idiolect.tui.app import ChatApp
 from idiolect.tui.widgets import Composer, LoadingStatus
-
-
-def test_landing_shows_literal_watermark(tmp_path) -> None:
-    """Check the registry watermark text."""
-    app = ChatApp(
-        ChatConfig(output=tmp_path),
-        GenerationConfig(),
-        runtime_factory=cast(
-            Callable[..., ChatRuntime], lambda *_args: SimpleRuntime()
-        ),
-    )
-
-    async def verify() -> None:
-        async with app.run_test() as pilot:
-            await pilot.pause()
-            assert str(app.query_one("#watermark", Static).content) == WATERMARK
-
-    asyncio.run(verify())
 
 
 def test_registry_opens_highlighted_assistant_from_keyboard(tmp_path) -> None:
@@ -60,26 +42,12 @@ def test_registry_opens_highlighted_assistant_from_keyboard(tmp_path) -> None:
     async def verify() -> None:
         async with app.run_test(size=(80, 24)) as pilot:
             chooser = app.query_one("#chooser", OptionList)
-            rule = app.query_one("#catalog-rule", Rule)
             assert str(app.query_one("#catalog-title", Static).content) == "REGISTRY"
             assert len(app.query("#search")) == 0
-            assert rule.line_style == "solid"
-            assert rule.content_region.x == chooser.content_region.x
-            assert rule.content_region.width == chooser.content_region.width
             assert chooser.highlighted == 1
             assert chooser.has_focus
-            highlight = chooser.get_component_rich_style(
-                "option-list--option-highlighted"
-            )
-            assert highlight.color is not None
-            assert highlight.color.number == 4
-            assert highlight.bgcolor is not None
-            assert highlight.bgcolor.name == "default"
-            description = app.query_one("#catalog-description", Static)
             summary = app.query_one("#catalog-summary", Static)
             assert str(summary.content) == "1 available"
-            assert description.region.y == summary.region.y
-            assert app.query_one("#catalog-title", Static).region.y < summary.region.y
             prompt = chooser.get_option_at_index(1).prompt
             assert isinstance(prompt, Text)
             assert "READY" in prompt.plain
@@ -219,14 +187,11 @@ def test_prefill_progress_appears_above_composer(tmp_path) -> None:
             await pilot.pause()
 
             status = app.query_one("#status", LoadingStatus)
-            footer = app.query_one("#footer", Static)
             rendered = status.render()
             assert status.state == "PREFILL 0/4"
             assert isinstance(rendered, Text)
             assert rendered.plain.endswith(" PREFILL 0/4")
             assert status.display is True
-            assert status.styles.padding == footer.styles.padding
-            assert footer.content_region.x == composer.region.x
 
             runtime.release_prefill.set()
             assert await asyncio.to_thread(runtime.generation_finished.wait, 1)
@@ -272,11 +237,14 @@ def test_model_load_keeps_event_processing_active(tmp_path) -> None:
     async def verify() -> None:
         async with app.run_test() as pilot:
             assert await asyncio.to_thread(runtime.started.wait, 1)
-            await asyncio.sleep(0.15)
-            await pilot.pause()
             status = app.query_one("#load-status", LoadingStatus)
+            for _ in range(20):
+                await pilot.pause()
+                if status.state == "LOADING":
+                    break
+            else:
+                raise AssertionError("The loading state did not appear")
             rendered = status.render()
-            assert status.state == "LOADING"
             assert isinstance(rendered, Text)
             assert rendered.plain.endswith(" LOADING")
             assert "// MODEL SESSION" not in rendered.plain

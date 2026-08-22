@@ -15,6 +15,7 @@ from idiolect.types import EvaluationId, EvaluationRef, RunId, RunRef, TrainResu
 def test_import_and_stats_use_configured_store(
     local_config: Path,
     signal_events: Path,
+    configured_signal_environment,
     capsys,
 ) -> None:
     """Check the local file harvest workflow."""
@@ -73,9 +74,17 @@ def test_missing_config_has_actionable_error(tmp_path: Path, capsys) -> None:
 def test_message_processing_requires_a_chat_whitelist(
     tmp_path: Path,
     signal_events: Path,
+    monkeypatch,
     capsys,
 ) -> None:
     """Check that message input cannot run without a whitelist."""
+    for name in (
+        "IDIOLECT_SIGNAL_ACCOUNT",
+        "IDIOLECT_SIGNAL_BIN",
+        "IDIOLECT_SIGNAL_DATA_DIR",
+        "IDIOLECT_SIGNAL_CHATS",
+    ):
+        monkeypatch.delenv(name, raising=False)
     config = tmp_path / "empty.toml"
     config.write_text("[signal]\n", encoding="utf-8")
 
@@ -89,6 +98,7 @@ def test_message_processing_requires_a_chat_whitelist(
 def test_train_command_uses_fixed_dataset_and_config(
     local_config: Path,
     signal_events: Path,
+    configured_signal_environment,
     monkeypatch,
     capsys,
 ) -> None:
@@ -144,6 +154,7 @@ def test_train_command_uses_fixed_dataset_and_config(
 
 def test_inference_text_reads_stdin_and_writes_json_lines(
     local_config: Path,
+    configured_signal_environment,
     monkeypatch,
     capsys,
 ) -> None:
@@ -189,6 +200,7 @@ def test_inference_text_reads_stdin_and_writes_json_lines(
 
 def test_inference_text_reports_invalid_utf8_before_model_access(
     local_config: Path,
+    configured_signal_environment,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -228,6 +240,7 @@ def test_inference_text_reports_invalid_utf8_before_model_access(
 
 def test_eval_policy_uses_every_supplied_run(
     local_config: Path,
+    configured_signal_environment,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -293,6 +306,7 @@ def test_eval_policy_uses_every_supplied_run(
 
 def test_chat_opens_chooser_without_model_or_private_data(
     tmp_path: Path,
+    configured_signal_environment,
     monkeypatch,
     capsys,
 ) -> None:
