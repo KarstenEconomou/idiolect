@@ -1167,7 +1167,7 @@ def test_command_menu_filters_navigates_and_returns_to_registry(tmp_path) -> Non
             ) == "Save TRACE."
             assert str(
                 specs_button.query_one(".command-description", Static).content
-            ) == "View model SPECS."
+            ) == "View MODEL SPECS."
             assert specs_button.display is False
             assert save_button.has_class("-disabled")
             assert save_button.has_class("-selected") is False
