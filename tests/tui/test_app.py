@@ -223,6 +223,45 @@ def test_composer_submits_and_inserts_line_breaks(tmp_path) -> None:
     asyncio.run(verify())
 
 
+def test_transcript_link_opens_validated_web_destination(tmp_path, monkeypatch) -> None:
+    """Check pointer activation for one rendered HTTP link."""
+    chat = ChatConfig(output=tmp_path)
+    generation = GenerationConfig(max_prompt_tokens=100)
+    runtime = ImmediateRuntime(chat, generation)
+    app = ChatApp(
+        chat,
+        generation,
+        runtime_factory=cast(Callable[..., ChatRuntime], lambda *_args: runtime),
+        initial_assistant=_assistant(),
+    )
+    opened: list[tuple[str, bool]] = []
+    monkeypatch.setattr(
+        app,
+        "open_url",
+        lambda url, *, new_tab=True: opened.append((url, new_tab)),
+    )
+
+    async def verify() -> None:
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_chat(app, pilot)
+            app.query_one(Composer).insert("[SITE](https://example.test/guide)")
+            await pilot.press("enter")
+            for _ in range(20):
+                await pilot.pause()
+                if "Synthetic reply" in app.query_one(Transcript).plain:
+                    break
+
+            transcript = app.query_one(Transcript)
+            await pilot.click(transcript, offset=(2, 1))
+            await pilot.pause()
+            assert opened == [("https://example.test/guide", True)]
+
+            app.action_open_link("mailto:user@example.test")
+            assert opened == [("https://example.test/guide", True)]
+
+    asyncio.run(verify())
+
+
 def test_prefill_progress_appears_above_composer(tmp_path) -> None:
     """Check measured prefill status and prompt spacing."""
     chat = ChatConfig(output=tmp_path)

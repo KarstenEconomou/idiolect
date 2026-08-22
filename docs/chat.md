@@ -105,12 +105,18 @@ text.
 Blockquotes keep their `>` markers and add one indentation cell per quote level.
 Wrapped quote lines align below quote text.
 
-The renderer preserves authored line breaks and blank lines. It keeps links,
-tables, rules, strikethrough, HTML, Setext headings, unmatched delimiters, and
-Rich markup literal. Markdown has no configured underline syntax. Formatting
-changes presentation only; prompts and saved turns retain the exact source
-text. A stopped partial reply remains an assistant turn with finish reason
-`cancelled`.
+Explicit `[link text](https://example.test)` links hide their Markdown
+delimiters, underline the link text, and show the complete destination in muted
+metadata gray. Click the underlined text to open the destination in the default
+browser. Only explicit `http://` and `https://` destinations receive this
+treatment. The chat does not format bare URLs and never fetches link previews.
+
+The renderer preserves authored line breaks and blank lines. It keeps unsupported
+links, tables, rules, strikethrough, HTML, Setext headings, unmatched delimiters,
+and Rich markup literal. Markdown has no configured standalone underline syntax.
+Formatting changes presentation only; prompts and saved turns retain the exact
+source text. A stopped partial reply remains an assistant turn with finish
+reason `cancelled`.
 
 ## Prompt and context policy
 

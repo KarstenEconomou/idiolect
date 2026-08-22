@@ -12,7 +12,8 @@ def test_formats_supported_inline_text_and_retains_heading_prefixes() -> None:
     source = (
         "**bold** *italic* ***both*** `code`\n\n"
         "## Head\n\n"
-        "[link](https://example.test) <u>underline</u> [bold]literal[/bold]\n\n"
+        "[mail](mailto:user@example.test) <u>underline</u> "
+        "[bold]literal[/bold]\n\n"
         "unmatched **marker"
     )
 
@@ -21,7 +22,8 @@ def test_formats_supported_inline_text_and_retains_heading_prefixes() -> None:
     assert _plain(segments) == (
         "bold italic both code\n\n"
         "## Head\n\n"
-        "[link](https://example.test) <u>underline</u> [bold]literal[/bold]\n\n"
+        "[mail](mailto:user@example.test) <u>underline</u> "
+        "[bold]literal[/bold]\n\n"
         "unmatched **marker\n"
     )
     assert _style(segments, "## ").bold
@@ -80,6 +82,39 @@ def test_indents_each_quote_level_and_aligns_wrapped_quote_text() -> None:
     inline_background = _style(segments, "> inline code").bgcolor
     assert inline_background is not None
     assert inline_background.number == 237
+
+
+def test_formats_safe_links_with_visible_muted_destinations() -> None:
+    """Check link styling, visible targets, and literal unsupported links."""
+    source = (
+        "Read [the **docs**](https://example.test/guide?q=chat) or "
+        "https://bare.test.\n"
+        "[mail](mailto:user@example.test) [broken](https://example.test"
+    )
+
+    segments = _segments(source)
+
+    assert _plain(segments) == (
+        "Read the docs (https://example.test/guide?q=chat) or "
+        "https://bare.test.\n"
+        "[mail](mailto:user@example.test) [broken](https://example.test\n"
+    )
+    link_text = _style(segments, "the ")
+    assert not link_text.dim
+    assert link_text.underline
+    assert link_text.link == "https://example.test/guide?q=chat"
+    assert link_text.meta["@click"] == (
+        "app.open_link",
+        ("https://example.test/guide?q=chat",),
+    )
+    linked_bold = _style(segments, "docs")
+    assert linked_bold.bold
+    assert not linked_bold.dim
+    assert linked_bold.underline
+    destination = _style(segments, "https://example.test/guide?q=chat")
+    assert destination.color is not None
+    assert destination.color.number == 8
+    assert destination.link is None
 
 
 def test_shades_fenced_code_without_fences_or_highlighting() -> None:

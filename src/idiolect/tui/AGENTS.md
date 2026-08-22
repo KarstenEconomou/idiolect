@@ -29,11 +29,13 @@ TUI tests.
   Keep command names lowercase. Write command descriptions in sentence case and
   end them with a period. Render transcript content with the focused Markdown
   rules below. Keep stored content unchanged.
-- Support Markdown emphasis, ATX headings, inline code, fenced code, lists, and
-  blockquotes in every transcript turn. Keep heading, list, and quote markers.
-  Add one indentation cell per list or quote level. Hide emphasis and code
-  delimiters. Keep unsupported or unmatched markup literal, and do not
-  interpret Rich markup.
+- Support Markdown emphasis, ATX headings, inline code, fenced code, lists,
+  blockquotes, and explicit HTTP or HTTPS links in every transcript turn. Keep
+  heading, list, and quote markers. Add one indentation cell per list or quote
+  level. Hide emphasis and code delimiters. Underline link text, show its
+  destination in the metadata color, and let pointer activation open validated
+  web links. Keep unsupported or unmatched markup literal, and do not interpret
+  Rich markup.
 - Use a metadata-colored solid border for idle input and an accent-colored solid
   border for focused input. Use terminal-native reversed cursor and selection
   styling. Avoid decorative borders and persistent chrome.

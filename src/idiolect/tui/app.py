@@ -22,6 +22,7 @@ from idiolect.chat.worker import WorkerError
 from idiolect.config import ChatConfig, GenerationConfig
 from idiolect.tui.catalog import CatalogLayout
 from idiolect.tui.commands import CommandError, completions, parse_command
+from idiolect.tui.markdown import is_web_link
 from idiolect.tui.widgets import (
     CommandMenu,
     Composer,
@@ -332,6 +333,11 @@ class ChatApp(App[None]):
                 y=3,
                 animate=False,
             )
+
+    def action_open_link(self, url: str) -> None:
+        """Open one validated transcript link in the default browser."""
+        if is_web_link(url):
+            self.open_url(url)
 
     def _start_generation(self, attempt: int) -> None:
         self._generating = True

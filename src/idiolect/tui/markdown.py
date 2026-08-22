@@ -12,7 +12,16 @@ from rich.padding import Padding
 from rich.style import Style
 from rich.text import Text
 
-_PARSER = MarkdownIt("zero").enable(
+
+class _ChatMarkdownIt(MarkdownIt):
+    """Parse only links that the terminal can open safely."""
+
+    def validateLink(self, url: str) -> bool:
+        """Accept explicit HTTP and HTTPS destinations."""
+        return is_web_link(url) and super().validateLink(url)
+
+
+_PARSER = _ChatMarkdownIt("zero").enable(
     (
         "fence",
         "list",
@@ -21,11 +30,18 @@ _PARSER = MarkdownIt("zero").enable(
         "escape",
         "backticks",
         "emphasis",
+        "link",
     )
 )
 _BOLD = Style(bold=True)
 _ITALIC = Style(italic=True)
 _CODE = Style(bgcolor="grey23")
+_METADATA = Style(color="bright_black")
+
+
+def is_web_link(url: str) -> bool:
+    """Return true for an explicit web link."""
+    return url.casefold().startswith(("http://", "https://"))
 
 
 @dataclass(frozen=True)
@@ -207,6 +223,22 @@ def _inline_text(node: SyntaxTreeNode, style: Style) -> Text:
             text.append_text(_inline_text(child, style + _BOLD))
         elif child.type == "em":
             text.append_text(_inline_text(child, style + _ITALIC))
+        elif child.type == "link":
+            href = str(child.attrGet("href") or "")
+            text.append_text(
+                _inline_text(
+                    child,
+                    style
+                    + Style(
+                        underline=True,
+                        link=href,
+                        meta={"@click": ("app.open_link", (href,))},
+                    ),
+                )
+            )
+            text.append(" (", style + _METADATA)
+            text.append(href, style + _METADATA)
+            text.append(")", style + _METADATA)
         else:
             text.append(child.content, style)
     return text
