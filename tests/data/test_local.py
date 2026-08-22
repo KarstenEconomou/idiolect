@@ -58,8 +58,8 @@ def test_builder_writes_immutable_leakage_safe_mlx_data(tmp_path: Path) -> None:
     )
     config = DataConfig(context=4, valid_ratio=0.2, test_ratio=0.2)
 
-    first = builder.build(_TARGET, "Karsten", config)
-    second = builder.build(_TARGET, "Karsten", config)
+    first = builder.build(_TARGET, "DIXIE", config)
+    second = builder.build(_TARGET, "DIXIE", config)
 
     assert first.dataset == second.dataset
     assert first.counts == {Split.TRAIN: 6, Split.VALID: 2, Split.TEST: 2}
@@ -85,8 +85,8 @@ def test_builder_writes_immutable_leakage_safe_mlx_data(tmp_path: Path) -> None:
     assert split_tokens[Split.TRAIN].isdisjoint(split_tokens[Split.VALID])
     assert split_tokens[Split.TRAIN].isdisjoint(split_tokens[Split.TEST])
     assert split_tokens[Split.VALID].isdisjoint(split_tokens[Split.TEST])
-    assert "mentions @Karsten" in values[Split.TRAIN][0]["prompt"]
-    assert "@Karsten ping friend-00" in values[Split.TRAIN][0]["prompt"]
+    assert "mentions @DIXIE" in values[Split.TRAIN][0]["prompt"]
+    assert "@DIXIE ping friend-00" in values[Split.TRAIN][0]["prompt"]
     assert "￼" not in json.dumps(values, ensure_ascii=False)
     assert "target-id" not in json.dumps(values)
     manifest = json.loads(
@@ -100,7 +100,7 @@ def test_builder_writes_immutable_leakage_safe_mlx_data(tmp_path: Path) -> None:
 
     (first.dataset.path / "train.jsonl").write_text("changed\n", encoding="utf-8")
     with pytest.raises(DataError, match="does not match its manifest"):
-        builder.build(_TARGET, "Karsten", config)
+        builder.build(_TARGET, "DIXIE", config)
 
 
 def test_builder_uses_only_clean_targets_and_causal_context(tmp_path: Path) -> None:
@@ -183,7 +183,7 @@ def test_builder_uses_only_clean_targets_and_causal_context(tmp_path: Path) -> N
 
     result = builder.build(
         _TARGET,
-        " @Karsten ",
+        " @DIXIE ",
         DataConfig(context=8, valid_ratio=0, test_ratio=0),
     )
 
@@ -195,7 +195,7 @@ def test_builder_uses_only_clean_targets_and_causal_context(tmp_path: Path) -> N
     manifest = json.loads(
         (result.dataset.path / "manifest.json").read_text(encoding="utf-8")
     )
-    assert manifest["recipe"]["target_name"] == "Karsten"
+    assert manifest["recipe"]["target_name"] == "DIXIE"
     assert manifest["selection"] == {
         "attachment": 1,
         "deleted": 0,
@@ -217,7 +217,7 @@ def test_dataset_loader_rejects_unrecorded_files(tmp_path: Path) -> None:
     )
     result = builder.build(
         _TARGET,
-        "Karsten",
+        "DIXIE",
         DataConfig(context=1, valid_ratio=0, test_ratio=0),
     )
     (result.dataset.path / "extra.txt").write_text("unexpected", encoding="utf-8")
@@ -235,7 +235,7 @@ def test_dataset_id_commits_to_canonical_rows(tmp_path: Path) -> None:
     )
     result = builder.build(
         _TARGET,
-        "Karsten",
+        "DIXIE",
         DataConfig(context=1, valid_ratio=0, test_ratio=0),
     )
     split_path = result.dataset.path / "train.jsonl"
@@ -265,7 +265,7 @@ def test_people_find_the_one_local_account() -> None:
     target = next(person for person in people if person.is_self)
 
     assert target.messages == 2
-    assert target.name == "Karsten old"
+    assert target.name == "DIXIE old"
     assert resolve_self(people) == _TARGET
 
 
@@ -284,7 +284,7 @@ def _conversation(target_count: int) -> tuple[Message, ...]:
                 sent_at=friend_time,
                 author_name="Friend",
                 text=f"￼ ping friend-{index:02d}",
-                mentions=(Mention(_TARGET, 0, 1, "Karsten old"),),
+                mentions=(Mention(_TARGET, 0, 1, "DIXIE old"),),
             )
         )
         messages.append(
@@ -294,7 +294,7 @@ def _conversation(target_count: int) -> tuple[Message, ...]:
                 chat_id=_CHAT,
                 author_id=_TARGET,
                 sent_at=target_time,
-                author_name="Karsten old",
+                author_name="DIXIE old",
                 is_self=True,
                 text=f"target-{index:02d}",
             )

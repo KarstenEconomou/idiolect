@@ -32,7 +32,9 @@ just chat
 The landing screen searches verified run/dataset pairs and saved lineage leaves.
 Discovery reads local manifests and never downloads a model. Each assistant has
 the identity `IDIOLECT // NAME@run [MODEL]`. `run` is the first eight characters
-of the full run ID. Both rows are unavailable if that prefix collides.
+of the full run ID. `NAME` is the uppercase display of the recorded target name;
+prompts keep the recorded target name unchanged. Both rows are unavailable if
+that prefix collides.
 
 Use a direct verified pair or saved snapshot when needed:
 

@@ -64,8 +64,8 @@ def _state(tmp_path):
     run_path = tmp_path / "runs" / ("a" * 64)
     dataset_path = tmp_path / "data" / ("b" * 64)
     assistant = SimpleNamespace(
-        name="IDIOLECT // Karsten@aaaaaaaa [Qwen3-14B-4bit]",
-        target_name="Karsten",
+        name="IDIOLECT // DIXIE@aaaaaaaa [Qwen3-14B-4bit]",
+        target_name="DIXIE",
         context_messages=4,
         run=SimpleNamespace(
             ref=SimpleNamespace(id="a" * 64, path=run_path),

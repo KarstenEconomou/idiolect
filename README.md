@@ -160,8 +160,8 @@ just chat
 ```
 
 The chooser shows identities such as
-`IDIOLECT // Karsten@7f3a91c2 [Qwen3-14B-4bit]`. Direct launch and resume are
-also available:
+`IDIOLECT // DIXIE@7f3a91c2 [Qwen3-14B-4bit]`. Direct launch and resume are
+also available. The visible target-name segment is always uppercase.
 
 ```console
 just chat run RUN_ID DATASET_ID

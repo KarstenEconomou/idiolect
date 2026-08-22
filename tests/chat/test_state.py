@@ -30,7 +30,7 @@ def test_prompt_uses_training_grammar_and_drops_whole_old_messages() -> None:
     )
 
     assert "[person_01]\nnewest" in prepared.prompt
-    assert "[Karsten]\nsecond" in prepared.prompt
+    assert "[DIXIE]\nsecond" in prepared.prompt
     assert prepared.prompt.endswith("[next response]")
     assert prepared.value.turns[-1].content == "<think>\n\n</think>\n\n"
     assert prepared.seed == derive_seed(101, prepared.prompt_digest, 0)
@@ -97,7 +97,7 @@ def _state(context: int = 4, prompt_limit: int = 500) -> ChatSession:
         completion_prefix="<think>\n\n</think>\n\n",
     )
     assistant = SimpleNamespace(
-        target_name="Karsten",
+        target_name="DIXIE",
         context_messages=context,
         run=SimpleNamespace(data=data),
     )

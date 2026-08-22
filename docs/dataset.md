@@ -46,7 +46,7 @@ The output contains the hashed person ID, `self` or `member`, message count, and
 Use `--self` for the linked Signal account:
 
 ```console
-just data build Karsten
+just data build DIXIE
 ```
 
 The recipe builds data for the local Signal account. Use the direct CLI command with `--person` for another consenting person.

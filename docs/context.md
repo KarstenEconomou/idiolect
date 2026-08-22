@@ -4,21 +4,21 @@
 
 A hashed person ID is the identity source. A display name is model text. Two people can have the same display name.
 
-The renderer receives one target person ID and one target name. For example, it can receive the target name `Karsten`.
+The renderer receives one target person ID and one target name. For example, it can receive the target name `DIXIE`.
 
-- Plain `Karsten` stays `Karsten`.
-- A native Signal mention of the target becomes `@Karsten`.
-- The message header adds `mentions @Karsten` for a native target mention.
+- Plain `DIXIE` stays `DIXIE`.
+- A native Signal mention of the target becomes `@DIXIE`.
+- The message header adds `mentions @DIXIE` for a native target mention.
 - A native mention of another person becomes that person's configured pseudonym.
 - A matching display name does not change the mentioned identity.
 
-This rule gives the model similar text for `Karsten` and `@Karsten`. The `@` and the message header supply the additional addressing data.
+This rule gives the model similar text for `DIXIE` and `@DIXIE`. The `@` and the message header supply the additional addressing data.
 
 ## Mention normalization
 
 Signal supplies mention identity, start, and length data. The source range uses UTF-16 code units. The collector keeps the original text and range. The dataset renderer replaces the source range with readable `@Name` text.
 
-Do not find native mentions with a text search. Text such as `@Karsten` can be ordinary text. Only Signal mention metadata proves that a person was tagged.
+Do not find native mentions with a text search. Text such as `@DIXIE` can be ordinary text. Only Signal mention metadata proves that a person was tagged.
 
 ## Reply normalization
 
@@ -50,14 +50,14 @@ not training completions.
 The target name appears in the instruction, message text, and addressing metadata.
 
 ```text
-You are Karsten. Write only Karsten's next message.
+You are DIXIE. Write only DIXIE's next message.
 
 Conversation:
 
-[person_01 | mentions @Karsten | reply to Karsten: "maybe"]
-Hey @Karsten, are you coming?
+[person_01 | mentions @DIXIE | reply to DIXIE: "maybe"]
+Hey @DIXIE, are you coming?
 
-[next response | reply to person_01: "Hey @Karsten, are you coming?"]
+[next response | reply to person_01: "Hey @DIXIE, are you coming?"]
 ```
 
 The completion contains only the target message text. A first model must generate reply text. It does not select a Signal reply action. A later structured-output model can select `reply_to` separately.

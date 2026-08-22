@@ -63,7 +63,10 @@ def model_basename(value: str) -> str:
 
 def canonical_name(target_name: str, run_id: str, model_name: str) -> str:
     """Return one canonical local assistant name."""
-    return f"IDIOLECT // {target_name}@{run_id[:8]} [{model_basename(model_name)}]"
+    return (
+        f"IDIOLECT // {target_name.upper()}@{run_id[:8]} "
+        f"[{model_basename(model_name)}]"
+    )
 
 
 def load_assistant(run_path: Path, dataset_path: Path) -> Assistant:

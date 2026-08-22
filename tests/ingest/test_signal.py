@@ -160,5 +160,5 @@ def test_parser_links_native_mentions_to_people(
     assert tagged.quote is not None
     assert tagged.quote.author_id == target.author_id
     assert tagged.quote.text == "Maybe"
-    assert plain.text == "Karsten are you coming?"
+    assert plain.text == "DIXIE are you coming?"
     assert plain.mentions == ()

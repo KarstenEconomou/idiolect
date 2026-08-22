@@ -13,11 +13,11 @@ from idiolect.chat.discovery import (
 
 
 def test_assistant_name_uses_requested_identity_and_final_model_component() -> None:
-    """Check the full visible identity for hub and local model values."""
+    """Check uppercase identity and final model values."""
     assert model_basename("mlx-community/Qwen3-14B-4bit") == "Qwen3-14B-4bit"
     assert model_basename("/models/local-model/") == "local-model"
-    assert canonical_name("Karsten", "7f3a91c2" + "0" * 56, "org/Qwen") == (
-        "IDIOLECT // Karsten@7f3a91c2 [Qwen]"
+    assert canonical_name("target", "7f3a91c2" + "0" * 56, "org/Qwen") == (
+        "IDIOLECT // TARGET@7f3a91c2 [Qwen]"
     )
 
 

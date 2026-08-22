@@ -36,7 +36,7 @@ def test_renderer_preserves_name_and_native_addressing() -> None:
         reply_to=prior.id,
         quote=Quote(_TARGET, prior.sent_at, "I'll check"),
     )
-    plain = _message("plain", _FRIEND, "Karsten, can you answer?", 2)
+    plain = _message("plain", _FRIEND, "DIXIE, can you answer?", 2)
     target = _message(
         "target-message",
         _TARGET,
@@ -54,39 +54,39 @@ def test_renderer_preserves_name_and_native_addressing() -> None:
 
     rendered = render_example(
         Example((prior, tagged, plain), target),
-        "Karsten",
+        "DIXIE",
         {_FRIEND: "friend"},
     )
 
-    assert "You are Karsten." in rendered.prompt
-    assert "[friend | mentions @Karsten | reply to Karsten: \"I'll check\"]" in rendered.prompt
-    assert "Hey @Karsten, coming?" in rendered.prompt
-    assert "[friend]\nKarsten, can you answer?" in rendered.prompt
-    assert "[next response | reply to friend: \"Hey @Karsten, coming?\"]" in rendered.prompt
+    assert "You are DIXIE." in rendered.prompt
+    assert "[friend | mentions @DIXIE | reply to DIXIE: \"I'll check\"]" in rendered.prompt
+    assert "Hey @DIXIE, coming?" in rendered.prompt
+    assert "[friend]\nDIXIE, can you answer?" in rendered.prompt
+    assert "[next response | reply to friend: \"Hey @DIXIE, coming?\"]" in rendered.prompt
     assert rendered.completion == "yeah @friend"
 
 
 def test_renderer_uses_identity_when_display_names_match() -> None:
     """Check that a same-name person does not become the target."""
-    other = PersonId("other-karsten")
+    other = PersonId("other-dixie")
     context = _message(
         "context",
         _FRIEND,
-        "Ask @Karsten or Karsten",
+        "Ask @DIXIE or DIXIE",
         0,
-        mentions=(Mention(other, 4, 8, "Karsten"),),
+        mentions=(Mention(other, 4, 6, "DIXIE"),),
     )
     target = _message("target-message", _TARGET, "which one", 1)
 
     rendered = render_example(
         Example((context,), target),
-        "Karsten",
-        {_FRIEND: "friend", other: "other_karsten"},
+        "DIXIE",
+        {_FRIEND: "friend", other: "other_dixie"},
     )
 
-    assert "mentions @Karsten" not in rendered.prompt
-    assert "Ask @other_karsten" in rendered.prompt
-    assert "or Karsten" in rendered.prompt
+    assert "mentions @DIXIE" not in rendered.prompt
+    assert "Ask @other_dixie" in rendered.prompt
+    assert "or DIXIE" in rendered.prompt
 
 
 def test_renderer_requires_stable_non_target_names() -> None:
@@ -95,7 +95,7 @@ def test_renderer_requires_stable_non_target_names() -> None:
     target = _message("target-message", _TARGET, "hi", 1)
 
     with pytest.raises(RenderError, match="stable pseudonym"):
-        render_example(Example((context,), target), "Karsten", {})
+        render_example(Example((context,), target), "DIXIE", {})
 
 
 def test_renderer_marks_media_that_accompanies_context_text() -> None:
@@ -113,7 +113,7 @@ def test_renderer_marks_media_that_accompanies_context_text() -> None:
 
     rendered = render_example(
         Example((context,), target),
-        "Karsten",
+        "DIXIE",
         {_FRIEND: "friend"},
     )
 
@@ -153,11 +153,11 @@ def test_renderer_interleaves_only_causal_reactions() -> None:
 
     rendered = render_example(
         Example((context,), target),
-        "Karsten",
+        "DIXIE",
         {_FRIEND: "friend"},
     )
 
-    assert "[Karsten reacted \"👍\" to friend's message]" in rendered.prompt
+    assert "[DIXIE reacted \"👍\" to friend's message]" in rendered.prompt
     assert "❌" not in rendered.prompt
 
 

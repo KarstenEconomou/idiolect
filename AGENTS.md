@@ -20,7 +20,7 @@ Keep stage boundaries explicit:
 
 Keep external systems behind the existing typed ports. Keep protocol modules free of backend behavior. Keep the CLI thin and put application behavior in its stage module.
 
-Keep chat prompts byte-compatible with the shared training conversation grammar. Show the user as `You`, but serialize the configured participant name in prompts. Format every assistant identity as `IDIOLECT // NAME@run [MODEL]`, where `run` is a unique eight-character run prefix and `MODEL` is the final model repository or path component. Keep the TUI sparse and use its near-black, amber, cyan, warm off-white, muted gray, and restrained red tokens consistently. Render transcript content as literal plain text.
+Keep chat prompts byte-compatible with the shared training conversation grammar. Show the user as `You`, but serialize the configured participant name in prompts. Format every assistant identity as `IDIOLECT // NAME@run [MODEL]`, where `NAME` is the uppercase display of the recorded target name, `run` is a unique eight-character run prefix, and `MODEL` is the final model repository or path component. Do not change target-name casing inside model prompts. Keep the TUI sparse and use its near-black, amber, cyan, warm off-white, muted gray, and restrained red tokens consistently. Render transcript content as literal plain text.
 
 ## Commands
 

@@ -34,7 +34,7 @@ def test_import_and_stats_use_configured_store(
             "build",
             "--self",
             "--name",
-            "Karsten",
+            "DIXIE",
         )
     )
     build_output = capsys.readouterr()
@@ -102,7 +102,7 @@ def test_train_command_uses_fixed_dataset_and_config(
             "build",
             "--self",
             "--name",
-            "Karsten",
+            "DIXIE",
         )
     ) == 0
     capsys.readouterr()

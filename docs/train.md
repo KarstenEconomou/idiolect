@@ -79,7 +79,7 @@ split, and a test split when `test = true`.
 Build and note one dataset path:
 
 ```console
-just data build Karsten
+just data build DIXIE
 ```
 
 Stop collection only during this dataset build. Start collection after the dataset is complete. Training reads only fixed files, so collection can run during training.
