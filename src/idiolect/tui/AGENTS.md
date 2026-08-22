@@ -45,14 +45,15 @@ TUI tests.
 - Present assistants and saved snapshots in `REGISTRY`, a vertical,
   keyboard-only table without search or pointer activation. Start on the first
   available row, skip unavailable rows, and select with arrows and Enter. Keep
-  row identity primary and type metadata dim. Keep unavailable rows red and dim.
-- Keep entry status dim like type metadata. Remove dim styling only
-  from the selected `READY` entry. For a `TRACE`, keep the canonical model
-  identity on the primary line and show its trace name one cell inward on a
-  second metadata-colored line. Expand trace names by default. Let Space toggle
-  all trace names whenever the registry contains a TRACE. Treat an expanded
-  trace name like TYPE metadata while its TRACE is highlighted: use
-  the selection accent with dim styling.
+  row identity primary. Treat TYPE and ENTRY like slash-command descriptions:
+  use metadata gray while idle and the dimmed selection accent while selected.
+  Treat unavailable rows like unavailable `/save`: metadata gray and dimmed.
+- For a `TRACE`, keep the canonical model identity first and show its trace name
+  to the right in the remaining MODEL width. Ellipsize only the trace name when
+  it does not fit. Expand trace names by default. Let Space toggle all trace
+  names whenever the registry contains a TRACE. Treat an expanded trace name
+  like TYPE and ENTRY while its TRACE is highlighted: use the selection accent
+  with dim styling.
 - Keep slash commands in a vertical menu above the composer. Show at most three
   rows, with command names in a fixed-width column and descriptions in the
   remaining width. Keep composer focus. Wrap enabled commands with arrow keys;
@@ -81,6 +82,11 @@ TUI tests.
   directly below the composer with no vertical padding.
 - Keep REGISTRY full-width like chat. Do not add an outer horizontal inset or a
   centered maximum width around its existing two-cell content gutter.
+- In SPECS, treat field names like command names and values like command
+  descriptions: use terminal-default field names and metadata-gray values. Keep
+  section headings white and bold. Inset every visual line of a prompt-format
+  value by one cell, including wrapped continuation lines, and omit trailing
+  blank system-prompt lines. Dim the unfilled portion of evaluation bars.
 - Hide transcript and composer scrollbars. Keep the registry scrollbar in the
   metadata color. Separate turns with one blank line, put the speaker label on
   its own line, and inset every rendered message line by one cell. Use the same

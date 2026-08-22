@@ -8,6 +8,8 @@ from dataclasses import asdict
 from typing import Any
 
 from rich.color import Color
+from rich.console import Console, ConsoleOptions, RenderableType, RenderResult
+from rich.padding import Padding
 from rich.segment import Segment, Segments
 from rich.style import Style
 from rich.text import Text
@@ -37,7 +39,56 @@ _PROMPT_BLOCK_FIELDS = frozenset(
 )
 _DEFAULT_SCROLL_BACK = Color.parse("#555555")
 _DEFAULT_SCROLL_BAR = Color.parse("bright_magenta")
-_FIELD_NAME = Style(dim=True, bold=False)
+_FIELD_NAME = Style(bold=False)
+_DESCRIPTION = Style(color="bright_black", bold=False)
+_MUTED_DESCRIPTION = Style(color="bright_black", dim=True, bold=False)
+
+
+class SpecsDocument:
+    """Render specification lines with independently padded prompt blocks."""
+
+    def __init__(self) -> None:
+        """Create an empty specification document."""
+        self._renderables: list[RenderableType] = []
+        self._text = Text()
+
+    def __bool__(self) -> bool:
+        """Return true when the document contains a rendered line."""
+        return bool(self._renderables)
+
+    @property
+    def plain(self) -> str:
+        """Return the logical text used by tests and accessibility tools."""
+        return self._text.plain
+
+    def get_style_at_offset(self, console: Console, offset: int) -> Style:
+        """Return the resolved logical-text style at one offset."""
+        return self._text.get_style_at_offset(console, offset)
+
+    def append_line(self, line: Text | None = None) -> None:
+        """Append one unpadded visual line."""
+        rendered = line or Text()
+        self._renderables.append(rendered)
+        self._text.append_text(rendered)
+        self._text.append("\n")
+
+    def append_prompt(self, label: Text, value: Text) -> None:
+        """Append one label and a value with a one-cell render inset."""
+        self.append_line(label)
+        self._renderables.append(Padding(value, (0, 0, 0, 1)))
+        for line in value.split("\n", allow_blank=True):
+            self._text.append(" ")
+            self._text.append_text(line)
+            self._text.append("\n")
+
+    def __rich_console__(
+        self,
+        console: Console,
+        options: ConsoleOptions,
+    ) -> RenderResult:
+        """Yield each specification block to Rich."""
+        del console, options
+        yield from self._renderables
 
 
 class HalfCellScrollBarRender(ScrollBarRender):
@@ -86,9 +137,9 @@ def render_specs(
     kind: str,
     width: int,
     trace: SavedChat | None = None,
-) -> Text:
+) -> SpecsDocument:
     """Return one responsive model specification document."""
-    document = Text()
+    document = SpecsDocument()
     _section(document, "IDENTITY")
     _field(document, "TYPE", kind)
     _field(document, "TARGET", assistant.target_name)
@@ -146,24 +197,24 @@ def render_specs(
     if kind == "BASE" and assistant.target_name.upper() == "DIXIE":
         _synthetic_evaluation(document, width)
     else:
-        _field(document, "STATUS", "NOT EVALUATED", value_style="bright_black")
+        _field(document, "STATUS", "NOT EVALUATED")
         _note(document, "No recorded evaluation was supplied to this registry.")
     return document
 
 
-def _section(document: Text, name: str) -> None:
+def _section(document: SpecsDocument, name: str) -> None:
     """Append one specification section heading."""
     if document:
-        document.append("\n")
-    document.append(f"{_label(name)}\n", style="bold white")
+        document.append_line()
+    document.append_line(Text(_label(name), style="bold white"))
 
 
 def _field(
-    document: Text,
+    document: SpecsDocument,
     name: str,
     value: object,
     *,
-    value_style: str = "white",
+    value_style: str | Style = _DESCRIPTION,
 ) -> None:
     """Append one aligned field and preserve multiline values."""
     label = _label(name)
@@ -178,32 +229,31 @@ def _field(
         )
         return
     displayed = _display(value)
-    document.append(f"{label:<{_KEY_WIDTH}}", style=_FIELD_NAME)
-    document.append(displayed, style=value_style)
-    document.append("\n")
+    line = Text(f"{label:<{_KEY_WIDTH}}", style=_FIELD_NAME)
+    line.append(displayed, style=value_style)
+    document.append_line(line)
 
 
 def _prompt_block_field(
-    document: Text,
+    document: SpecsDocument,
     label: str,
     value: str,
-    value_style: str,
+    value_style: str | Style,
     *,
     system_prompt: bool,
 ) -> None:
-    """Append one prompt-format value at the fixed value offset."""
-    document.append(label, style=_FIELD_NAME)
-    document.append("\n")
+    """Append one prompt-format value with one-cell wrapped indentation."""
     normalized = value.replace("\r\n", "\n").replace("\r", "\n")
     if system_prompt:
-        lines = normalized.split("\n") if normalized else ["—"]
+        normalized = normalized.rstrip("\n")
+        displayed = normalized or "—"
     else:
         visible = json.dumps(normalized, ensure_ascii=False)[1:-1]
-        lines = [visible or "—"]
-    for content in lines:
-        document.append(" ", style=_FIELD_NAME)
-        document.append(content, style=value_style)
-        document.append("\n")
+        displayed = visible or "—"
+    document.append_prompt(
+        Text(label, style=_FIELD_NAME),
+        Text(displayed, style=value_style),
+    )
 
 
 def _label(value: str) -> str:
@@ -212,10 +262,9 @@ def _label(value: str) -> str:
     return " ".join(_ABBREVIATIONS.get(word, word) for word in words)
 
 
-def _note(document: Text, value: str) -> None:
+def _note(document: SpecsDocument, value: str) -> None:
     """Append one metadata note."""
-    document.append(value, style="bright_black")
-    document.append("\n")
+    document.append_line(Text(value, style=_DESCRIPTION))
 
 
 def _display(value: object) -> str:
@@ -257,7 +306,7 @@ def _split_counts(assistant: Assistant) -> str:
     )
 
 
-def _synthetic_evaluation(document: Text, width: int) -> None:
+def _synthetic_evaluation(document: SpecsDocument, width: int) -> None:
     """Append the deterministic DIXIE base-model scorecard."""
     _field(document, "STATUS", "SYNTHETIC // UI FIXTURE")
     _field(document, "SUITE", "FIDELITY")
@@ -265,7 +314,7 @@ def _synthetic_evaluation(document: Text, width: int) -> None:
     _field(document, "MACRO MEAN NLL", 2.10)
     _field(document, "CORPUS PERPLEXITY", 8.21)
     _field(document, "VOICE 3-GRAM JSD", 0.118)
-    document.append("\n")
+    document.append_line()
     bar_width = max(8, min(24, width - _KEY_WIDTH - 23))
     for label, value, limit in (
         ("EMPTY OUTPUT", 0.000, 0.020),
@@ -278,7 +327,7 @@ def _synthetic_evaluation(document: Text, width: int) -> None:
 
 
 def _metric(
-    document: Text,
+    document: SpecsDocument,
     label: str,
     value: float,
     limit: float,
@@ -287,9 +336,12 @@ def _metric(
     """Append one bounded evaluation metric bar."""
     passed = value <= limit
     filled = min(width, round(width * value / limit)) if limit else width
-    document.append(f"{label:<{_KEY_WIDTH}}", style=_FIELD_NAME)
-    document.append("█" * filled, style="white" if passed else "red")
-    document.append("░" * (width - filled), style="bright_black")
-    document.append(f"  {value:>5.1%} / {limit:.1%}  ", style="white")
-    document.append("PASS" if passed else "FAIL", style="white" if passed else "bold red")
-    document.append("\n")
+    line = Text(f"{label:<{_KEY_WIDTH}}", style=_FIELD_NAME)
+    line.append("█" * filled, style=_DESCRIPTION if passed else "red")
+    line.append("░" * (width - filled), style=_MUTED_DESCRIPTION)
+    line.append(f"  {value:>5.1%} / {limit:.1%}  ", style=_DESCRIPTION)
+    line.append(
+        "PASS" if passed else "FAIL",
+        style=_DESCRIPTION if passed else "bold red",
+    )
+    document.append_line(line)

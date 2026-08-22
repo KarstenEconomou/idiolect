@@ -104,7 +104,7 @@ class ChatApp(App[None]):
     #chooser { height: 1fr; padding: 0 2; border: none; color: $terminal; background: $terminal; background-tint: transparent; scrollbar-color: $metadata; scrollbar-background: $terminal; }
     OptionList > .option-list--option { padding: 0; color: $terminal; background: $terminal; }
     OptionList > .option-list--option-highlighted, OptionList:focus > .option-list--option-highlighted { color: $accent; background: $terminal; text-style: bold; }
-    OptionList > .option-list--option-disabled { color: $failure; text-style: dim; }
+    OptionList > .option-list--option-disabled { color: $metadata; text-style: dim; }
     OptionList > .option-list--option-hover { color: $accent; background: $terminal; text-style: bold; }
     #catalog-hints { height: 1; color: $metadata; background: $terminal; padding: 0 2; }
     #catalog-error { display: none; height: 1; color: $failure; background: $terminal; padding: 0 2; text-align: right; }
@@ -113,7 +113,7 @@ class ChatApp(App[None]):
     #specs-identity { height: auto; min-height: 1; margin-top: 1; padding: 0 2; color: $accent; text-style: bold; }
     #specs-rule { height: 1; margin: 0; padding: 0 2; color: $metadata; }
     #specs-scroll { height: 1fr; padding: 0 2; background: $terminal; scrollbar-size-vertical: 1; scrollbar-color: $metadata; scrollbar-color-hover: $metadata; scrollbar-color-active: $metadata; scrollbar-background: $terminal; scrollbar-background-hover: $terminal; scrollbar-background-active: $terminal; }
-    #specs-body { width: 100%; height: auto; color: ansi_white; background: $terminal; }
+    #specs-body { width: 100%; height: auto; color: $terminal; background: $terminal; }
     #specs-hints { height: 1; color: $metadata; background: $terminal; padding: 0 2; }
     #chat { display: none; }
     #identity { height: 1; padding: 0 2; color: $accent; background: $terminal; text-style: bold; }

@@ -48,12 +48,13 @@ does not download a model.
 The landing screen displays the base persona, verified adapters, and saved
 snapshots in `REGISTRY`. It has no search field or pointer activation.
 Use the arrow keys to choose a row and Enter to connect. TYPE identifies a BASE,
-CONSTRUCT, or TRACE. TYPE and ENTRY values are muted metadata. The selected
-`READY` entry becomes bright;
-unavailable entries remain failures. A saved `TRACE` keeps the canonical model
-identity on its first line and shows the trace name indented below it in metadata
-gray. Trace names are expanded by default and use the muted selection color with
-their highlighted TRACE, matching TYPE. Press Space from any registry
+CONSTRUCT, or TRACE. TYPE and ENTRY use the same description treatment as slash
+commands: metadata gray while idle and dimmed accent color with their selected
+model. Unavailable FAULT rows use the muted, dimmed treatment of an unavailable
+`/save`. A saved `TRACE` keeps the canonical model identity first and shows the
+trace name to its right in metadata gray. A long trace name ends with an ellipsis
+before TYPE. Trace names are expanded by default and use the muted selection
+color with their highlighted TRACE, matching TYPE and ENTRY. Press Space from any registry
 row to collapse or expand all trace names together. Press Backspace while a
 TRACE is highlighted to open the horizontal `TRACE` management menu. `RETAIN` is
 selected by default and Escape also keeps the trace. Its heading shows the
@@ -69,10 +70,13 @@ Press S on any `READY` row to open `SPECS` without resolving or loading the
 model. The scrollable page shows the complete verified model identity, source,
 revision, digests, prompt and generation policy, and available run, dataset, and
 TRACE lineage. It uses the compact `CTX`, `TOK`, `REP`, `GEN`, and `EVAL` labels.
+Field names use the command menu's primary text, while values use its
+metadata-gray description treatment. Section headings remain white and bold.
 Prompt-format values use the same one-cell inset as transcript turns, including
-every line of a multiline system prompt. Prefixes and suffixes show control
-whitespace with escapes such as `\n`. Press Escape to return to the same
-highlighted registry row.
+wrapped continuation lines and every retained line of a multiline system
+prompt. Trailing blank system-prompt lines are omitted. Prefixes and suffixes
+show control whitespace with escapes such as `\n`. Press Escape to return to
+the same highlighted registry row.
 The DIXIE BASE page includes a deterministic fidelity scorecard labeled
 `SYNTHETIC // UI FIXTURE`; its values demonstrate the terminal graphics and are
 not measurements. CONSTRUCT and TRACE pages show `NOT EVALUATED` because chat

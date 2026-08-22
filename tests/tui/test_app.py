@@ -24,7 +24,7 @@ from idiolect.chat.worker import WorkerState
 from idiolect.config import ChatConfig, GenerationConfig, TrainDataConfig
 from idiolect.model import ModelSpec
 from idiolect.tui.app import ChatApp
-from idiolect.tui.specs import HalfCellScrollBarRender
+from idiolect.tui.specs import HalfCellScrollBarRender, SpecsDocument
 from idiolect.tui.widgets import (
     CommandMenu,
     Composer,
@@ -169,6 +169,50 @@ def test_specs_page_uses_a_stable_half_cell_scrollbar(tmp_path) -> None:
     asyncio.run(verify())
 
 
+def test_specs_prompt_wrap_uses_the_transcript_inset(tmp_path) -> None:
+    """Check final viewport wrapping keeps every prompt line inset."""
+    original = _assistant()
+    base_data = original.base_data
+    assert base_data is not None
+    assistant = replace(
+        original,
+        base_data=replace(
+            base_data,
+            system_prompt=f"{'A' * 100}\n",
+        ),
+    )
+    app = ChatApp(
+        ChatConfig(output=tmp_path),
+        GenerationConfig(),
+        assistants=(DiscoveryItem(assistant.name, "BASE", None, assistant),),
+    )
+
+    async def verify() -> None:
+        async with app.run_test(size=(48, 24)) as pilot:
+            await pilot.press("s")
+            await pilot.pause()
+
+            body = app.query_one("#specs-body", Static)
+            rendered = [
+                body.render_line(y).text.rstrip()
+                for y in range(body.virtual_size.height)
+            ]
+            start = rendered.index("SYSTEM PROMPT") + 1
+            end = next(
+                index
+                for index in range(start, len(rendered))
+                if rendered[index].startswith("PROMPT ROLE")
+            )
+            prompt_lines = rendered[start:end]
+
+            assert len(prompt_lines) == 3
+            assert all(line.startswith(" ") for line in prompt_lines)
+            assert "".join(line[1:] for line in prompt_lines) == "A" * 100
+            assert all(line != " " for line in prompt_lines)
+
+    asyncio.run(verify())
+
+
 def test_registry_opens_trace_specs_with_saved_lineage_and_policy(tmp_path) -> None:
     """Check TRACE registry wiring uses the saved model and generation policy."""
     chat = ChatConfig(output=tmp_path)
@@ -200,7 +244,7 @@ def test_registry_opens_trace_specs_with_saved_lineage_and_policy(tmp_path) -> N
             await pilot.pause()
 
             content = app.query_one("#specs-body", Static).content
-            assert isinstance(content, Text)
+            assert isinstance(content, SpecsDocument)
             assert "TRACE\n" in content.plain
             assert trace.title in content.plain
             assert trace.id in content.plain
@@ -227,7 +271,13 @@ def test_registry_does_not_open_specs_for_a_fault(tmp_path) -> None:
 
     async def verify() -> None:
         async with app.run_test(size=(80, 24)) as pilot:
-            assert app.query_one("#chooser", OptionList).highlighted is None
+            chooser = app.query_one("#chooser", OptionList)
+            assert chooser.highlighted is None
+            disabled = chooser.get_component_rich_style(
+                "option-list--option-disabled"
+            )
+            assert disabled.color is not None and disabled.color.number == 8
+            assert disabled.dim
 
             await pilot.press("s")
             await pilot.pause()
@@ -299,10 +349,8 @@ def test_registry_expands_and_collapses_trace_names(tmp_path) -> None:
             chooser = app.query_one("#chooser", OptionList)
             trace = chooser.get_option_at_index(1).prompt
             assert isinstance(trace, Text)
-            model_line, trace_line = trace.plain.splitlines()
-            assert model_line.startswith(assistant.name)
-            assert "Night session" not in model_line
-            assert trace_line.startswith(" Night session")
+            assert trace.plain.startswith(f"{assistant.name} Night session")
+            assert "\n" not in trace.plain
             second_trace = chooser.get_option_at_index(2).prompt
             assert isinstance(second_trace, Text)
             assert "Morning session" in second_trace.plain
@@ -315,7 +363,9 @@ def test_registry_expands_and_collapses_trace_names(tmp_path) -> None:
             unselected_entry = trace.get_style_at_offset(
                 Console(), trace.plain.index("READY")
             )
-            assert unselected_entry.dim
+            assert unselected_entry.color is not None
+            assert unselected_entry.color.number == 8
+            assert not unselected_entry.dim
 
             await pilot.press("space")
             await pilot.pause()
@@ -348,7 +398,8 @@ def test_registry_expands_and_collapses_trace_names(tmp_path) -> None:
             selected_name = trace.get_style_at_offset(
                 Console(), trace.plain.index("Night session")
             )
-            assert selected_entry.dim is False
+            assert selected_entry.color is None
+            assert selected_entry.dim
             assert selected_name.color is None
             assert selected_name.dim
             assert "SPACE DETAILS" in str(
@@ -428,7 +479,9 @@ def test_registry_confirms_trace_erasure(tmp_path) -> None:
             hidden_subject = chooser.get_option_at_index(1).prompt
             assert isinstance(hidden_subject, Text)
             assert "Night session" not in hidden_subject.plain
-            assert "\n" in hidden_subject.plain
+            assert "\n" not in hidden_subject.plain
+            assert hidden_subject.plain.startswith(saved.assistant.name)
+            assert hidden_subject.plain.endswith("READY")
             app._trace_blink_visible = True
             app._refresh_catalog_prompts(f"saved-{saved.id}")
 

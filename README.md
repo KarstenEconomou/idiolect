@@ -168,12 +168,15 @@ are also available. The visible target-name segment is always uppercase. The
 landing table is the `REGISTRY`. It has no search field or pointer
 activation. Use the arrow keys to choose a row and Enter to connect. Registry
 rows show MODEL identity, TYPE, and ENTRY readiness;
-saved TRACE rows show their names below the canonical model identity and use the
-muted metadata selection style; press Space from any registry row to collapse or
+TYPE and ENTRY use the slash menu's description styling, and FAULT rows match an
+unavailable `/save`. Saved TRACE rows show their ellipsized names to the right of
+the canonical model identity; press Space from any registry row to collapse or
 expand all trace names. Press S on a READY row to open its scrollable SPECS page
 without loading the model, and press Escape to return to the same row. SPECS
-shows model, policy, and lineage metadata with compact labels and prompt-format
-values aligned to the transcript's one-cell inset. DIXIE BASE also shows a clearly
+shows model, policy, and lineage metadata with the command menu's primary-label
+and metadata-description styling, compact labels, and prompt-format values
+aligned to the transcript's one-cell inset across wrapped lines. Trailing blank
+system-prompt lines are omitted. DIXIE BASE also shows a clearly
 labeled synthetic fidelity scorecard; adapters and traces remain NOT EVALUATED
 because chat does not inspect private evaluation artifacts. When a TRACE is
 highlighted, press Backspace to manage it in the horizontal TRACE menu. The

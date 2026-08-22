@@ -95,20 +95,24 @@ def test_dixie_fixture_bars_follow_width_and_visual_language(tmp_path: Path) -> 
         wide.plain.index("example/M"),
     )
     bar = wide.get_style_at_offset(console, wide.plain.index("█"))
+    empty_bar = wide.get_style_at_offset(console, wide.plain.index("░"))
     passed = wide.get_style_at_offset(console, wide.plain.index("PASS"))
 
     assert narrow_bar == 8
     assert wide_bar == 24
     assert heading.bold
     assert heading.color is not None and heading.color.number == 7
-    assert fixture.color is not None and fixture.color.number == 7
-    assert model_value.color is not None and model_value.color.number == 7
-    assert bar.color is not None and bar.color.number == 7
-    assert passed.color is not None and passed.color.number == 7
+    assert fixture.color is not None and fixture.color.number == 8
+    assert model_value.color is not None and model_value.color.number == 8
+    assert bar.color is not None and bar.color.number == 8
+    assert empty_bar.color is not None and empty_bar.color.number == 8
+    assert empty_bar.dim
+    assert passed.color is not None and passed.color.number == 8
     for label in ("NAME", "SYSTEM PROMPT", "TRUNCATION"):
         field_name = wide.get_style_at_offset(console, wide.plain.index(label))
         assert field_name.color is None
-        assert field_name.dim
+        assert not field_name.dim
+        assert not field_name.bold
 
 
 def test_specs_abbreviate_telemetry_and_align_prompt_format_blocks(
@@ -149,6 +153,23 @@ def test_specs_abbreviate_telemetry_and_align_prompt_format_blocks(
     assert "GENERATION" not in document.plain
 
 
+def test_prompt_blocks_drop_trailing_system_blank(
+    tmp_path: Path,
+) -> None:
+    """Check logical prompt lines preserve inset without a trailing blank."""
+    assistant = _base(
+        tmp_path,
+        system_prompt="First line.\n\nSecond line.\n",
+    )
+
+    document = render_specs(assistant, GenerationConfig(), "BASE", 28)
+    system_block = document.plain.split("SYSTEM PROMPT\n", 1)[1].split(
+        "PROMPT ROLE",
+        1,
+    )[0]
+    assert system_block == " First line.\n \n Second line.\n"
+
+
 def test_specs_scrollbar_uses_a_half_cell_thumb() -> None:
     """Check the narrow scrollbar renderer keeps one clickable cell."""
     rendered = HalfCellScrollBarRender.render_bar(
@@ -173,7 +194,11 @@ def _bar_cells(document: str, label: str) -> int:
     return line.count("█") + line.count("░")
 
 
-def _base(tmp_path: Path) -> Assistant:
+def _base(
+    tmp_path: Path,
+    *,
+    system_prompt: str = "First line.\n\nSecond line.",
+) -> Assistant:
     return Assistant(
         "IDIOLECT // DIXIE@BASE [M]",
         "DIXIE",
@@ -184,7 +209,7 @@ def _base(tmp_path: Path) -> Assistant:
         ModelSpec("example/M", "hub", "revision-1", tmp_path / "cache", False),
         TrainDataConfig(
             format="chat-template",
-            system_prompt="First line.\n\nSecond line.",
+            system_prompt=system_prompt,
             prompt_role="user",
             prompt_suffix="\n",
             completion_role="assistant",

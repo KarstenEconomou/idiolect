@@ -68,31 +68,55 @@ def test_catalog_type_labels_identify_entry_lineage() -> None:
     assert all(kind in row for kind, row in rows.items())
 
 
-def test_catalog_entry_matches_metadata_until_ready_row_is_selected() -> None:
-    """Check muted metadata fields and selected READY entry emphasis."""
+def test_catalog_type_and_entry_follow_description_selection_style() -> None:
+    """Check TYPE and ENTRY use the same slash-description styling."""
     layout = CatalogLayout.for_terminal(80)
-    unselected = layout.text("MODEL", "TYPE", "READY")
-    selected = layout.text("MODEL", "TYPE", "READY", selected=True)
+    unselected = layout.text("MODEL", "BASE", "READY")
+    selected = layout.text("MODEL", "BASE", "READY", selected=True)
     console = Console()
 
     type_style = unselected.get_style_at_offset(
-        console, unselected.plain.index("TYPE")
+        console, unselected.plain.index("BASE")
     )
     entry_style = unselected.get_style_at_offset(
         console, unselected.plain.index("READY")
+    )
+    selected_type_style = selected.get_style_at_offset(
+        console, selected.plain.index("BASE")
     )
     selected_entry_style = selected.get_style_at_offset(
         console, selected.plain.index("READY")
     )
 
-    assert type_style.dim and type_style.bold is False
-    assert entry_style.dim and entry_style.bold is False
-    assert selected_entry_style.dim is False
+    assert type_style.color is not None and type_style.color.number == 8
+    assert entry_style.color is not None and entry_style.color.number == 8
+    assert not type_style.dim and type_style.bold is False
+    assert not entry_style.dim and entry_style.bold is False
+    assert selected_type_style.color is None and selected_type_style.dim
+    assert selected_entry_style.color is None and selected_entry_style.dim
+    assert selected_type_style.bold is False
     assert selected_entry_style.bold is False
 
 
-def test_catalog_trace_places_metadata_name_below_model() -> None:
-    """Check the expanded trace hierarchy and metadata name color."""
+def test_catalog_fault_matches_an_unavailable_slash_command() -> None:
+    """Check every unavailable row field is muted and dimmed."""
+    row = CatalogLayout.for_terminal(80).text(
+        "Unavailable model",
+        "—",
+        "FAULT",
+        failed=True,
+    )
+    console = Console()
+
+    for text in ("Unavailable model", "—", "FAULT"):
+        style = row.get_style_at_offset(console, row.plain.index(text))
+        assert style.color is not None and style.color.number == 8
+        assert style.dim
+        assert style.bold is False
+
+
+def test_catalog_trace_places_metadata_name_after_model() -> None:
+    """Check inline trace metadata and its selected description style."""
     layout = CatalogLayout.for_terminal(80)
     row = layout.text(
         "IDIOLECT // DIXIE@BASE [M]",
@@ -100,14 +124,13 @@ def test_catalog_trace_places_metadata_name_below_model() -> None:
         "READY",
         trace_name="Night session",
     )
-    model_line, trace_line = row.plain.splitlines()
     trace_style = row.get_style_at_offset(
         Console(), row.plain.index("Night session")
     )
 
-    assert model_line.startswith("IDIOLECT // DIXIE@BASE [M]")
-    assert "Night session" not in model_line
-    assert trace_line.startswith(" Night session")
+    assert "\n" not in row.plain
+    assert row.plain.startswith("IDIOLECT // DIXIE@BASE [M] Night session")
+    assert row.plain.index("Night session") < row.plain.index("TRACE")
     assert trace_style.color is not None
     assert trace_style.color.number == 8
 
@@ -123,3 +146,21 @@ def test_catalog_trace_places_metadata_name_below_model() -> None:
     )
     assert selected_trace_style.color is None
     assert selected_trace_style.dim
+
+
+def test_catalog_ellipsizes_only_the_inline_trace_name() -> None:
+    """Check a long trace name yields before the canonical model identity."""
+    layout = CatalogLayout.for_terminal(80)
+    model = "IDIOLECT // DIXIE@BASE [M]"
+    row = layout.text(
+        model,
+        "TRACE",
+        "READY",
+        trace_name="A trace name that is much too long for the remaining model column",
+    )
+
+    model_cell = row.plain[: layout.model]
+    assert model_cell.startswith(f"{model} ")
+    assert model_cell.endswith("…")
+    assert "much too long" not in model_cell
+    assert cell_len(row.plain) == 76
