@@ -17,7 +17,12 @@ from textual.widgets.option_list import Option
 from idiolect.chat.discovery import Assistant, DiscoveryItem
 from idiolect.chat.runtime import ChatError, ChatRuntime
 from idiolect.chat.state import ChatSession
-from idiolect.chat.storage import ChatStorageError, ChatStore, SavedChat
+from idiolect.chat.storage import (
+    ChatStorageError,
+    ChatStore,
+    SavedChat,
+    default_chat_title,
+)
 from idiolect.chat.worker import WorkerError
 from idiolect.config import ChatConfig, GenerationConfig
 from idiolect.tui.catalog import CatalogLayout
@@ -29,6 +34,7 @@ from idiolect.tui.widgets import (
     ConfirmModal,
     KeyboardOptionList,
     LoadingStatus,
+    TraceMenuModal,
     TraceNameModal,
     Transcript,
 )
@@ -49,8 +55,8 @@ class ChatApp(App[None]):
     $metadata: ansi_bright_black;
     $failure: ansi_red;
     Screen { background: $terminal; color: $terminal; }
-    #landing { align: center middle; padding: 1 2; }
-    #landing-box { width: 100%; max-width: 120; height: 100%; background: $terminal; }
+    #landing { align: left top; padding: 0; }
+    #landing-box { width: 100%; max-width: 100%; height: 100%; background: $terminal; }
     #watermark { color: $accent; height: 5; padding: 0 2; text-align: left; text-style: bold; }
     #catalog-heading { height: 1; margin-top: 1; padding: 0 2; }
     #catalog-title { text-style: bold; }
@@ -66,6 +72,7 @@ class ChatApp(App[None]):
     OptionList > .option-list--option-disabled { color: $failure; text-style: dim; }
     OptionList > .option-list--option-hover { color: $accent; background: $terminal; text-style: bold; }
     #catalog-hints { height: 1; color: $metadata; background: $terminal; padding: 0 2; }
+    #catalog-error { display: none; height: 1; color: $failure; background: $terminal; padding: 0 2; text-align: right; }
     #footer { height: 1; color: $metadata; background: $terminal; padding: 0 2; }
     #chat { display: none; }
     #identity { height: 2; padding: 0 2; color: $accent; background: $terminal; border-bottom: solid $metadata; text-style: bold; }
@@ -87,7 +94,9 @@ class ChatApp(App[None]):
     .command-action.-selected .command-name { color: $accent; text-style: bold; }
     .command-action.-selected .command-description { color: $accent; text-style: dim; }
     .command-action.-disabled .command-name, .command-action.-disabled .command-description { color: $failure; text-style: dim; }
+    .command-action.-save-disabled .command-name, .command-action.-save-disabled .command-description { color: $metadata; text-style: dim; }
     #status { display: none; height: 1; color: $metadata; background: $terminal; padding: 0 2; }
+    #chat-error { display: none; height: 1; color: $failure; background: $terminal; padding: 0 2; text-align: right; }
     #confirm-dialog { width: 100%; height: 2; padding: 0 1; background: $terminal; border: none; }
     #confirm-message { height: 1; color: ansi_white; text-style: bold; }
     #confirm-actions { height: 1; }
@@ -100,6 +109,12 @@ class ChatApp(App[None]):
     #trace-name:focus { border: none; }
     #trace-name > .input--placeholder { color: $metadata; }
     #trace-name > .input--cursor { color: $terminal; background: $terminal; text-style: reverse; }
+    #trace-dialog { width: 100%; height: 2; padding: 0 1; background: $terminal; border: none; }
+    #trace-message { height: 1; color: ansi_white; text-style: bold; }
+    #trace-actions { height: 1; }
+    #trace-actions Button { width: auto; min-width: 0; height: 1; padding: 0 1; border: none; background: $terminal; color: $metadata; text-style: none; }
+    #trace-actions Button:hover { border: none; background: $terminal; color: $metadata; text-style: none; }
+    #trace-actions Button:focus, #trace-actions Button.-active { border: none; background: $terminal; color: $accent; text-style: bold; }
     Button { border: tall $metadata; background: $terminal; color: $terminal; }
     Button:hover, Button:focus, Button.-active { border: tall $accent; background: $terminal; color: $terminal; background-tint: transparent; tint: transparent; text-style: reverse bold; }
     ModalScreen { background: transparent; }
@@ -156,11 +171,17 @@ class ChatApp(App[None]):
         self._dismissed_command_text: str | None = None
         self._confirmation_open = False
         self._trace_name_open = False
+        self._trace_menu_id: str | None = None
+        self._trace_rename_open = False
+        self._trace_blink_visible = True
+        self._trace_blink_timer: Timer | None = None
         self._load_status_text: str | None = None
         self._status_text: str | None = None
         self._footer_text: str | None = None
         self._catalog_width: int | None = None
         self._loading_timer: Timer | None = None
+        self._error_timer: Timer | None = None
+        self._selected_catalog_key: str | None = None
 
     def compose(self) -> ComposeResult:
         """Create the landing and chat screen widgets."""
@@ -179,8 +200,9 @@ class ChatApp(App[None]):
             yield Static("", markup=False, id="catalog-columns")
             yield LoadingStatus(id="load-status")
             yield KeyboardOptionList(id="chooser")
+            yield LoadingStatus(id="catalog-error")
             yield Static(
-                "↑↓ MOVE    ENTER SELECT    ESC STOP    CTRL+C QUIT",
+                "↑↓ MOVE    ENTER SELECT    CTRL+C QUIT",
                 markup=False,
                 id="catalog-hints",
             )
@@ -190,6 +212,7 @@ class ChatApp(App[None]):
                 yield Transcript(id="transcript")
             yield CommandMenu(id="command-menu")
             yield LoadingStatus(id="status")
+            yield LoadingStatus(id="chat-error")
             with Horizontal(id="composer-bar"):
                 yield Static(">", markup=False, id="composer-prompt")
                 yield Composer(id="composer", language=None)
@@ -209,6 +232,12 @@ class ChatApp(App[None]):
         if self._loading_timer is not None:
             self._loading_timer.stop()
             self._loading_timer = None
+        if self._error_timer is not None:
+            self._error_timer.stop()
+            self._error_timer = None
+        if self._trace_blink_timer is not None:
+            self._trace_blink_timer.stop()
+            self._trace_blink_timer = None
 
     def on_resize(self, event: events.Resize) -> None:
         """Update catalog columns when the terminal width changes."""
@@ -240,6 +269,93 @@ class ChatApp(App[None]):
         else:
             self._collapsed_traces.add(row.id)
         self._refresh_catalog_prompts(event.key)
+
+    def on_keyboard_option_list_erase_requested(
+        self,
+        event: KeyboardOptionList.EraseRequested,
+    ) -> None:
+        """Open the action menu when the highlighted row is a saved trace."""
+        row = self._rows.get(event.key)
+        if isinstance(row, SavedChat):
+            self._trace_menu_id = row.id
+            self._trace_rename_open = False
+            self._start_trace_blink()
+            self._refresh_catalog_prompts(event.key)
+            self.push_screen(
+                TraceMenuModal(row.title),
+                lambda choice: self._after_trace_action(row, choice),
+            )
+
+    def _after_trace_action(self, trace: SavedChat, choice: str | None) -> None:
+        if choice == "rename":
+            self._trace_rename_open = True
+            self._update_catalog_hints()
+            self.push_screen(
+                TraceNameModal(trace.title, registry=True),
+                lambda title: self._after_trace_rename(trace, title),
+            )
+            return
+        self._close_trace_menu()
+        if choice != "erase":
+            return
+        if self.store is None:
+            self._show_error("Chat output is not configured")
+            return
+        try:
+            self.store.erase(trace.id)
+        except ChatStorageError as error:
+            self._show_error(str(error))
+            return
+        self._collapsed_traces.discard(trace.id)
+        self._fill_chooser()
+
+    def _after_trace_rename(self, trace: SavedChat, title: str | None) -> None:
+        self._close_trace_menu()
+        if title is None:
+            return
+        if self.store is None:
+            self._show_error("Chat output is not configured")
+            return
+        try:
+            renamed = self.store.rename(
+                trace.id,
+                title if title.strip() else trace.title,
+            )
+        except ChatStorageError as error:
+            self._show_error(str(error))
+            return
+        if trace.id in self._collapsed_traces:
+            self._collapsed_traces.remove(trace.id)
+            self._collapsed_traces.add(renamed.id)
+        self._fill_chooser()
+
+    def _close_trace_menu(self) -> None:
+        """Close TRACE controls and stop subject emphasis."""
+        selected_key = self._selected_catalog_key
+        if self._trace_blink_timer is not None:
+            self._trace_blink_timer.stop()
+            self._trace_blink_timer = None
+        self._trace_blink_visible = True
+        self._trace_menu_id = None
+        self._trace_rename_open = False
+        if selected_key is not None:
+            self._refresh_catalog_prompts(selected_key)
+        else:
+            self._update_catalog_hints()
+
+    def _start_trace_blink(self) -> None:
+        """Start the managed TRACE visibility pulse."""
+        if self._trace_blink_timer is not None:
+            self._trace_blink_timer.stop()
+        self._trace_blink_visible = True
+        self._trace_blink_timer = self.set_interval(0.45, self._toggle_trace_blink)
+
+    def _toggle_trace_blink(self) -> None:
+        """Toggle the managed TRACE name without changing row height."""
+        if self._trace_menu_id is None or self._selected_catalog_key is None:
+            return
+        self._trace_blink_visible = not self._trace_blink_visible
+        self._refresh_catalog_prompts(self._selected_catalog_key)
 
     def _open_row(self, key: str) -> None:
         row = self._rows.get(key)
@@ -304,7 +420,7 @@ class ChatApp(App[None]):
         if not value.strip():
             return
         if self._loading:
-            self.notify("Wait for the assistant to finish loading", severity="warning")
+            self._show_error("Wait for the assistant to finish loading")
             return
         composer = self.query_one(Composer)
         try:
@@ -327,7 +443,7 @@ class ChatApp(App[None]):
             ValueError,
             WorkerError,
         ) as error:
-            self.notify(str(error), severity="error")
+            self._show_error(str(error))
 
     def action_stop(self) -> None:
         """Stop active generation at a token boundary."""
@@ -395,9 +511,9 @@ class ChatApp(App[None]):
 
     def _generation_failed(self, message: str) -> None:
         self._generating = False
-        self._set_status("failed")
+        self._set_status(None)
         self._update_command_menu()
-        self.notify(f"{message}. Return to REGISTRY to start again.", severity="error")
+        self._show_error(f"{message}. Return to REGISTRY to start again.")
 
     def _report_prefill(self, current: int, total: int) -> None:
         self.call_from_thread(self._set_status, f"prefill {current}/{total}")
@@ -439,7 +555,7 @@ class ChatApp(App[None]):
     def _update_footer(self) -> None:
         if self._confirmation_open:
             self._set_footer(
-                "ENTER RECORD    ESC RESUME"
+                "ENTER SAVE    ESC RESUME"
                 if self._trace_name_open
                 else "←→ MOVE    ENTER SELECT    ESC RESUME"
             )
@@ -502,16 +618,51 @@ class ChatApp(App[None]):
                 )
             else:
                 self._return_to_landing()
+        elif name == "save":
+            session = self._session()
+            if not session.dirty:
+                self._show_error("The TRACE has no new data to save")
+            elif self.store is None:
+                self._show_error("Chat output is not configured")
+            elif self._generating:
+                self._show_error("Stop the active reply before saving")
+            else:
+                self._confirmation_open = True
+                self._trace_name_open = True
+                self._update_confirmation_spacing()
+                self._update_footer()
+                self.push_screen(
+                    TraceNameModal(default_chat_title(session)),
+                    self._after_checkpoint_name,
+                )
+
+    def _after_checkpoint_name(self, title: str | None) -> None:
+        self._close_confirmation()
+        if title is not None:
+            self._save_from_confirmation(title)
+
+    def _save_enabled(self) -> bool:
+        session = self.runtime.session
+        return (
+            self.store is not None
+            and session is not None
+            and session.dirty
+            and not self._generating
+        )
 
     def _enabled_command_indexes(self) -> tuple[int, ...]:
         return tuple(
             index
             for index, command in enumerate(self._command_matches)
-            if command != "/registry" or not self._generating
+            if (command != "/registry" or not self._generating)
+            and (command != "/save" or self._save_enabled())
         )
 
     def _selected_command(self) -> str | None:
-        if not self._command_matches:
+        if (
+            not self._command_matches
+            or self._command_index not in self._enabled_command_indexes()
+        ):
             return None
         return self._command_matches[self._command_index]
 
@@ -526,6 +677,7 @@ class ChatApp(App[None]):
             self._command_matches,
             selected,
             registry_enabled=not self._generating,
+            save_enabled=self._save_enabled(),
         )
         composer = self.query_one(Composer)
         composer.command_menu_active = bool(self._command_matches)
@@ -593,7 +745,7 @@ class ChatApp(App[None]):
     def _push_trace_name(self, callback: Callable[[str | None], None]) -> None:
         self._trace_name_open = True
         self._update_footer()
-        self.push_screen(TraceNameModal(), callback)
+        self.push_screen(TraceNameModal(default_chat_title(self._session())), callback)
 
     def _close_confirmation(self) -> None:
         self._confirmation_open = False
@@ -609,12 +761,12 @@ class ChatApp(App[None]):
 
     def _save_from_confirmation(self, title: str) -> bool:
         if self.store is None:
-            self.notify("Chat output is not configured", severity="error")
+            self._show_error("Chat output is not configured")
             return False
         try:
             saved = self.store.save(self._session(), title if title.strip() else None)
         except ChatStorageError as error:
-            self.notify(str(error), severity="error")
+            self._show_error(str(error))
             return False
         self.notify(f"Saved {saved.id[:8]} — {saved.title}")
         return True
@@ -673,8 +825,29 @@ class ChatApp(App[None]):
         self._set_loading(False)
         if self.runtime.session is not None:
             self._show_chat()
-        self._set_status("failed")
-        self.notify(message, severity="error")
+        self._set_status(None)
+        self._show_error(message)
+
+    def _show_error(self, message: str) -> None:
+        """Show one right-aligned failure beside the active controls."""
+        if self._error_timer is not None:
+            self._error_timer.stop()
+        identifier = (
+            "#chat-error" if self.query_one("#chat").display else "#catalog-error"
+        )
+        other = "#catalog-error" if identifier == "#chat-error" else "#chat-error"
+        self.query_one(other, LoadingStatus).set_state("")
+        value = message.strip()
+        if value and not value.endswith((".", "!", "?")):
+            value += "."
+        self.query_one(identifier, LoadingStatus).set_state(value, animated=False)
+        self._error_timer = self.set_timer(5, self._clear_error)
+
+    def _clear_error(self) -> None:
+        """Clear the transient failure line."""
+        self.query_one("#chat-error", LoadingStatus).set_state("")
+        self.query_one("#catalog-error", LoadingStatus).set_state("")
+        self._error_timer = None
 
     def _set_loading(self, value: bool) -> None:
         self._loading = value
@@ -697,6 +870,7 @@ class ChatApp(App[None]):
         chooser = self.query_one("#chooser", OptionList)
         assert isinstance(chooser, KeyboardOptionList)
         chooser.selection_changed = self._refresh_catalog_prompts
+        self._selected_catalog_key = None
         chooser.clear_options()
         self._rows.clear()
         options = []
@@ -751,18 +925,15 @@ class ChatApp(App[None]):
         if saved_chats:
             summary += f" · {len(saved_chats)} saved"
         self.query_one("#catalog-summary", Static).update(summary)
-        hints = "↑↓ MOVE    ENTER SELECT"
-        if saved_chats:
-            hints += "    SPACE DETAILS"
-        hints += "    ESC STOP    CTRL+C QUIT"
-        self.query_one("#catalog-hints", Static).update(hints)
         for option_index, option in enumerate(chooser.options):
             if not option.disabled:
                 chooser.highlighted = option_index
                 chooser.focus()
                 break
+        self._update_catalog_hints()
 
     def _refresh_catalog_prompts(self, selected_key: str) -> None:
+        self._selected_catalog_key = selected_key
         chooser = self.query_one("#chooser", OptionList)
         layout = CatalogLayout.for_terminal(self.size.width)
         for option in chooser.options:
@@ -790,12 +961,37 @@ class ChatApp(App[None]):
                     "READY",
                     selected=option.id == selected_key,
                     trace_name=(
-                        None if row.id in self._collapsed_traces else row.title
+                        None
+                        if row.id in self._collapsed_traces
+                        and row.id != self._trace_menu_id
+                        else row.title
+                    ),
+                    trace_active=row.id == self._trace_menu_id,
+                    trace_visible=(
+                        self._trace_blink_visible
+                        if row.id == self._trace_menu_id
+                        else True
                     ),
                 )
             else:
                 continue
             chooser.replace_option_prompt(option.id, prompt)
+        self._update_catalog_hints()
+
+    def _update_catalog_hints(self) -> None:
+        """Show actions available for the current registry row."""
+        if self._trace_menu_id is not None:
+            self.query_one("#catalog-hints", Static).update(
+                "ENTER NAME    ESC RETAIN"
+                if self._trace_rename_open
+                else "←→ MOVE    ENTER SELECT    ESC RETAIN"
+            )
+            return
+        hints = "↑↓ MOVE    ENTER SELECT"
+        if isinstance(self._rows.get(self._selected_catalog_key or ""), SavedChat):
+            hints += "    SPACE DETAILS    BACKSPACE MANAGE"
+        hints += "    CTRL+C QUIT"
+        self.query_one("#catalog-hints", Static).update(hints)
 
     def _session(self) -> ChatSession:
         if self.runtime.session is None:

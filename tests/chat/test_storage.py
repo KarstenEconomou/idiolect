@@ -75,6 +75,35 @@ def test_base_snapshot_restores_system_persona_and_model_digest(tmp_path) -> Non
     assert resumed.assistant.data.system_prompt == "Be concise."
 
 
+def test_erase_removes_only_a_verified_lineage_leaf(tmp_path, monkeypatch) -> None:
+    """Check safe leaf erasure and parent reappearance."""
+    state, assistant = _state(tmp_path)
+    monkeypatch.setattr(
+        "idiolect.chat.storage.load_assistant", lambda *_args: assistant
+    )
+    store = ChatStore(tmp_path / "chat")
+    state.add_user("first")
+    state.begin_generation()
+    state.finish_generation("reply", "stop", 7, TurnTelemetry(2, 1))
+    first = store.save(state)
+    state.add_user("second")
+    child = store.save(state)
+
+    with pytest.raises(ChatStorageError, match="has a child"):
+        store.erase(first.id)
+
+    renamed = store.rename(child.id, "Renamed TRACE")
+
+    assert child.path.exists() is False
+    assert renamed.title == "Renamed TRACE"
+    assert renamed.parent_id == first.id
+    assert [chat.id for chat in store.leaves()] == [renamed.id]
+
+    store.erase(renamed.id)
+
+    assert [chat.id for chat in store.leaves()] == [first.id]
+
+
 def _state(tmp_path):
     """Return one synthetic state with complete recorded identity fields."""
     created = datetime(2026, 8, 21, tzinfo=UTC)

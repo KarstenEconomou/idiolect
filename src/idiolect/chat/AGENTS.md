@@ -38,6 +38,10 @@ These instructions apply to `src/idiolect/chat/`. Read
 - Save only on an explicit record action. Snapshots are private, immutable,
   content-addressed, lineage-aware artifacts. Verify assistant identity, policy,
   turns, telemetry, and digests when loading them.
+- Erase only a verified saved snapshot with no verified child. Keep lineage
+  parents until they become leaves through explicit child erasure.
+- Rename a verified leaf by creating its immutable replacement with the same
+  lineage parent, then erase the replaced leaf.
 - Use `just setup-chat` for optional packages, `just chat` for `REGISTRY`,
   `just chat run <run> <dataset>` for a verified assistant, and
   `just chat resume <chat>` for a verified snapshot. Chat launch commands keep

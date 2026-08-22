@@ -24,10 +24,10 @@ class CatalogLayout:
     @classmethod
     def for_terminal(cls, terminal_width: int) -> CatalogLayout:
         """Return the registry layout for one terminal width."""
-        content_width = max(24, min(116, terminal_width - 8))
+        content_width = max(24, terminal_width - 4)
         status_width = 5
         data_width = (16 if content_width >= 100 else 10) if content_width >= 70 else 0
-        window_width = 9 if content_width >= 54 else 0
+        window_width = 7 if content_width >= 54 else 0
         visible_separators = sum(
             width > 0 for width in (data_width, window_width, status_width)
         )
@@ -61,6 +61,8 @@ class CatalogLayout:
         failed: bool = False,
         selected: bool = False,
         trace_name: str | None = None,
+        trace_active: bool = False,
+        trace_visible: bool = True,
     ) -> Text:
         """Return one styled registry entry and optional trace name."""
         value = Text(set_cell_size(model, self.model))
@@ -76,10 +78,14 @@ class CatalogLayout:
         )
         value.append(set_cell_size(status, self.status), style=status_style)
         if trace_name is not None:
-            trace_style = _METADATA if selected else _TRACE_NAME
+            trace_style = _METADATA if selected or trace_active else _TRACE_NAME
             value.append("\n")
             value.append(" ", style=trace_style)
             value.append(
-                set_cell_size(trace_name, max(self.model - 1, 1)), trace_style
+                set_cell_size(
+                    trace_name if trace_visible else "",
+                    max(self.model - 1, 1),
+                ),
+                trace_style,
             )
         return value

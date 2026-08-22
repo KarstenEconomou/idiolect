@@ -40,7 +40,22 @@ class KeyboardOptionList(OptionList):
             self.key = key
             super().__init__()
 
+    class EraseRequested(Message):
+        """Request erasure for one highlighted option."""
+
+        def __init__(self, key: str) -> None:
+            """Set the highlighted option key."""
+            self.key = key
+            super().__init__()
+
     async def _on_key(self, event: events.Key) -> None:
+        if event.key == "backspace" and self.highlighted is not None:
+            option = self.get_option_at_index(self.highlighted)
+            if option.id is not None:
+                event.prevent_default()
+                event.stop()
+                self.post_message(self.EraseRequested(option.id))
+                return
         if event.key == "space" and self.highlighted is not None:
             option = self.get_option_at_index(self.highlighted)
             if option.id is not None:
@@ -168,6 +183,7 @@ class CommandMenu(Widget):
         selected: str | None,
         *,
         registry_enabled: bool,
+        save_enabled: bool,
     ) -> None:
         """Set visible commands and the highlighted command."""
         self.display = bool(commands)
@@ -177,10 +193,15 @@ class CommandMenu(Widget):
         for command in COMMANDS:
             action = self.query_one(f"#command-{command[1:]}", Horizontal)
             action.display = command in preview
-            action.set_class(command == selected, "-selected")
+            disabled = (
+                (command == "/registry" and not registry_enabled)
+                or (command == "/save" and not save_enabled)
+            )
+            action.set_class(command == selected and not disabled, "-selected")
+            action.set_class(disabled, "-disabled")
             action.set_class(
-                command == "/registry" and not registry_enabled,
-                "-disabled",
+                command == "/save" and not save_enabled,
+                "-save-disabled",
             )
 
 
@@ -258,7 +279,7 @@ class ConfirmModal(ModalScreen[str]):
             yield Static("CONNECTION", markup=False, id="confirm-message")
             with Horizontal(id="confirm-actions"):
                 yield KeyboardButton("DISCONNECT", id="discard")
-                yield KeyboardButton("RECORD", id="save")
+                yield KeyboardButton("SAVE", id="save")
                 yield KeyboardButton("RESUME", id="cancel")
 
     def on_mount(self) -> None:
@@ -304,11 +325,17 @@ class ConfirmModal(ModalScreen[str]):
 class TraceNameModal(ModalScreen[str | None]):
     """Request an optional name before one trace is recorded."""
 
+    def __init__(self, default_name: str, *, registry: bool = False) -> None:
+        """Set the generated trace name shown in the empty field."""
+        super().__init__()
+        self.default_name = default_name
+        self.registry = registry
+
     def compose(self) -> ComposeResult:
         """Create the trace name input."""
         with Vertical(id="trace-name-dialog"):
             yield Static("TRACE NAME", markup=False, id="trace-name-message")
-            yield Input(placeholder="Blank uses default", id="trace-name")
+            yield Input(placeholder=self.default_name, id="trace-name")
 
     def on_mount(self) -> None:
         """Focus the trace name and place the dialog."""
@@ -320,12 +347,14 @@ class TraceNameModal(ModalScreen[str | None]):
         self.call_after_refresh(self._place_dialog)
 
     def _place_dialog(self) -> None:
-        composer_bar = self.app.query_one("#composer-bar", Horizontal)
+        anchor = self.app.query_one(
+            "#catalog-hints" if self.registry else "#composer-bar"
+        )
         dialog = self.query_one("#trace-name-dialog", Vertical)
-        dialog.styles.width = composer_bar.region.width
+        dialog.styles.width = anchor.region.width
         dialog.styles.offset = (
-            composer_bar.region.x,
-            composer_bar.region.y - dialog.region.height,
+            anchor.region.x,
+            anchor.region.y - dialog.region.height,
         )
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
@@ -338,3 +367,62 @@ class TraceNameModal(ModalScreen[str | None]):
             self.dismiss(None)
             event.prevent_default()
             event.stop()
+
+
+class TraceMenuModal(ModalScreen[str]):
+    """Show actions for one saved trace."""
+
+    def __init__(self, trace_name: str) -> None:
+        """Set the trace name shown in the menu heading."""
+        super().__init__()
+        self.trace_name = trace_name
+
+    def compose(self) -> ComposeResult:
+        """Create the trace actions."""
+        with Vertical(id="trace-dialog"):
+            heading = Text("TRACE", style="bold white")
+            heading.append(f" {self.trace_name}", style="bright_black")
+            yield Static(heading, markup=False, id="trace-message")
+            with Horizontal(id="trace-actions"):
+                yield KeyboardButton("ERASE", id="erase")
+                yield KeyboardButton("RENAME", id="rename")
+                yield KeyboardButton("RETAIN", id="retain")
+
+    def on_mount(self) -> None:
+        """Focus the safe action and place the dialog."""
+        self.query_one("#retain", KeyboardButton).focus()
+        self.call_after_refresh(self._place_dialog)
+
+    def on_resize(self) -> None:
+        """Place the dialog above the registry hints."""
+        self.call_after_refresh(self._place_dialog)
+
+    def _place_dialog(self) -> None:
+        hints = self.app.query_one("#catalog-hints", Static)
+        dialog = self.query_one("#trace-dialog", Vertical)
+        dialog.styles.width = hints.region.width
+        dialog.styles.offset = (
+            hints.region.x,
+            hints.region.y - dialog.region.height,
+        )
+
+    def on_key(self, event: events.Key) -> None:
+        """Move focus or keep the trace when Escape is pressed."""
+        if event.key == "escape":
+            self.dismiss("retain")
+            event.prevent_default()
+            event.stop()
+            return
+        if event.key not in {"left", "right", "up", "down"}:
+            return
+        buttons = list(self.query(KeyboardButton))
+        focused = self.focused
+        index = buttons.index(focused) if isinstance(focused, KeyboardButton) else 1
+        step = -1 if event.key in {"left", "up"} else 1
+        buttons[(index + step) % len(buttons)].focus()
+        event.prevent_default()
+        event.stop()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Return the selected trace action."""
+        self.dismiss(event.button.id or "retain")

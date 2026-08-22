@@ -59,13 +59,19 @@ TUI tests.
   remaining width. Keep composer focus. Wrap enabled commands with arrow keys;
   Tab completes the selection plus one trailing space; Enter runs it; Escape
   closes the menu without clearing the composer. Show disabled commands red and
-  dim, and skip them when another enabled command exists.
+  dim, except for the metadata-gray disabled `/save`, and skip them when another
+  enabled command exists.
+- Offer `/save` only when the current transcript has new unsaved data. Request
+  its optional trace name with the existing field, record the checkpoint, and
+  keep the chat open. Disable the command after the record succeeds. An explicit
+  `/save` in a clean session shows a failure.
 - Keep unsaved-change actions in one horizontal row ordered `DISCONNECT`,
-  `RECORD`, `RESUME`. Select `DISCONNECT` first. Wrap all arrow keys, activate
+  `SAVE`, `RESUME`. Select `DISCONNECT` first. Wrap all arrow keys, activate
   with Enter, and make Escape equivalent to `RESUME`. Disable pointer activation.
-  After `RECORD`, request an optional trace name in a single-line field. Enter
-  records it, an empty or whitespace-only value requests the generated default,
-  and Escape resumes without recording.
+  After `SAVE`, request an optional trace name in a single-line field. Enter
+  records it, show the generated default as the empty field placeholder, an empty
+  or whitespace-only value requests that default, and Escape resumes without
+  recording.
 
 ## Layout and state
 
@@ -74,6 +80,8 @@ TUI tests.
   by one cell and align their internal content. Give the confirmation the
   composer width and place it immediately above the composer. Keep the footer
   directly below the composer with no vertical padding.
+- Keep REGISTRY full-width like chat. Do not add an outer horizontal inset or a
+  centered maximum width around its existing two-cell content gutter.
 - Hide transcript and composer scrollbars. Keep the registry scrollbar in the
   metadata color. Separate turns with one blank line, put the speaker label on
   its own line, and inset every rendered message line by one cell. Use the same
@@ -86,4 +94,13 @@ TUI tests.
   applicable keyboard hints while a menu is open, then restore it. Show only
   measured footer values, remove secondary measurements at narrow widths, and
   hide the ready state.
+- Show failures as transient, right-aligned lines above the applicable control
+  bar. Use sentence case, preserve uppercase entity names, match loading-status
+  spacing, terminate each message with punctuation, and use the failure color.
+  Do not use error toasts.
+- Show `BACKSPACE MANAGE` only for a highlighted TRACE. Confirm it with a `TRACE`
+  heading followed directly by its metadata-colored name and horizontal
+  `ERASE`, `RENAME`, `RETAIN` actions. Select `RETAIN` first, and make Escape
+  retain the trace. Use the trace name as the rename-field default. Blink the
+  subject trace name while either menu is open.
 - Update `docs/chat.md` and `README.md` when visible behavior or controls change.

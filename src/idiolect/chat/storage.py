@@ -92,7 +92,9 @@ class ChatStore:
             and (title is None or _title(state.turns, title) == state.title)
         ):
             return self.load(state.saved_chat_id)
-        chosen_title = _title(state.turns, title)
+        chosen_title = (
+            default_chat_title(state) if title is None else _title(state.turns, title)
+        )
         rows = [_turn_value(turn) for turn in state.turns]
         turns_bytes = _jsonl_bytes(rows)
         identity = {
@@ -250,16 +252,7 @@ class ChatStore:
 
     def leaves(self) -> tuple[SavedChat, ...]:
         """Return verified snapshots that have no verified child."""
-        if not self.root.is_dir():
-            return ()
-        chats = []
-        for path in sorted(self.root.iterdir()):
-            if not path.is_dir() or not _digest(path.name):
-                continue
-            try:
-                chats.append(self.load(path))
-            except ChatStorageError:
-                continue
+        chats = self._verified_chats()
         parents = {chat.parent_id for chat in chats if chat.parent_id is not None}
         leaves = [chat for chat in chats if chat.id not in parents]
         return tuple(
@@ -277,6 +270,55 @@ class ChatStore:
             saved.id,
             saved.title,
         )
+
+    def erase(self, chat_id: str) -> None:
+        """Erase one verified leaf snapshot."""
+        saved = self.load(chat_id)
+        if any(chat.parent_id == saved.id for chat in self._verified_chats()):
+            raise ChatStorageError("Cannot erase a TRACE that has a child")
+        try:
+            shutil.rmtree(saved.path)
+        except OSError as error:
+            raise ChatStorageError(f"Cannot erase chat: {saved.path}") from error
+
+    def rename(self, chat_id: str, title: str) -> SavedChat:
+        """Replace one verified leaf snapshot with a renamed snapshot."""
+        saved = self.load(chat_id)
+        if any(chat.parent_id == saved.id for chat in self._verified_chats()):
+            raise ChatStorageError("Cannot rename a TRACE that has a child")
+        chosen_title = _title(list(saved.turns), title)
+        if chosen_title == saved.title:
+            return saved
+        state = ChatSession(
+            saved.assistant,
+            saved.chat,
+            saved.generation,
+            saved.turns,
+            saved.parent_id,
+            saved.title,
+        )
+        renamed = self.save(state, chosen_title)
+        self.erase(saved.id)
+        return renamed
+
+    def _verified_chats(self) -> tuple[SavedChat, ...]:
+        """Return all verified snapshots in the private root."""
+        if not self.root.is_dir():
+            return ()
+        chats = []
+        for path in sorted(self.root.iterdir()):
+            if not path.is_dir() or not _digest(path.name):
+                continue
+            try:
+                chats.append(self.load(path))
+            except ChatStorageError:
+                continue
+        return tuple(chats)
+
+
+def default_chat_title(state: ChatSession) -> str:
+    """Return the generated title for one chat state."""
+    return _title(state.turns, None)
 
 
 def _assistant_value(assistant: Assistant) -> dict[str, Any]:

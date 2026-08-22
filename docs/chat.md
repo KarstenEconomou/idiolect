@@ -53,7 +53,15 @@ remain failures. A saved `TRACE` keeps the canonical model identity on its first
 line and shows the trace name indented below it in metadata gray. Trace names
 are expanded by default and use the muted selection color with their highlighted
 TRACE, matching DATA and WINDOW. Highlight a trace and press Space to collapse
-or expand its name without opening it.
+or expand its name without opening it. Press Backspace while a TRACE is highlighted
+to open the horizontal `TRACE` management menu. `RETAIN` is selected by default
+and Escape also keeps the trace. Its heading shows the current trace name directly
+after `TRACE` in metadata gray,
+and the subject trace name blinks until the menu closes. Select `RENAME` to open
+the standard name field with the current name as its default. Renaming creates
+an immutable replacement with the same lineage parent. Select `ERASE` to
+permanently remove that verified lineage leaf. A trace with a child cannot be
+renamed or erased.
 
 Verified run/dataset pairs and saved lineage leaves follow the default row. Each
 adapter has the identity `IDIOLECT // NAME@run [MODEL]`. `run` is the first eight
@@ -90,14 +98,24 @@ Tab to complete the selected command with a trailing space, Enter to select, and
 Escape to close the menu without clearing the composer. Commands are:
 
 - `/exit`: stop an active reply or exit when idle;
-- `/registry`: return to `REGISTRY` when no reply is active.
+- `/registry`: return to `REGISTRY` when no reply is active;
+- `/save`: save a TRACE checkpoint and keep the chat open.
 
-Either idle command opens the horizontal DISCONNECT, RECORD, and RESUME
+`/save` is available only when the transcript contains new unsaved data and no
+reply is active. Otherwise it is shown as unavailable and cannot be selected;
+entering it explicitly in a clean session reports that there is no new data.
+The command opens the same optional trace-name field used by SAVE. Enter saves
+the checkpoint and stays in chat. The empty field shows the generated default
+name; a blank name uses it, and Escape cancels the checkpoint. A successful
+checkpoint disables `/save` until the transcript changes again.
+
+Either idle command opens the horizontal DISCONNECT, SAVE, and RESUME
 confirmation when the transcript has unsaved changes. DISCONNECT is selected
-first. RECORD requests an optional trace name before it writes the immutable
-snapshot and continues the requested navigation. Enter records the typed name.
-An empty or whitespace-only name uses the generated default based on the first
-user message. Escape resumes the chat without recording. The footer aligns with
+first. SAVE requests an optional trace name before it writes the immutable
+snapshot and continues the requested navigation. The empty field shows the
+generated default based on the first user message. Enter records the typed name;
+an empty or whitespace-only name uses the displayed default. Escape resumes the
+chat without recording. The footer aligns with
 transcript text, sits directly below the composer, and replaces telemetry with
 navigation hints while the command menu, confirmation, or trace name field is
 open. The transcript follows its newest turn above an open menu and returns to
@@ -155,6 +173,9 @@ measured prefill token count and total from MLX-LM.
 
 The footer reports the last measured context and generation values when no
 action menu is open. It does not report estimated performance.
+
+Failures appear as transient right-aligned lines immediately above the active
+control bar. They use the same spacing as loading status and the failure color.
 
 ## Saved snapshots
 

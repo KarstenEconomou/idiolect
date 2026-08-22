@@ -5,11 +5,13 @@ from dataclasses import dataclass
 COMMANDS = (
     "/exit",
     "/registry",
+    "/save",
 )
 
 COMMAND_DESCRIPTIONS = {
     "/exit": "Exit IDIOLECT.",
     "/registry": "Return to REGISTRY.",
+    "/save": "Save TRACE.",
 }
 
 

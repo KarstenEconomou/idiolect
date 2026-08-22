@@ -169,6 +169,10 @@ landing table is the `REGISTRY`. It has no search field or pointer
 activation. Use the arrow keys and Enter to select a row. Saved TRACE rows show
 their names below the canonical model identity and use the muted metadata
 selection style; press Space to collapse or expand the highlighted trace name.
+When a TRACE is highlighted, press Backspace to manage it in the horizontal
+TRACE menu. The heading repeats the trace name, and the subject name blinks while the menu
+is open. ERASE removes that lineage leaf, RENAME replaces it with a newly named
+immutable leaf, and RETAIN keeps it.
 In chat, use the mouse wheel or Ctrl+Up and Ctrl+Down to scroll the transcript.
 Chat headers retain the full canonical
 assistant name; assistant turns use only the uppercase target name. Transcript
@@ -176,9 +180,12 @@ turns format focused Markdown for emphasis, retained-prefix headings, subtly
 shaded code, compact nested lists, and indented quotes without changing saved
 text. Explicit HTTP and HTTPS Markdown links keep their complete destination
 visible and use clickable underlined labels. Type `/` to open the keyboard-driven
-`/exit` and `/registry` menu, and use Tab to complete its selected command.
-Unsaved changes open the horizontal DISCONNECT, RECORD, and RESUME confirmation;
-RECORD then requests an optional trace name before navigation.
+`/exit`, `/registry`, and `/save` menu, and use Tab to complete its selected
+command. `/save` requests an optional trace name and records a checkpoint without
+leaving chat. The empty naming field previews its generated default. The command
+is available only while the transcript has new unsaved data.
+Unsaved changes open the horizontal DISCONNECT, SAVE, and RESUME confirmation;
+SAVE then requests an optional trace name before navigation.
 
 ```console
 just chat run RUN_ID DATASET_ID
@@ -208,8 +215,9 @@ Important constraints:
   use immutable files.
 - Keep the Mac on, awake, and logged in for the LaunchAgent. Training, inference,
   and automatic evaluation recipes use `caffeinate`.
-- Chat never reads Signal or DuckDB, and it never autosaves. Only RECORD in the
-  unsaved-change confirmation writes a private snapshot.
+- Chat never reads Signal or DuckDB, and it never autosaves. SAVE in the
+  unsaved-change confirmation and the explicit `/save` checkpoint command write
+  private snapshots.
 - Treat raw events, hashed records, chat transcripts, and saved snapshots as
   private data.
 

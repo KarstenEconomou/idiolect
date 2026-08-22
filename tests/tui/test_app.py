@@ -4,6 +4,7 @@ import asyncio
 import re
 import threading
 from collections.abc import Callable, Iterator
+from dataclasses import replace
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import cast
@@ -56,6 +57,11 @@ def test_registry_opens_highlighted_assistant_from_keyboard(tmp_path) -> None:
             )
             assert app.query_one("#catalog-columns", Static).styles.color.ansi == 7
             assert len(app.query("#search")) == 0
+            assert app.query_one("#landing").region.x == 0
+            assert app.query_one("#landing-box").region.width == 80
+            assert app.query_one("#catalog-heading").content_region.x == 2
+            assert chooser.content_region.x == 2
+            assert app.query_one("#catalog-hints", Static).content_region.x == 2
             assert chooser.highlighted == 1
             assert chooser.has_focus
             summary = app.query_one("#catalog-summary", Static)
@@ -64,7 +70,7 @@ def test_registry_opens_highlighted_assistant_from_keyboard(tmp_path) -> None:
             assert isinstance(prompt, Text)
             assert "READY" in prompt.plain
             assert str(app.query_one("#catalog-hints", Static).content) == (
-                "↑↓ MOVE    ENTER SELECT    ESC STOP    CTRL+C QUIT"
+                "↑↓ MOVE    ENTER SELECT    CTRL+C QUIT"
             )
 
             await pilot.click(chooser, offset=(2, 1))
@@ -114,7 +120,10 @@ def test_registry_expands_and_collapses_trace_names(tmp_path) -> None:
             assert model_line.startswith(assistant.name)
             assert "Night session" not in model_line
             assert trace_line.startswith(" Night session")
-            assert "SPACE DETAILS" in str(
+            assert "SPACE DETAILS" not in str(
+                app.query_one("#catalog-hints", Static).content
+            )
+            assert "BACKSPACE MANAGE" not in str(
                 app.query_one("#catalog-hints", Static).content
             )
             unselected_entry = trace.get_style_at_offset(
@@ -135,6 +144,12 @@ def test_registry_expands_and_collapses_trace_names(tmp_path) -> None:
             assert selected_entry.dim is False
             assert selected_name.color is None
             assert selected_name.dim
+            assert "SPACE DETAILS" in str(
+                app.query_one("#catalog-hints", Static).content
+            )
+            assert "BACKSPACE MANAGE" in str(
+                app.query_one("#catalog-hints", Static).content
+            )
 
             await pilot.press("space")
             await pilot.pause()
@@ -149,6 +164,134 @@ def test_registry_expands_and_collapses_trace_names(tmp_path) -> None:
             expanded = chooser.get_option_at_index(1).prompt
             assert isinstance(expanded, Text)
             assert "\n Night session" in expanded.plain
+
+    asyncio.run(verify())
+
+
+def test_registry_confirms_trace_erasure(tmp_path) -> None:
+    """Check the TRACE erasure menu and safe default action."""
+    chat = ChatConfig(output=tmp_path)
+    generation = GenerationConfig()
+    assistant = _assistant()
+    saved = SavedChat(
+        "a" * 64,
+        tmp_path / ("a" * 64),
+        datetime(2026, 8, 22, tzinfo=UTC),
+        "Night session",
+        None,
+        assistant,
+        chat,
+        generation,
+        (),
+    )
+    runtime = ImmediateRuntime(chat, generation)
+    store = RegistryStore(saved)
+    app = ChatApp(
+        chat,
+        generation,
+        assistants=(DiscoveryItem(assistant.name, "BASE", None, assistant),),
+        store=cast(ChatStore, store),
+        runtime_factory=cast(Callable[..., ChatRuntime], lambda *_args: runtime),
+    )
+
+    async def verify() -> None:
+        async with app.run_test(size=(80, 24)) as pilot:
+            await pilot.press("down", "backspace")
+            await pilot.pause()
+
+            heading = app.screen.query_one("#trace-message", Static).content
+            assert isinstance(heading, Text)
+            assert heading.plain == "TRACE Night session"
+            metadata = heading.get_style_at_offset(
+                Console(), heading.plain.index("Night session")
+            )
+            assert metadata.color is not None
+            assert metadata.color.name == "bright_black"
+            assert [
+                str(button.label) for button in app.screen.query(KeyboardButton)
+            ] == ["ERASE", "RENAME", "RETAIN"]
+            assert app.focused is not None
+            assert app.focused.id == "retain"
+            assert str(app.query_one("#catalog-hints", Static).content) == (
+                "←→ MOVE    ENTER SELECT    ESC RETAIN"
+            )
+            chooser = app.query_one("#chooser", OptionList)
+            app._trace_blink_visible = True
+            app._refresh_catalog_prompts(f"saved-{saved.id}")
+            subject = chooser.get_option_at_index(1).prompt
+            assert isinstance(subject, Text)
+            assert "Night session" in subject.plain
+            app._trace_blink_visible = False
+            app._refresh_catalog_prompts(f"saved-{saved.id}")
+            hidden_subject = chooser.get_option_at_index(1).prompt
+            assert isinstance(hidden_subject, Text)
+            assert "Night session" not in hidden_subject.plain
+            assert "\n" in hidden_subject.plain
+            app._trace_blink_visible = True
+            app._refresh_catalog_prompts(f"saved-{saved.id}")
+
+            await pilot.press("left", "left", "enter")
+            await pilot.pause()
+
+            assert store.erased == [saved.id]
+            assert len(app.query_one("#chooser", OptionList).options) == 1
+
+    asyncio.run(verify())
+
+
+def test_registry_renames_trace_with_current_name_as_default(tmp_path) -> None:
+    """Check registry TRACE renaming through the styled name field."""
+    chat = ChatConfig(output=tmp_path)
+    generation = GenerationConfig()
+    assistant = _assistant()
+    saved = SavedChat(
+        "a" * 64,
+        tmp_path / ("a" * 64),
+        datetime(2026, 8, 22, tzinfo=UTC),
+        "Night session",
+        None,
+        assistant,
+        chat,
+        generation,
+        (),
+    )
+    runtime = ImmediateRuntime(chat, generation)
+    store = RegistryStore(saved)
+    app = ChatApp(
+        chat,
+        generation,
+        store=cast(ChatStore, store),
+        runtime_factory=cast(Callable[..., ChatRuntime], lambda *_args: runtime),
+    )
+
+    async def verify() -> None:
+        async with app.run_test(size=(80, 24)) as pilot:
+            await pilot.press("backspace", "left", "enter")
+            await pilot.pause()
+
+            name = app.screen.query_one("#trace-name", Input)
+            assert name.has_focus
+            assert name.placeholder == "Night session"
+            assert str(app.query_one("#catalog-hints", Static).content) == (
+                "ENTER NAME    ESC RETAIN"
+            )
+            assert app._trace_blink_timer is not None
+            app._trace_blink_visible = False
+            app._refresh_catalog_prompts(f"saved-{saved.id}")
+            subject = app.query_one("#chooser", OptionList).get_option_at_index(0).prompt
+            assert isinstance(subject, Text)
+            assert "Night session" not in subject.plain
+            app._trace_blink_visible = True
+            app._refresh_catalog_prompts(f"saved-{saved.id}")
+            name.value = "Morning session"
+            await pilot.press("enter")
+            await pilot.pause()
+
+            assert store.renamed == [(saved.id, "Morning session")]
+            trace = app.query_one("#chooser", OptionList).get_option_at_index(0).prompt
+            assert isinstance(trace, Text)
+            assert "Morning session" in trace.plain
+            assert app._trace_blink_timer is None
 
     asyncio.run(verify())
 
@@ -469,12 +612,12 @@ def test_failed_confirmation_save_keeps_memory_only_chat(tmp_path) -> None:
             )
             assert [
                 str(button.label) for button in app.screen.query(KeyboardButton)
-            ] == ["DISCONNECT", "RECORD", "RESUME"]
+            ] == ["DISCONNECT", "SAVE", "RESUME"]
             await pilot.press("right", "enter")
             await pilot.pause()
             assert app.screen.query_one("#trace-name", Input).has_focus
             assert str(app.query_one("#footer", Static).content) == (
-                "ENTER RECORD    ESC RESUME"
+                "ENTER SAVE    ESC RESUME"
             )
             await pilot.press("enter")
             await pilot.pause()
@@ -487,7 +630,7 @@ def test_failed_confirmation_save_keeps_memory_only_chat(tmp_path) -> None:
     asyncio.run(verify())
 
 
-def test_record_requests_trace_name_and_uses_default_for_blank(tmp_path) -> None:
+def test_save_requests_trace_name_and_uses_default_for_blank(tmp_path) -> None:
     """Check explicit and blank trace names before registry navigation."""
 
     async def verify(value: str, expected: str | None) -> None:
@@ -512,6 +655,7 @@ def test_record_requests_trace_name_and_uses_default_for_blank(tmp_path) -> None
 
             name = app.screen.query_one("#trace-name", Input)
             assert name.has_focus
+            assert name.placeholder == "default trace name"
             name.value = value
             await pilot.press("enter")
             await pilot.pause()
@@ -545,6 +689,7 @@ def test_command_menu_filters_navigates_and_returns_to_registry(tmp_path) -> Non
             menu = app.query_one("#command-menu", CommandMenu)
             exit_button = menu.query_one("#command-exit", Horizontal)
             registry_button = menu.query_one("#command-registry", Horizontal)
+            save_button = menu.query_one("#command-save", Horizontal)
             assert menu.display is True
             assert str(menu.query_one("#command-message", Static).content) == "COMMAND"
             assert menu.query_one("#command-message", Static).styles.color.ansi == 7
@@ -560,6 +705,14 @@ def test_command_menu_filters_navigates_and_returns_to_registry(tmp_path) -> Non
             assert str(
                 registry_button.query_one(".command-description", Static).content
             ) == "Return to REGISTRY."
+            assert str(
+                save_button.query_one(".command-description", Static).content
+            ) == "Save TRACE."
+            assert save_button.has_class("-disabled")
+            assert save_button.has_class("-selected") is False
+            assert save_button.query_one(".command-name", Static).styles.color == (
+                app.query_one("#catalog-subtitle").styles.color
+            )
             assert registry_button.region.y == exit_button.region.y + 1
             assert exit_button.has_class("-selected")
             assert registry_button.has_class("-selected") is False
@@ -603,6 +756,96 @@ def test_command_menu_filters_navigates_and_returns_to_registry(tmp_path) -> Non
             await pilot.pause()
             assert app.query_one("#landing").display
             assert composer.text == ""
+
+    asyncio.run(verify())
+
+
+def test_save_command_checkpoints_only_new_trace_data(tmp_path) -> None:
+    """Check checkpoint naming, clean-state disabling, and chat continuity."""
+    chat = ChatConfig(output=tmp_path)
+    generation = GenerationConfig()
+    runtime = ImmediateRuntime(chat, generation)
+    store = RecordingStore()
+    app = ChatApp(
+        chat,
+        generation,
+        store=cast(ChatStore, store),
+        runtime_factory=cast(Callable[..., ChatRuntime], lambda *_args: runtime),
+        initial_assistant=_assistant(),
+    )
+
+    async def verify() -> None:
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_chat(app, pilot)
+            composer = app.query_one(Composer)
+            assert runtime.session is not None
+            runtime.session.add_user("checkpoint data")
+            composer.insert("/save")
+            await pilot.press("enter")
+            await pilot.pause()
+
+            name = app.screen.query_one("#trace-name", Input)
+            assert name.has_focus
+            assert name.placeholder == "checkpoint data"
+            await pilot.press("enter")
+            await pilot.pause()
+
+            assert store.titles == [None]
+            assert app.query_one("#chat").display
+            assert runtime.closed is False
+            assert runtime.session.dirty is False
+
+            composer.insert("/save")
+            await pilot.press("enter")
+            await pilot.pause()
+            assert len(app.screen.query("#trace-name")) == 0
+            assert store.titles == [None]
+            assert app.query_one("#chat-error", LoadingStatus).state == (
+                "The TRACE has no new data to save."
+            )
+
+    asyncio.run(verify())
+
+
+def test_chat_errors_align_right_above_composer(tmp_path) -> None:
+    """Check inline failure placement and loading-status visual language."""
+    chat = ChatConfig(output=tmp_path)
+    generation = GenerationConfig()
+    runtime = ImmediateRuntime(chat, generation)
+    app = ChatApp(
+        chat,
+        generation,
+        runtime_factory=cast(Callable[..., ChatRuntime], lambda *_args: runtime),
+        initial_assistant=_assistant(),
+    )
+
+    async def verify() -> None:
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_chat(app, pilot)
+            composer = app.query_one(Composer)
+            app._loading = True
+            composer.insert("message during load")
+            await pilot.press("enter")
+            await pilot.pause()
+
+            failure = app.query_one("#chat-error", LoadingStatus)
+            assert failure.state == "Wait for the assistant to finish loading."
+            assert failure.display
+
+            app._loading = False
+            composer.clear()
+            composer.insert("/unknown")
+            await pilot.press("enter")
+            await pilot.pause()
+
+            loading = app.query_one("#status", LoadingStatus)
+            composer_bar = app.query_one("#composer-bar", Horizontal)
+            assert failure.state == "Unknown chat command."
+            assert failure.display
+            assert failure.region.bottom == composer_bar.region.y
+            assert failure.content_region.x == loading.content_region.x
+            assert failure.styles.text_align == "right"
+            assert failure.styles.color.ansi == 1
 
     asyncio.run(verify())
 
@@ -874,11 +1117,12 @@ class RecordingStore:
 
     def save(
         self,
-        _session: ChatSession,
+        session: ChatSession,
         title: str | None = None,
     ) -> SimpleNamespace:
         """Record the requested title and return one synthetic trace."""
         self.titles.append(title)
+        session.mark_saved("a" * 64, title or "default trace name")
         return SimpleNamespace(id="a" * 64, title=title or "default trace name")
 
 
@@ -887,11 +1131,26 @@ class RegistryStore:
 
     def __init__(self, *saved: SavedChat) -> None:
         """Set the fixed trace rows."""
-        self.saved = saved
+        self.saved = list(saved)
+        self.erased: list[str] = []
+        self.renamed: list[tuple[str, str]] = []
 
     def leaves(self) -> tuple[SavedChat, ...]:
         """Return the fixed trace rows."""
-        return self.saved
+        return tuple(self.saved)
+
+    def erase(self, chat_id: str) -> None:
+        """Remove one fixed trace row."""
+        self.erased.append(chat_id)
+        self.saved = [saved for saved in self.saved if saved.id != chat_id]
+
+    def rename(self, chat_id: str, title: str) -> SavedChat:
+        """Replace one fixed trace row with its renamed form."""
+        self.renamed.append((chat_id, title))
+        current = next(saved for saved in self.saved if saved.id == chat_id)
+        renamed = replace(current, id="b" * 64, title=title)
+        self.saved = [renamed if saved.id == chat_id else saved for saved in self.saved]
+        return renamed
 
 
 def _assistant() -> Assistant:
