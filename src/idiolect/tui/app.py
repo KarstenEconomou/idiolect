@@ -69,8 +69,10 @@ class ChatApp(App[None]):
     #identity { height: 2; padding: 0 2; color: $accent; background: $terminal; border-bottom: solid $metadata; text-style: bold; }
     #transcript-scroll { height: 1fr; padding: 1 2; background: $terminal; scrollbar-size: 0 0; }
     #transcript { width: 100%; height: auto; background: $terminal; }
-    #composer { height: auto; min-height: 3; max-height: 10; border: solid $metadata; margin: 0 1; padding: 0 1; background: $terminal; scrollbar-size: 0 0; }
-    #composer:focus { border: solid $accent; }
+    #composer-bar { height: auto; min-height: 3; max-height: 10; border: solid $metadata; margin: 0 1; padding: 0 1; background: $terminal; scrollbar-size: 0 0; }
+    #composer-bar:focus-within { border: solid $accent; }
+    #composer-prompt { width: 1; height: 1; color: $accent; }
+    #composer { width: 1fr; min-width: 0; height: auto; min-height: 1; max-height: 10; border: none; margin: 0; padding: 0 1; background: $terminal; scrollbar-size: 0 0; }
     #composer .text-area--cursor, #composer .text-area--selection { color: $terminal; background: $terminal; text-style: reverse; }
     #composer .text-area--cursor-line, #composer .text-area--matching-bracket { background: $terminal; }
     #composer .text-area--gutter, #composer .text-area--suggestion, #composer .text-area--placeholder { color: $metadata; background: $terminal; }
@@ -170,7 +172,9 @@ class ChatApp(App[None]):
                 yield Static("", markup=False, id="transcript")
             yield Static("", markup=False, id="completion")
             yield LoadingStatus(id="status")
-            yield Composer(id="composer", language=None)
+            with Horizontal(id="composer-bar"):
+                yield Static(">", markup=False, id="composer-prompt")
+                yield Composer(id="composer", language=None)
             yield Static("", markup=False, id="footer")
 
     def on_mount(self) -> None:

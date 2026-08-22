@@ -145,12 +145,12 @@ class ConfirmModal(ModalScreen[str]):
         self.call_after_refresh(self._place_dialog)
 
     def _place_dialog(self) -> None:
-        composer = self.app.query_one(Composer)
+        composer_bar = self.app.query_one("#composer-bar", Horizontal)
         dialog = self.query_one("#confirm-dialog", Vertical)
-        dialog.styles.width = composer.region.width
+        dialog.styles.width = composer_bar.region.width
         dialog.styles.offset = (
-            composer.region.x,
-            composer.region.y - dialog.region.height,
+            composer_bar.region.x,
+            composer_bar.region.y - dialog.region.height,
         )
 
     def on_key(self, event: events.Key) -> None:

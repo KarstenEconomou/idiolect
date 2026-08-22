@@ -150,10 +150,14 @@ def test_composer_submits_and_inserts_line_breaks(tmp_path) -> None:
         async with app.run_test(size=(80, 24)) as pilot:
             await _wait_for_chat(app, pilot)
             composer = app.query_one(Composer)
+            prompt = app.query_one("#composer-prompt", Static)
+            assert str(prompt.content) == ">"
+            assert prompt.region.x < composer.region.x
             composer.insert("first")
             await pilot.press("shift+enter")
             composer.insert("second")
             assert composer.text == "first\nsecond"
+            assert prompt.region.y == composer.region.y
 
             await pilot.press("enter")
             for _ in range(20):
