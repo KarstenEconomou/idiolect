@@ -30,6 +30,7 @@ from idiolect.tui.widgets import (
     Composer,
     KeyboardButton,
     LoadingStatus,
+    SpecsScroll,
     Transcript,
 )
 
@@ -53,6 +54,20 @@ def test_registry_opens_highlighted_assistant_from_keyboard(tmp_path) -> None:
     async def verify() -> None:
         async with app.run_test(size=(80, 24)) as pilot:
             chooser = app.query_one("#chooser", OptionList)
+            watermark = app.query_one("#watermark", Static).content
+            assert isinstance(watermark, Text)
+            console = Console()
+            mark_style = watermark.get_style_at_offset(console, 0)
+            tagline_style = watermark.get_style_at_offset(
+                console,
+                watermark.plain.index("Someone, reconstructed."),
+            )
+            assert mark_style.color is not None and mark_style.color.number == 2
+            assert mark_style.bold
+            assert tagline_style.color is not None
+            assert tagline_style.color.number == 2
+            assert not tagline_style.bold
+            assert tagline_style.dim
             assert str(app.query_one("#catalog-title", Static).content) == "REGISTRY"
             assert str(app.query_one("#catalog-description", Static).content) == (
                 "Connect to a BASE, CONSTRUCT, or TRACE."
@@ -88,6 +103,68 @@ def test_registry_opens_highlighted_assistant_from_keyboard(tmp_path) -> None:
     asyncio.run(verify())
 
 
+def test_registry_theme_cycles_and_persists_across_pages(tmp_path) -> None:
+    """Check the hidden theme key changes every page without entering input."""
+    chat = ChatConfig(output=tmp_path)
+    generation = GenerationConfig()
+    assistant = _assistant()
+    runtime = ImmediateRuntime(chat, generation)
+    app = ChatApp(
+        chat,
+        generation,
+        assistants=(DiscoveryItem(assistant.name, "BASE", None, assistant),),
+        runtime_factory=cast(Callable[..., ChatRuntime], lambda *_args: runtime),
+    )
+
+    async def verify() -> None:
+        async with app.run_test(size=(80, 24)) as pilot:
+            chooser = app.query_one("#chooser", OptionList)
+            for name, ansi in (
+                ("yellow", 3),
+                ("blue", 4),
+                ("purple", 5),
+                ("cyan", 6),
+                ("green", 2),
+            ):
+                await pilot.press("t")
+                await pilot.pause()
+                assert app.has_class(f"-accent-{name}")
+                selected = chooser.get_component_rich_style(
+                    "option-list--option-highlighted"
+                )
+                assert selected.color is not None and selected.color.number == ansi
+                watermark = app.query_one("#watermark", Static).content
+                assert isinstance(watermark, Text)
+                style = watermark.get_style_at_offset(Console(), 0)
+                assert style.color is not None and style.color.number == ansi
+
+            hints = str(app.query_one("#catalog-hints", Static).content)
+            assert "THEME" not in hints
+            await pilot.press("s")
+            await pilot.pause()
+            assert app.query_one("#specs-identity", Static).styles.color.ansi == 2
+            assert app.query_one("#specs-eyes", Static).styles.color.ansi == 2
+
+            await pilot.press("t")
+            await pilot.pause()
+            assert app.has_class("-accent-green")
+            await pilot.press("escape", "enter")
+            await _wait_for_chat(app, pilot)
+            assert app.query_one("#identity", Static).styles.color.ansi == 2
+            assert app.query_one("#chat-eyes", Static).styles.color.ansi == 2
+            assert app.query_one("#composer-prompt", Static).styles.color.ansi == 2
+            transcript = app.query_one("#transcript", Transcript)
+            transcript.set_turns((("USER", "Theme check"),))
+            segments = tuple(
+                Console().render(cast(RenderableType, transcript.content))
+            )
+            label = next(segment for segment in segments if segment.text == "USER:")
+            assert label.style is not None
+            assert label.style.color is not None and label.style.color.number == 2
+
+    asyncio.run(verify())
+
+
 def test_registry_opens_specs_and_returns_to_the_same_row(tmp_path) -> None:
     """Check SPECS navigation without loading or changing the selection."""
     chat = ChatConfig(output=tmp_path)
@@ -115,6 +192,15 @@ def test_registry_opens_specs_and_returns_to_the_same_row(tmp_path) -> None:
             assert str(app.query_one("#specs-identity", Static).content) == (
                 assistant.name
             )
+            specs_heading = app.query_one("#specs-heading", Horizontal)
+            specs_eyes = app.query_one("#specs-eyes", Static)
+            assert str(specs_eyes.content) == "· ·"
+            assert (
+                specs_eyes.content_region.right
+                == specs_heading.content_region.right - 1
+            )
+            assert specs_eyes.region.right == specs_heading.content_region.right
+            assert specs_eyes.styles.color.ansi == 2
 
             await pilot.press("escape")
             await pilot.pause()
@@ -165,6 +251,66 @@ def test_specs_page_uses_a_stable_half_cell_scrollbar(tmp_path) -> None:
                 scroller.styles.scrollbar_background_active
                 == scroller.styles.scrollbar_background
             )
+
+    asyncio.run(verify())
+
+
+def test_specs_side_arrows_cycle_available_registry_rows(tmp_path) -> None:
+    """Check SPECS wraps through READY rows and skips FAULT rows."""
+    first = _assistant()
+    first_model = first.base_model
+    assert first_model is not None
+    second = replace(
+        first,
+        name="IDIOLECT // MARGO@BASE [N]",
+        target_name="MARGO",
+        model_basename="N",
+        base_model=replace(first_model, name="example/N"),
+    )
+    chat = ChatConfig(output=tmp_path)
+    generation = GenerationConfig()
+    app = ChatApp(
+        chat,
+        generation,
+        assistants=(
+            DiscoveryItem("Unavailable assistant", "failed", None, None, "invalid"),
+            DiscoveryItem(first.name, "BASE", None, first),
+            DiscoveryItem(second.name, "BASE", None, second),
+        ),
+        runtime_factory=cast(
+            Callable[..., ChatRuntime],
+            lambda *_args: ImmediateRuntime(chat, generation),
+        ),
+    )
+
+    async def verify() -> None:
+        async with app.run_test(size=(80, 24)) as pilot:
+            chooser = app.query_one("#chooser", OptionList)
+            assert chooser.highlighted == 1
+            await pilot.press("s")
+            await pilot.pause()
+
+            specs = app.query_one("#specs-scroll", SpecsScroll)
+            assert specs.has_focus
+            assert str(app.query_one("#specs-identity", Static).content) == first.name
+            assert str(app.query_one("#specs-hints", Static).content) == (
+                "↑↓ SCROLL    ←→ MODEL    ESC REGISTRY    CTRL+C QUIT"
+            )
+
+            await pilot.press("right")
+            await pilot.pause()
+            assert str(app.query_one("#specs-identity", Static).content) == second.name
+            assert chooser.highlighted == 2
+
+            await pilot.press("right")
+            await pilot.pause()
+            assert str(app.query_one("#specs-identity", Static).content) == first.name
+            assert chooser.highlighted == 1
+
+            await pilot.press("left", "escape")
+            await pilot.pause()
+            assert app.query_one("#landing").display
+            assert chooser.highlighted == 2
 
     asyncio.run(verify())
 
@@ -248,7 +394,7 @@ def test_registry_opens_trace_specs_with_saved_lineage_and_policy(tmp_path) -> N
             assert "TRACE\n" in content.plain
             assert trace.title in content.plain
             assert trace.id in content.plain
-            assert "TEMPERATURE           0.3" in content.plain
+            assert "TEMPERATURE\n 0.3" in content.plain
             assert "NOT EVALUATED" in content.plain
             assert runtime.session is None
 
@@ -307,8 +453,14 @@ def test_chat_divider_matches_the_page_gutter(tmp_path) -> None:
             await _wait_for_chat(app, pilot)
 
             divider = app.query_one("#identity-rule", Rule)
+            heading = app.query_one("#chat-heading", Horizontal)
+            eyes = app.query_one("#chat-eyes", Static)
             assert divider.content_region.x == 2
             assert divider.content_region.width == app.size.width - 4
+            assert str(eyes.content) == "· ·"
+            assert eyes.content_region.right == heading.content_region.right - 1
+            assert eyes.region.right == heading.content_region.right
+            assert eyes.styles.color.ansi == 2
 
     asyncio.run(verify())
 
@@ -1098,15 +1250,25 @@ def test_save_command_checkpoints_only_new_trace_data(tmp_path) -> None:
             assert app.query_one("#chat").display
             assert runtime.closed is False
             assert runtime.session.dirty is False
+            alert = app.query_one("#chat-alert", LoadingStatus)
+            composer_bar = app.query_one("#composer-bar", Horizontal)
+            assert alert.state == "Saved aaaaaaaa — default trace name."
+            assert alert.display
+            assert alert.region.bottom == composer_bar.region.y
+            assert alert.styles.text_align == "right"
+            assert alert.styles.color.ansi == 8
+            assert not alert.has_class("-error")
 
             composer.insert("/save")
             await pilot.press("enter")
             await pilot.pause()
             assert len(app.screen.query("#trace-name")) == 0
             assert store.titles == [None]
-            assert app.query_one("#chat-error", LoadingStatus).state == (
+            assert app.query_one("#chat-alert", LoadingStatus).state == (
                 "The TRACE has no new data to save."
             )
+            assert alert.styles.color.ansi == 1
+            assert alert.has_class("-error")
 
     asyncio.run(verify())
 
@@ -1132,7 +1294,7 @@ def test_chat_errors_align_right_above_composer(tmp_path) -> None:
             await pilot.press("enter")
             await pilot.pause()
 
-            failure = app.query_one("#chat-error", LoadingStatus)
+            failure = app.query_one("#chat-alert", LoadingStatus)
             assert failure.state == "CONNECTION is not ready."
             assert failure.display
 
@@ -1150,6 +1312,7 @@ def test_chat_errors_align_right_above_composer(tmp_path) -> None:
             assert failure.content_region.x == loading.content_region.x
             assert failure.styles.text_align == "right"
             assert failure.styles.color.ansi == 1
+            assert failure.has_class("-error")
 
     asyncio.run(verify())
 

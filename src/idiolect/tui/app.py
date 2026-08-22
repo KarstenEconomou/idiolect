@@ -6,6 +6,8 @@ import time
 from collections.abc import Callable, Iterable
 from typing import Any, ClassVar, cast
 
+from rich.style import Style
+from rich.text import Text
 from textual import events, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -35,16 +37,76 @@ from idiolect.tui.widgets import (
     ConfirmModal,
     KeyboardOptionList,
     LoadingStatus,
+    SpecsScroll,
     TraceMenuModal,
     TraceNameModal,
     Transcript,
 )
 
-WATERMARK = """     ╭─╮
+_WATERMARK_SOURCE = """     ╭─╮
   ╭──╯ ╰──╮
   │  · ·  │    IDIOLECT
-  ╰──╮ ╭──╯    someone, reconstructed.
+  ╰──╮ ╭──╯    Someone, reconstructed.
      ╰─╯"""
+_TAGLINE = "Someone, reconstructed."
+_ACCENT_THEMES = (
+    ("green", "green"),
+    ("yellow", "yellow"),
+    ("blue", "blue"),
+    ("purple", "magenta"),
+    ("cyan", "cyan"),
+)
+
+
+def _watermark(color: str = "green") -> Text:
+    """Return the product watermark in one ANSI accent color."""
+    value = Text(_WATERMARK_SOURCE, style=Style(color=color, bold=True))
+    tagline_start = _WATERMARK_SOURCE.index(_TAGLINE)
+    value.stylize(
+        Style(color=color, bold=False, dim=True),
+        tagline_start,
+        tagline_start + len(_TAGLINE),
+    )
+    return value
+
+
+def _accent_theme_css() -> str:
+    """Return screen-class overrides for each selectable ANSI accent."""
+    color_selectors = (
+        "OptionList > .option-list--option-highlighted",
+        "OptionList:focus > .option-list--option-highlighted",
+        "OptionList > .option-list--option-hover",
+        "#specs-identity",
+        ".brand-eyes",
+        "#identity",
+        "#composer-prompt",
+        ".command-action.-selected .command-name",
+        ".command-action.-selected .command-description",
+        "#confirm-actions Button:focus",
+        "#confirm-actions Button.-active",
+        "#trace-actions Button:focus",
+        "#trace-actions Button.-active",
+    )
+    button_selectors = (
+        "Button:hover",
+        "Button:focus",
+        "Button.-active",
+    )
+    rules = []
+    for name, color in _ACCENT_THEMES:
+        prefix = f".-accent-{name} "
+        colored = ", ".join(prefix + selector for selector in color_selectors)
+        buttons = ", ".join(prefix + selector for selector in button_selectors)
+        rules.append(f"{colored} {{ color: ansi_{color}; }}")
+        rules.append(
+            f"{prefix}#composer-bar:focus-within "
+            f"{{ border: solid ansi_{color}; }}"
+        )
+        rules.append(f"{buttons} {{ border: tall ansi_{color}; }}")
+    return "\n".join(rules)
+
+
+WATERMARK = _watermark()
 
 _FOOTER_GAP = "    "
 
@@ -87,13 +149,13 @@ class ChatApp(App[None]):
 
     CSS = """
     $terminal: ansi_default;
-    $accent: ansi_blue;
+    $accent: ansi_green;
     $metadata: ansi_bright_black;
     $failure: ansi_red;
     Screen { background: $terminal; color: $terminal; }
     #landing { align: left top; padding: 0; }
     #landing-box { width: 100%; max-width: 100%; height: 100%; background: $terminal; }
-    #watermark { color: $accent; height: 5; padding: 0 2; text-align: left; text-style: bold; }
+    #watermark { color: $accent; height: 5; padding: 0 2; text-align: left; }
     #catalog-heading { height: 1; margin-top: 1; padding: 0 2; }
     #catalog-title { text-style: bold; }
     #catalog-subtitle { height: 1; padding: 0 2; color: $metadata; }
@@ -107,16 +169,20 @@ class ChatApp(App[None]):
     OptionList > .option-list--option-disabled { color: $metadata; text-style: dim; }
     OptionList > .option-list--option-hover { color: $accent; background: $terminal; text-style: bold; }
     #catalog-hints { height: 1; color: $metadata; background: $terminal; padding: 0 2; }
-    #catalog-error { display: none; height: 1; color: $failure; background: $terminal; padding: 0 2; text-align: right; }
+    #catalog-alert, #chat-alert { display: none; height: 1; color: $metadata; background: $terminal; padding: 0 2; text-align: right; }
+    #catalog-alert.-error, #chat-alert.-error { color: $failure; }
     #footer { height: 1; color: $metadata; background: $terminal; padding: 0 2; }
     #specs { display: none; background: $terminal; }
-    #specs-identity { height: auto; min-height: 1; margin-top: 1; padding: 0 2; color: $accent; text-style: bold; }
+    #specs-heading { height: auto; min-height: 1; margin-top: 1; padding: 0 2; }
+    #specs-identity { width: 1fr; height: auto; min-height: 1; color: $accent; text-style: bold; }
+    .brand-eyes { width: 4; height: 1; padding-right: 1; color: $accent; text-align: right; text-style: bold; }
     #specs-rule { height: 1; margin: 0; padding: 0 2; color: $metadata; }
     #specs-scroll { height: 1fr; padding: 0 2; background: $terminal; scrollbar-size-vertical: 1; scrollbar-color: $metadata; scrollbar-color-hover: $metadata; scrollbar-color-active: $metadata; scrollbar-background: $terminal; scrollbar-background-hover: $terminal; scrollbar-background-active: $terminal; }
     #specs-body { width: 100%; height: auto; color: $terminal; background: $terminal; }
     #specs-hints { height: 1; color: $metadata; background: $terminal; padding: 0 2; }
     #chat { display: none; }
-    #identity { height: 1; padding: 0 2; color: $accent; background: $terminal; text-style: bold; }
+    #chat-heading { height: 1; padding: 0 2; background: $terminal; }
+    #identity { width: 1fr; min-width: 0; height: 1; color: $accent; background: $terminal; text-style: bold; }
     #identity-rule { height: 1; margin: 0; padding: 0 2; color: $metadata; }
     #transcript-scroll { height: 1fr; padding: 1 2; background: $terminal; scrollbar-size: 0 0; }
     #transcript { width: 100%; height: auto; background: $terminal; }
@@ -138,7 +204,6 @@ class ChatApp(App[None]):
     .command-action.-disabled .command-name, .command-action.-disabled .command-description { color: $failure; text-style: dim; }
     .command-action.-save-disabled .command-name, .command-action.-save-disabled .command-description { color: $metadata; text-style: dim; }
     #status { display: none; height: 1; color: $metadata; background: $terminal; padding: 0 2; }
-    #chat-error { display: none; height: 1; color: $failure; background: $terminal; padding: 0 2; text-align: right; }
     #confirm-dialog { width: 100%; height: 2; padding: 0 1; background: $terminal; border: none; }
     #confirm-message { height: 1; color: ansi_white; text-style: bold; }
     #confirm-actions { height: 1; }
@@ -160,11 +225,7 @@ class ChatApp(App[None]):
     Button { border: tall $metadata; background: $terminal; color: $terminal; }
     Button:hover, Button:focus, Button.-active { border: tall $accent; background: $terminal; color: $terminal; background-tint: transparent; tint: transparent; text-style: reverse bold; }
     ModalScreen { background: transparent; }
-    Toast { color: $terminal; background: $terminal; border-left: outer $accent; }
-    Toast .toast--title { color: $accent; }
-    Toast.-error { border-left: outer $failure; }
-    Toast.-error .toast--title { color: $failure; }
-    """
+    """ + _accent_theme_css()
 
     BINDINGS: ClassVar[list[Binding]] = [
         Binding("escape", "stop", "Stop"),
@@ -222,9 +283,10 @@ class ChatApp(App[None]):
         self._footer_text: str | None = None
         self._catalog_width: int | None = None
         self._loading_timer: Timer | None = None
-        self._error_timer: Timer | None = None
+        self._alert_timer: Timer | None = None
         self._selected_catalog_key: str | None = None
         self._specs_key: str | None = None
+        self._accent_theme_index = 0
 
     def compose(self) -> ComposeResult:
         """Create the landing and chat screen widgets."""
@@ -242,30 +304,34 @@ class ChatApp(App[None]):
             yield Static("", markup=False, id="catalog-columns")
             yield LoadingStatus(id="load-status")
             yield KeyboardOptionList(id="chooser")
-            yield LoadingStatus(id="catalog-error")
+            yield LoadingStatus(id="catalog-alert")
             yield Static(
                 "↑↓ MOVE    ENTER CONNECT    CTRL+C QUIT",
                 markup=False,
                 id="catalog-hints",
             )
         with Container(id="specs"):
-            yield Static("", markup=False, id="specs-identity")
+            with Horizontal(id="specs-heading"):
+                yield Static("", markup=False, id="specs-identity")
+                yield Static("· ·", markup=False, id="specs-eyes", classes="brand-eyes")
             yield Rule(line_style="solid", id="specs-rule")
-            with VerticalScroll(id="specs-scroll"):
+            with SpecsScroll(id="specs-scroll"):
                 yield Static("", markup=False, id="specs-body")
             yield Static(
-                "↑↓ SCROLL    ESC REGISTRY    CTRL+C QUIT",
+                "↑↓ SCROLL    ←→ MODEL    ESC REGISTRY    CTRL+C QUIT",
                 markup=False,
                 id="specs-hints",
             )
         with Container(id="chat"):
-            yield Static("", markup=False, id="identity")
+            with Horizontal(id="chat-heading"):
+                yield Static("", markup=False, id="identity")
+                yield Static("· ·", markup=False, id="chat-eyes", classes="brand-eyes")
             yield Rule(line_style="solid", id="identity-rule")
             with VerticalScroll(id="transcript-scroll"):
                 yield Transcript(id="transcript")
             yield CommandMenu(id="command-menu")
             yield LoadingStatus(id="status")
-            yield LoadingStatus(id="chat-error")
+            yield LoadingStatus(id="chat-alert")
             with Horizontal(id="composer-bar"):
                 yield Static(">", markup=False, id="composer-prompt")
                 yield Composer(id="composer", language=None)
@@ -287,9 +353,9 @@ class ChatApp(App[None]):
         if self._loading_timer is not None:
             self._loading_timer.stop()
             self._loading_timer = None
-        if self._error_timer is not None:
-            self._error_timer.stop()
-            self._error_timer = None
+        if self._alert_timer is not None:
+            self._alert_timer.stop()
+            self._alert_timer = None
         if self._trace_blink_timer is not None:
             self._trace_blink_timer.stop()
             self._trace_blink_timer = None
@@ -352,6 +418,31 @@ class ChatApp(App[None]):
                 self._show_specs(event.key)
         elif isinstance(row, SavedChat):
             self._show_specs(event.key)
+
+    def on_keyboard_option_list_theme_requested(
+        self,
+        event: KeyboardOptionList.ThemeRequested,
+    ) -> None:
+        """Cycle the registry through the configured ANSI accent themes."""
+        del event
+        self._accent_theme_index = (self._accent_theme_index + 1) % len(
+            _ACCENT_THEMES
+        )
+        name, color = _ACCENT_THEMES[self._accent_theme_index]
+        for theme_name, _ in _ACCENT_THEMES:
+            self.remove_class(f"-accent-{theme_name}")
+        self.add_class(f"-accent-{name}")
+        self.query_one("#watermark", Static).update(_watermark(color))
+        self.query_one("#transcript", Transcript).set_accent(color)
+        if self._selected_catalog_key is not None:
+            self._refresh_catalog_prompts(self._selected_catalog_key)
+
+    def on_specs_scroll_cycle_requested(
+        self,
+        event: SpecsScroll.CycleRequested,
+    ) -> None:
+        """Show the adjacent available registry entry in SPECS."""
+        self._cycle_specs(event.offset)
 
     def _after_trace_action(self, trace: SavedChat, choice: str | None) -> None:
         if choice == "rename":
@@ -668,10 +759,7 @@ class ChatApp(App[None]):
             self.action_interrupt()
         elif name == "registry":
             if self._generating:
-                self.notify(
-                    "Stop the active reply before returning to REGISTRY",
-                    severity="warning",
-                )
+                self._show_error("Stop the active reply before returning to REGISTRY")
             else:
                 self._return_to_landing()
         elif name == "save":
@@ -824,7 +912,7 @@ class ChatApp(App[None]):
         except ChatStorageError as error:
             self._show_error(str(error))
             return False
-        self.notify(f"Saved {saved.id[:8]} — {saved.title}")
+        self._show_alert(f"Saved {saved.id[:8]} — {saved.title}")
         return True
 
     def _begin_select(self, assistant: Assistant) -> None:
@@ -886,24 +974,34 @@ class ChatApp(App[None]):
 
     def _show_error(self, message: str) -> None:
         """Show one right-aligned failure beside the active controls."""
-        if self._error_timer is not None:
-            self._error_timer.stop()
+        self._show_alert(message, error=True)
+
+    def _show_alert(self, message: str, *, error: bool = False) -> None:
+        """Show one transient message beside the active controls."""
+        if self._alert_timer is not None:
+            self._alert_timer.stop()
         identifier = (
-            "#chat-error" if self.query_one("#chat").display else "#catalog-error"
+            "#chat-alert" if self.query_one("#chat").display else "#catalog-alert"
         )
-        other = "#catalog-error" if identifier == "#chat-error" else "#chat-error"
-        self.query_one(other, LoadingStatus).set_state("")
+        other = "#catalog-alert" if identifier == "#chat-alert" else "#chat-alert"
+        other_alert = self.query_one(other, LoadingStatus)
+        other_alert.set_state("")
+        other_alert.remove_class("-error")
         value = message.strip()
         if value and not value.endswith((".", "!", "?")):
             value += "."
-        self.query_one(identifier, LoadingStatus).set_state(value, animated=False)
-        self._error_timer = self.set_timer(5, self._clear_error)
+        alert = self.query_one(identifier, LoadingStatus)
+        alert.set_class(error, "-error")
+        alert.set_state(value, animated=False)
+        self._alert_timer = self.set_timer(5, self._clear_alert)
 
-    def _clear_error(self) -> None:
-        """Clear the transient failure line."""
-        self.query_one("#chat-error", LoadingStatus).set_state("")
-        self.query_one("#catalog-error", LoadingStatus).set_state("")
-        self._error_timer = None
+    def _clear_alert(self) -> None:
+        """Clear the transient message line."""
+        for identifier in ("#chat-alert", "#catalog-alert"):
+            alert = self.query_one(identifier, LoadingStatus)
+            alert.set_state("")
+            alert.remove_class("-error")
+        self._alert_timer = None
 
     def _set_loading(self, value: bool) -> None:
         self._loading = value
@@ -992,6 +1090,24 @@ class ChatApp(App[None]):
         self.query_one("#landing").display = True
         self._specs_key = None
         self.query_one("#chooser", OptionList).focus()
+
+    def _cycle_specs(self, offset: int) -> None:
+        """Cycle SPECS through available registry rows with wrapping."""
+        chooser = self.query_one("#chooser", OptionList)
+        available = [
+            (index, str(option.id))
+            for index, option in enumerate(chooser.options)
+            if option.id is not None and not option.disabled
+        ]
+        keys = [key for _, key in available]
+        if self._specs_key not in keys or not available:
+            return
+        current = keys.index(self._specs_key)
+        option_index, key = available[(current + offset) % len(available)]
+        self._specs_key = key
+        chooser.highlighted = option_index
+        self._render_specs()
+        self.query_one("#specs-scroll", SpecsScroll).scroll_to(y=0, animate=False)
 
     def _render_specs(self) -> None:
         """Render the selected model details at the current terminal width."""

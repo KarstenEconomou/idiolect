@@ -74,6 +74,25 @@ def test_trace_specs_add_snapshot_lineage_to_the_underlying_model(
     assert _TRACE_PARENT_ID in document.plain
     assert _NOW.isoformat() in document.plain
     assert "NOT EVALUATED" in document.plain
+    console = Console(width=36, color_system=None)
+    with console.capture() as capture:
+        console.print(document)
+    rendered = capture.get().splitlines()
+    for label, next_label, value in (
+        ("MODEL DIGEST", "TRUST REMOTE CODE", assistant.model_digest),
+        ("TRACE ID", "TRACE PATH", trace.id),
+        ("TRACE PATH", "PARENT ID", trace.path),
+    ):
+        start = rendered.index(label) + 1
+        end = next(
+            index
+            for index in range(start, len(rendered))
+            if rendered[index].startswith(next_label)
+        )
+        value_lines = [line.rstrip() for line in rendered[start:end]]
+        assert len(value_lines) > 1
+        assert all(line.startswith(" ") for line in value_lines)
+        assert "".join(line[1:] for line in value_lines) == str(value)
 
 
 def test_dixie_fixture_bars_follow_width_and_visual_language(tmp_path: Path) -> None:
@@ -98,8 +117,11 @@ def test_dixie_fixture_bars_follow_width_and_visual_language(tmp_path: Path) -> 
     empty_bar = wide.get_style_at_offset(console, wide.plain.index("░"))
     passed = wide.get_style_at_offset(console, wide.plain.index("PASS"))
 
-    assert narrow_bar == 8
+    assert narrow_bar == 12
     assert wide_bar == 24
+    assert "TYPE\n BASE\n" in wide.plain
+    assert "STATUS\n SYNTHETIC // UI FIXTURE\n" in wide.plain
+    assert "TRUNCATION\n " in wide.plain
     assert heading.bold
     assert heading.color is not None and heading.color.number == 7
     assert fixture.color is not None and fixture.color.number == 8
@@ -190,7 +212,9 @@ def test_specs_scrollbar_uses_a_half_cell_thumb() -> None:
 
 
 def _bar_cells(document: str, label: str) -> int:
-    line = next(line for line in document.splitlines() if line.startswith(label))
+    lines = document.splitlines()
+    label_index = lines.index(label)
+    line = lines[label_index + 1]
     return line.count("█") + line.count("░")
 
 

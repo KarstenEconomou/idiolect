@@ -13,17 +13,21 @@ TUI tests.
 ## Visual language
 
 - Keep the interface sparse. Use the terminal default for the screen, surfaces,
-  primary text, and inactive row names. Use ANSI blue only for accents and active
-  primary labels; bright black for metadata, help text, telemetry, inactive
-  actions, dividers, and idle borders; ANSI white for table and menu headings;
-  and ANSI red for failures and unavailable actions. Use terminal `grey23` as
-  the character-width background for transcript code. Do not add RGB colors,
-  opaque modal backdrops, tints, or separate surface colors.
+  primary text, and inactive row names. Use the selected ANSI green, yellow,
+  blue, magenta-purple, or cyan only for accents and active primary labels;
+  bright black for metadata, help text, telemetry, inactive actions, dividers,
+  and idle borders; ANSI white for table and menu headings; and ANSI red for
+  failures and unavailable actions. Use terminal `grey23` as the character-width
+  background for transcript code. Do not add RGB colors, opaque modal backdrops,
+  tints, or separate surface colors.
 - Bold product marks, primary page titles, canonical chat identities, table and
   menu headings, ready status labels, and the primary label of the current
   selection. Do not bold body text outside focused transcript Markdown,
   telemetry, help text, descriptions, or inactive actions. Give supporting
   metadata in a selected item the accent color with dim styling.
+- Keep the watermark blue. Render its mark and product name bold, and render its
+  tagline non-bold and dim. Put the blue `· ·` brand motif at the right edge of
+  the chat and SPECS identity headers with one blank cell after it.
 - Use uppercase for interface nouns, identities, transcript speaker labels,
   table headings, status values, action labels, telemetry, and keyboard hints.
   Keep command names lowercase. Write command descriptions in sentence case and
@@ -48,6 +52,10 @@ TUI tests.
   row identity primary. Treat TYPE and ENTRY like slash-command descriptions:
   use metadata gray while idle and the dimmed selection accent while selected.
   Treat unavailable rows like unavailable `/save`: metadata gray and dimmed.
+- Let `T` in REGISTRY cycle the interface accent through ANSI green, yellow,
+  blue, magenta-purple, and cyan. Use green by default, advance to yellow on the
+  first press, wrap to green after cyan, and do not advertise this branding
+  control in the navigation hints.
 - For a `TRACE`, keep the canonical model identity first and show its trace name
   to the right in the remaining MODEL width. Ellipsize only the trace name when
   it does not fit. Expand trace names by default. Let Space toggle all trace
@@ -82,11 +90,15 @@ TUI tests.
   directly below the composer with no vertical padding.
 - Keep REGISTRY full-width like chat. Do not add an outer horizontal inset or a
   centered maximum width around its existing two-cell content gutter.
+- In SPECS, let Left and Right cycle with wrapping through available registry
+  rows, skip FAULT rows, reset the details scroll position, and keep the cycled
+  row selected when the user returns to REGISTRY.
 - In SPECS, treat field names like command names and values like command
   descriptions: use terminal-default field names and metadata-gray values. Keep
-  section headings white and bold. Inset every visual line of a prompt-format
-  value by one cell, including wrapped continuation lines, and omit trailing
-  blank system-prompt lines. Dim the unfilled portion of evaluation bars.
+  section headings white and bold. Put every field value, including evaluation
+  bars, in a one-cell inset block beneath its label so wrapped continuation lines
+  align. Preserve prompt-format lines, but omit trailing blank system-prompt
+  lines. Dim the unfilled portion of evaluation bars.
 - Hide transcript and composer scrollbars. Keep the registry scrollbar in the
   metadata color. Separate turns with one blank line, put the speaker label on
   its own line, and inset every rendered message line by one cell. Use the same
@@ -99,10 +111,11 @@ TUI tests.
   applicable keyboard hints while a menu is open, then restore it. Show only
   measured footer values, remove secondary measurements at narrow widths, and
   hide the ready state.
-- Show failures as transient, right-aligned lines above the applicable control
-  bar. Use sentence case, preserve uppercase entity names, match loading-status
-  spacing, terminate each message with punctuation, and use the failure color.
-  Do not use error toasts.
+- Show transient alerts as right-aligned lines above the applicable control bar.
+  Use sentence case, preserve uppercase entity names, match loading-status
+  spacing, and terminate each message with punctuation. Use metadata gray for
+  informational and success alerts, and reserve the failure color for errors.
+  Do not use toasts.
 - Show `BACKSPACE MANAGE` only for a highlighted TRACE. Confirm it with a `TRACE`
   heading followed directly by its metadata-colored name and horizontal
   `ERASE`, `RENAME`, `RETAIN` actions. Select `RETAIN` first, and make Escape

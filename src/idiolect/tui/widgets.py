@@ -11,7 +11,7 @@ from rich.text import Text
 from textual import events
 from textual.app import ComposeResult, RenderResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.message import Message
 from textual.screen import ModalScreen
 from textual.widget import Widget
@@ -56,7 +56,15 @@ class KeyboardOptionList(OptionList):
             self.key = key
             super().__init__()
 
+    class ThemeRequested(Message):
+        """Request the next interface accent theme."""
+
     async def _on_key(self, event: events.Key) -> None:
+        if event.key.lower() == "t":
+            event.prevent_default()
+            event.stop()
+            self.post_message(self.ThemeRequested())
+            return
         if event.key.lower() == "s" and self.highlighted is not None:
             option = self.get_option_at_index(self.highlighted)
             if option.id is not None and not option.disabled:
@@ -98,6 +106,28 @@ class KeyboardOptionList(OptionList):
 
     def _on_mouse_move(self, event: events.MouseMove) -> None:
         event.stop()
+
+
+class SpecsScroll(VerticalScroll):
+    """Scroll specifications and request adjacent registry entries."""
+
+    class CycleRequested(Message):
+        """Request the next or previous specification sheet."""
+
+        def __init__(self, offset: int) -> None:
+            """Set the registry movement direction."""
+            self.offset = offset
+            super().__init__()
+
+    async def _on_key(self, event: events.Key) -> None:
+        if event.key in {"left", "right"}:
+            event.prevent_default()
+            event.stop()
+            self.post_message(
+                self.CycleRequested(-1 if event.key == "left" else 1)
+            )
+            return
+        await super()._on_key(event)
 
 
 class KeyboardButton(Button):
@@ -226,6 +256,13 @@ class Transcript(Static):
     plain = ""
     _cached_turns: tuple[tuple[str, str], ...] = ()
     _cached_messages: tuple[ChatMarkdown, ...] = ()
+    _accent = "green"
+
+    def set_accent(self, color: str) -> None:
+        """Set the accent used by transcript speaker labels."""
+        if color != self._accent:
+            self._accent = color
+            self.set_turns(self._cached_turns)
 
     def set_turns(self, turns: Sequence[tuple[str, str]]) -> None:
         """Set labeled turns without changing their stored message text."""
@@ -241,7 +278,7 @@ class Transcript(Static):
         for index, ((name, message), rendered) in enumerate(zip(current, messages)):
             if index:
                 renderables.append(Text(""))
-            renderables.append(Text(f"{name}:", style="blue"))
+            renderables.append(Text(f"{name}:", style=self._accent))
             renderables.append(Padding(rendered, (0, 0, 0, 1)))
             displayed = message.replace("\n", "\n ")
             plain_blocks.append(f"{name}:\n {displayed}")

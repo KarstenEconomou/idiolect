@@ -47,6 +47,9 @@ does not download a model.
 
 The landing screen displays the base persona, verified adapters, and saved
 snapshots in `REGISTRY`. It has no search field or pointer activation.
+The blue watermark keeps its mark and product name bold and gives its tagline a
+dim, non-bold treatment. Chat and SPECS identity headers carry the matching
+`· ·` brand motif at their right edge with one blank cell completing the face.
 Use the arrow keys to choose a row and Enter to connect. TYPE identifies a BASE,
 CONSTRUCT, or TRACE. TYPE and ENTRY use the same description treatment as slash
 commands: metadata gray while idle and dimmed accent color with their selected
@@ -66,17 +69,25 @@ an immutable replacement with the same lineage parent. Select `ERASE` to
 permanently remove that verified lineage leaf. A trace with a child cannot be
 renamed or erased.
 
+Press T in REGISTRY to cycle the interface accent through ANSI green, yellow,
+blue, purple, and cyan. Green is the default; the first press selects yellow,
+and the cycle wraps to green after cyan. This branding control is intentionally
+omitted from the navigation hints.
+
 Press S on any `READY` row to open `SPECS` without resolving or loading the
 model. The scrollable page shows the complete verified model identity, source,
 revision, digests, prompt and generation policy, and available run, dataset, and
 TRACE lineage. It uses the compact `CTX`, `TOK`, `REP`, `GEN`, and `EVAL` labels.
 Field names use the command menu's primary text, while values use its
 metadata-gray description treatment. Section headings remain white and bold.
-Prompt-format values use the same one-cell inset as transcript turns, including
-wrapped continuation lines and every retained line of a multiline system
-prompt. Trailing blank system-prompt lines are omitted. Prefixes and suffixes
-show control whitespace with escapes such as `\n`. Press Escape to return to
-the same highlighted registry row.
+Every value, including evaluation bars, uses the same one-cell inset beneath its
+label as transcript turns. Wrapped continuation lines and every retained line of
+a multiline system prompt keep that inset. Trailing blank system-prompt lines
+are omitted. Prefixes and suffixes show control whitespace with escapes such as
+`\n`. Press Escape to return to the same highlighted registry row.
+Use Left and Right to cycle with wrapping through every `READY` registry entry;
+`FAULT` entries are skipped. Each change resets SPECS to the top, and Escape
+returns to the newly selected registry row.
 The DIXIE BASE page includes a deterministic fidelity scorecard labeled
 `SYNTHETIC // UI FIXTURE`; its values demonstrate the terminal graphics and are
 not measurements. CONSTRUCT and TRACE pages show `NOT EVALUATED` because chat
@@ -199,8 +210,10 @@ fields from the right when space is limited. All values come from the model
 backend; the footer does not report estimated performance. Peak memory uses
 decimal GB, which matches the MLX-LM measurement.
 
-Failures appear as transient right-aligned lines immediately above the active
-control bar. They use the same spacing as loading status and the failure color.
+Transient alerts appear as right-aligned lines immediately above the active
+control bar with the same spacing as loading status. Informational and success
+alerts use metadata gray; errors alone use the failure color. The TUI does not
+use floating toasts.
 
 ## Saved snapshots
 

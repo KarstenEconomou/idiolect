@@ -20,7 +20,7 @@ from idiolect.chat.storage import SavedChat
 from idiolect.config import GenerationConfig
 from idiolect.types import Split
 
-_KEY_WIDTH = 22
+_METRIC_TRAILING_WIDTH = 23
 _ABBREVIATIONS = {
     "CONTEXT": "CTX",
     "EVALUATION": "EVAL",
@@ -45,7 +45,7 @@ _MUTED_DESCRIPTION = Style(color="bright_black", dim=True, bold=False)
 
 
 class SpecsDocument:
-    """Render specification lines with independently padded prompt blocks."""
+    """Render specification lines with independently padded value blocks."""
 
     def __init__(self) -> None:
         """Create an empty specification document."""
@@ -72,7 +72,7 @@ class SpecsDocument:
         self._text.append_text(rendered)
         self._text.append("\n")
 
-    def append_prompt(self, label: Text, value: Text) -> None:
+    def append_inset(self, label: Text, value: Text) -> None:
         """Append one label and a value with a one-cell render inset."""
         self.append_line(label)
         self._renderables.append(Padding(value, (0, 0, 0, 1)))
@@ -229,9 +229,10 @@ def _field(
         )
         return
     displayed = _display(value)
-    line = Text(f"{label:<{_KEY_WIDTH}}", style=_FIELD_NAME)
-    line.append(displayed, style=value_style)
-    document.append_line(line)
+    document.append_inset(
+        Text(label, style=_FIELD_NAME),
+        Text(displayed, style=value_style),
+    )
 
 
 def _prompt_block_field(
@@ -250,7 +251,7 @@ def _prompt_block_field(
     else:
         visible = json.dumps(normalized, ensure_ascii=False)[1:-1]
         displayed = visible or "—"
-    document.append_prompt(
+    document.append_inset(
         Text(label, style=_FIELD_NAME),
         Text(displayed, style=value_style),
     )
@@ -315,7 +316,7 @@ def _synthetic_evaluation(document: SpecsDocument, width: int) -> None:
     _field(document, "CORPUS PERPLEXITY", 8.21)
     _field(document, "VOICE 3-GRAM JSD", 0.118)
     document.append_line()
-    bar_width = max(8, min(24, width - _KEY_WIDTH - 23))
+    bar_width = max(8, min(24, width - _METRIC_TRAILING_WIDTH - 1))
     for label, value, limit in (
         ("EMPTY OUTPUT", 0.000, 0.020),
         ("FORMAT VIOLATION", 0.004, 0.020),
@@ -336,12 +337,11 @@ def _metric(
     """Append one bounded evaluation metric bar."""
     passed = value <= limit
     filled = min(width, round(width * value / limit)) if limit else width
-    line = Text(f"{label:<{_KEY_WIDTH}}", style=_FIELD_NAME)
-    line.append("█" * filled, style=_DESCRIPTION if passed else "red")
+    line = Text("█" * filled, style=_DESCRIPTION if passed else "red")
     line.append("░" * (width - filled), style=_MUTED_DESCRIPTION)
     line.append(f"  {value:>5.1%} / {limit:.1%}  ", style=_DESCRIPTION)
     line.append(
         "PASS" if passed else "FAIL",
         style=_DESCRIPTION if passed else "bold red",
     )
-    document.append_line(line)
+    document.append_inset(Text(label, style=_FIELD_NAME), line)
