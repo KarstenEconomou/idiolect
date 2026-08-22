@@ -22,9 +22,9 @@ def test_catalog_row_has_a_stable_cell_width_for_unicode_names() -> None:
     """Check terminal-cell alignment for a non-ASCII assistant name."""
     layout = CatalogLayout.for_terminal(80)
 
-    row = layout.text("IDIOLECT // 模型@BASE [LOCAL]", "PERSONA", "32", "Ready")
+    row = layout.text("IDIOLECT // 模型@BASE [LOCAL]", "PERSONA", "32", "READY")
 
     assert cell_len(row.plain) == sum(
         (layout.model, layout.data, layout.window, layout.status)
     ) + 3
-    assert row.plain.endswith("Ready".ljust(layout.status))
+    assert row.plain.endswith("READY".ljust(layout.status))

@@ -13,7 +13,7 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.timer import Timer
-from textual.widgets import OptionList, Static, TextArea
+from textual.widgets import OptionList, Rule, Static, TextArea
 from textual.widgets.option_list import Option
 
 from idiolect.chat.discovery import Assistant, DiscoveryItem
@@ -29,6 +29,7 @@ from idiolect.tui.widgets import (
     ConfirmModal,
     InfoModal,
     KeyboardOptionList,
+    LoadingStatus,
 )
 
 WATERMARK = """     ╭─╮
@@ -51,16 +52,18 @@ class ChatApp(App[None]):
     #landing-box { width: 100%; max-width: 120; height: 100%; background: $terminal; }
     #watermark { color: $accent; height: 5; padding: 0 2; text-align: left; text-style: bold; }
     #catalog-heading { height: 1; margin-top: 1; padding: 0 2; }
-    #catalog-title { width: 1fr; text-style: bold; }
-    #catalog-summary { width: auto; color: $metadata; }
+    #catalog-title { text-style: bold; }
     #catalog-subtitle { height: 1; padding: 0 2; color: $metadata; }
+    #catalog-description { width: 1fr; }
+    #catalog-summary { width: auto; }
+    #catalog-rule { height: 1; margin: 0; padding: 0 2; color: $metadata; }
     #catalog-columns { height: 1; padding: 0 2; color: $metadata; text-style: bold; }
     #load-status { display: none; height: 1; padding: 0 2; color: $accent; text-style: bold; }
     #chooser { height: 1fr; padding: 0 2; border: none; color: $terminal; background: $terminal; background-tint: transparent; scrollbar-color: $metadata; scrollbar-background: $terminal; }
     OptionList > .option-list--option { padding: 0; color: $terminal; background: $terminal; }
-    OptionList > .option-list--option-highlighted, OptionList:focus > .option-list--option-highlighted { color: $terminal; background: $accent; text-style: bold; }
+    OptionList > .option-list--option-highlighted, OptionList:focus > .option-list--option-highlighted { color: $accent; background: $terminal; text-style: bold; }
     OptionList > .option-list--option-disabled { color: $failure; text-style: dim; }
-    OptionList > .option-list--option-hover { color: $terminal; background: $terminal; text-style: reverse; }
+    OptionList > .option-list--option-hover { color: $accent; background: $terminal; text-style: bold; }
     #catalog-hints { height: 1; padding: 0 2; color: $metadata; }
     #chat { display: none; }
     #identity { height: 2; padding: 0 2; color: $accent; background: $terminal; border-bottom: solid $metadata; text-style: bold; }
@@ -146,14 +149,16 @@ class ChatApp(App[None]):
             yield Static(WATERMARK, markup=False, id="watermark")
             with Horizontal(id="catalog-heading"):
                 yield Static("REGISTRY", markup=False, id="catalog-title")
+            with Horizontal(id="catalog-subtitle"):
+                yield Static(
+                    "Choose a persona, adapter, or saved snapshot.",
+                    markup=False,
+                    id="catalog-description",
+                )
                 yield Static("", markup=False, id="catalog-summary")
-            yield Static(
-                "Choose a persona, adapter, or saved snapshot.",
-                markup=False,
-                id="catalog-subtitle",
-            )
+            yield Rule(line_style="solid", id="catalog-rule")
             yield Static("", markup=False, id="catalog-columns")
-            yield Static("", markup=False, id="load-status")
+            yield LoadingStatus(id="load-status")
             yield KeyboardOptionList(id="chooser")
             yield Static(
                 "↑↓ move · Enter select · Esc stop · Ctrl+C quit",
@@ -165,7 +170,7 @@ class ChatApp(App[None]):
             with VerticalScroll(id="transcript-scroll"):
                 yield Static("", markup=False, id="transcript")
             yield Static("", markup=False, id="completion")
-            yield Static("", markup=False, id="status")
+            yield LoadingStatus(id="status")
             yield Composer(id="composer", language=None)
             yield Static("", markup=False, id="footer")
 
@@ -397,10 +402,11 @@ class ChatApp(App[None]):
         normalized = (
             "" if value is None or value.casefold() == "ready" else value.upper()
         )
-        status = self.query_one("#status", Static)
-        status.display = bool(normalized)
         if normalized != self._status_text:
-            status.update(normalized)
+            self.query_one("#status", LoadingStatus).set_state(
+                normalized,
+                animated=normalized not in {"CANCELLED", "FAILED"},
+            )
             self._status_text = normalized
 
     def _command(self, name: str, argument: str | None) -> None:
@@ -609,10 +615,9 @@ class ChatApp(App[None]):
         if not self.is_mounted or len(self.query("#load-status")) == 0:
             return
         state = self.runtime.state.value
-        status = f"{state.upper()} // MODEL SESSION" if self._loading else ""
-        self.query_one("#load-status").display = bool(status)
+        status = state.upper() if self._loading else ""
         if status != self._load_status_text:
-            self.query_one("#load-status", Static).update(status)
+            self.query_one("#load-status", LoadingStatus).set_state(status)
             self._load_status_text = status
         if self._loading and self.query_one("#chat").display:
             self._set_status(state)
@@ -644,7 +649,7 @@ class ChatApp(App[None]):
                     row.label,
                     data,
                     str(assistant.context_messages),
-                    "Ready",
+                    "READY",
                 )
                 available += 1
             else:
@@ -652,7 +657,7 @@ class ChatApp(App[None]):
                     row.label,
                     "—",
                     "—",
-                    "Unavailable",
+                    "UNAVAILABLE",
                     failed=True,
                 )
             key = f"assistant-{index}"
@@ -663,7 +668,7 @@ class ChatApp(App[None]):
                 f"{saved.title} · {saved.assistant.name}",
                 "SNAPSHOT",
                 "—",
-                "Saved",
+                "SAVED",
             )
             key = f"saved-{saved.id}"
             self._rows[key] = saved

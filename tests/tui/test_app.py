@@ -7,10 +7,11 @@ from collections.abc import Callable, Iterator
 from types import SimpleNamespace
 from typing import cast
 
+from rich.text import Text
 from textual import events
 from textual.containers import VerticalScroll
 from textual.pilot import Pilot
-from textual.widgets import OptionList, Static
+from textual.widgets import OptionList, Rule, Static
 
 from idiolect.chat.discovery import Assistant, DiscoveryItem
 from idiolect.chat.runtime import ChatRuntime
@@ -19,7 +20,7 @@ from idiolect.chat.storage import ChatStorageError, ChatStore
 from idiolect.chat.worker import WorkerError, WorkerState
 from idiolect.config import ChatConfig, GenerationConfig
 from idiolect.tui.app import WATERMARK, ChatApp
-from idiolect.tui.widgets import Composer
+from idiolect.tui.widgets import Composer, LoadingStatus
 
 
 def test_landing_shows_literal_watermark(tmp_path) -> None:
@@ -59,13 +60,29 @@ def test_registry_opens_highlighted_assistant_from_keyboard(tmp_path) -> None:
     async def verify() -> None:
         async with app.run_test(size=(80, 24)) as pilot:
             chooser = app.query_one("#chooser", OptionList)
+            rule = app.query_one("#catalog-rule", Rule)
             assert str(app.query_one("#catalog-title", Static).content) == "REGISTRY"
             assert len(app.query("#search")) == 0
+            assert rule.line_style == "solid"
+            assert rule.content_region.x == chooser.content_region.x
+            assert rule.content_region.width == chooser.content_region.width
             assert chooser.highlighted == 1
             assert chooser.has_focus
-            assert str(app.query_one("#catalog-summary", Static).content) == (
-                "1 available"
+            highlight = chooser.get_component_rich_style(
+                "option-list--option-highlighted"
             )
+            assert highlight.color is not None
+            assert highlight.color.number == 4
+            assert highlight.bgcolor is not None
+            assert highlight.bgcolor.name == "default"
+            description = app.query_one("#catalog-description", Static)
+            summary = app.query_one("#catalog-summary", Static)
+            assert str(summary.content) == "1 available"
+            assert description.region.y == summary.region.y
+            assert app.query_one("#catalog-title", Static).region.y < summary.region.y
+            prompt = chooser.get_option_at_index(1).prompt
+            assert isinstance(prompt, Text)
+            assert "READY" in prompt.plain
 
             await pilot.click(chooser, offset=(2, 1))
             await pilot.pause()
@@ -113,7 +130,7 @@ def test_transcript_is_literal_and_scrollable(tmp_path) -> None:
             assert str(app.query_one("#footer", Static).content) == (
                 "CONTEXT 500/1000 (50%)    GENERATED 64"
             )
-            assert app.query_one("#status", Static).display is False
+            assert app.query_one("#status", LoadingStatus).display is False
 
             bottom = scroller.scroll_y
             scroller.post_message(
@@ -201,9 +218,12 @@ def test_prefill_progress_appears_above_composer(tmp_path) -> None:
             assert await asyncio.to_thread(runtime.prefill_started.wait, 1)
             await pilot.pause()
 
-            status = app.query_one("#status", Static)
+            status = app.query_one("#status", LoadingStatus)
             footer = app.query_one("#footer", Static)
-            assert str(status.content) == "PREFILL 0/4"
+            rendered = status.render()
+            assert status.state == "PREFILL 0/4"
+            assert isinstance(rendered, Text)
+            assert rendered.plain.endswith(" PREFILL 0/4")
             assert status.display is True
             assert status.styles.padding == footer.styles.padding
             assert footer.content_region.x == composer.region.x
@@ -254,7 +274,12 @@ def test_model_load_keeps_event_processing_active(tmp_path) -> None:
             assert await asyncio.to_thread(runtime.started.wait, 1)
             await asyncio.sleep(0.15)
             await pilot.pause()
-            assert "LOADING" in str(app.query_one("#load-status", Static).content)
+            status = app.query_one("#load-status", LoadingStatus)
+            rendered = status.render()
+            assert status.state == "LOADING"
+            assert isinstance(rendered, Text)
+            assert rendered.plain.endswith(" LOADING")
+            assert "// MODEL SESSION" not in rendered.plain
             assert app.query_one("#chooser", OptionList).disabled is True
             runtime.release.set()
             await _wait_for_chat(app, pilot)
@@ -320,7 +345,7 @@ def test_retry_keeps_user_turn_after_generation_failure(tmp_path) -> None:
             await pilot.press("enter")
             for _ in range(20):
                 await pilot.pause()
-                if str(app.query_one("#status", Static).content) == "FAILED":
+                if app.query_one("#status", LoadingStatus).state == "FAILED":
                     break
 
             session = runtime.session

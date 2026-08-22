@@ -1,13 +1,17 @@
 """Define widgets for the local chat interface."""
 
-from typing import ClassVar
+import time
+from typing import ClassVar, cast
 
+from rich.spinner import Spinner
+from rich.text import Text
 from textual import events
-from textual.app import ComposeResult
+from textual.app import ComposeResult, RenderResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.message import Message
 from textual.screen import ModalScreen
+from textual.widget import Widget
 from textual.widgets import Button, Label, OptionList, Static, TextArea
 
 
@@ -58,6 +62,40 @@ class Composer(TextArea):
             self.insert("\n")
             return
         await super()._on_key(event)
+
+
+class LoadingStatus(Widget):
+    """Show a status with an optional activity spinner."""
+
+    def __init__(self, *, id: str | None = None) -> None:
+        """Create a hidden loading state."""
+        super().__init__(id=id)
+        self.state = ""
+        self._animated = True
+        self._spinner = Spinner("dots")
+
+    def on_mount(self) -> None:
+        """Set the initial spinner refresh state."""
+        self.auto_refresh = 1 / 12 if self.state and self._animated else None
+
+    def set_state(self, value: str, *, animated: bool = True) -> None:
+        """Set the visible status and its animation state."""
+        self.state = value
+        self._animated = animated
+        self.display = bool(value)
+        self.auto_refresh = 1 / 12 if value and animated else None
+        self.refresh()
+
+    def render(self) -> RenderResult:
+        """Render the spinner before the loading state."""
+        if not self._animated:
+            return Text(self.state)
+        frame = (
+            Text("·")
+            if self.app.animation_level == "none"
+            else cast(Text, self._spinner.render(time.monotonic()))
+        )
+        return Text.assemble(frame, " ", self.state)
 
 
 class InfoModal(ModalScreen[None]):
