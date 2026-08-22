@@ -16,6 +16,7 @@ dependencies = [
 dev = [
     "pytest",
     "ruff",
+    "textual>=8,<9",
     "ty",
 ]
 
@@ -26,6 +27,9 @@ idiolect = "idiolect.cli:main"
 train = [
     "huggingface-hub>=1.28.0",
     "mlx-lm[train]>=0.31.3",
+]
+chat = [
+    "textual>=8,<9",
 ]
 
 [build-system]

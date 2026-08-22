@@ -8,4 +8,4 @@ default:
 
 # Compare one complete training policy with its recorded base.
 policy dataset *runs:
-    caffeinate -i uv run idiolect eval policy "$@"
+    caffeinate -i uv run --env-file .env idiolect eval policy "$@"

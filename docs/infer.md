@@ -20,6 +20,13 @@ The canonical Qwen policy uses non-thinking generation. The training format adds
 
 `max_prompt_tokens` is a strict input limit after the tokenizer applies the chat template. The operation stops if an input exceeds the limit. It does not remove context or reduce the output limit.
 
+The generation-only part of `[infer]` is also the chat generation policy. It
+contains the backend, prompt and output limits, temperature, probability
+filters, and repetition settings. Batch-only output, seed lists, and example
+selection stay specific to inference artifacts. Interactive chat applies its
+recorded message window and then removes oldest whole messages until the
+templated prompt fits `max_prompt_tokens`.
+
 ## Targets
 
 Use one of these targets:
@@ -93,6 +100,11 @@ The inference ID commits to the prediction-file digest and its counts. The recor
 Before generation, inference searches for a verified artifact with an equal recipe. It returns that artifact when exactly one match exists. Concurrent equal operations that produce equal content return the same artifact. More than one verified result for one recipe is an error because it indicates nondeterministic generation or an incomplete runtime fingerprint.
 
 Each prediction contains the source index and digest, configured seed, derived MLX seed, generated text, finish reason, and token counts. The artifact reader verifies the complete prediction schema, order, seeds, finish reasons, token limits, counts, and recipe alignment. It does not contain the source prompt or expected completion. The manifest refers to the immutable dataset for these values.
+
+The MLX boundary uses the same stream for batch and interactive generation.
+Batch inference collects the text deltas and keeps its existing prediction
+schema. The stream additionally exposes measured prompt throughput, generation
+throughput, and peak memory for chat telemetry.
 
 The derived seed is a hash of the configured seed and example ID. Equal examples use equal random streams across base and adapter targets. Input order does not change the seed.
 

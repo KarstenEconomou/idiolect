@@ -103,3 +103,10 @@ min_p = 0.0
 min_tokens_to_keep = 1
 repetition_penalty = 1.0
 repetition_context_size = 20
+
+[chat]
+output = "var/chat"
+seed = 101
+participant_name = "person_01"
+context_policy = "recorded-window-drop-oldest"
+history = "explicit-save"

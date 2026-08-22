@@ -16,6 +16,12 @@ Do not put a real account, group ID, absolute private path, token, or message in
 
 Use `conf/idiolect.toml` for public and reproducible settings. Git tracks this file. Signal chat IDs are not valid TOML settings.
 
+Saved chat snapshots are private local artifacts under `var/chat/`. A snapshot
+can contain every user message and generated reply in its transcript. The chat
+does not autosave and does not create a temporary transcript. Only `/save` or a
+Save choice writes a snapshot. Snapshot directories use mode `0700`, and files
+use mode `0600`. Do not publish a chat manifest or `turns.jsonl` file.
+
 Use `.env` or a system secret store for these values:
 
 - `IDIOLECT_SIGNAL_ACCOUNT`

@@ -8,6 +8,13 @@ from collections.abc import Sequence
 from dataclasses import asdict, replace
 from pathlib import Path
 
+from idiolect.chat.discovery import (
+    ChatDiscoveryError,
+    discover_assistants,
+    load_assistant,
+)
+from idiolect.chat.runtime import ChatError, validate_chat_policy
+from idiolect.chat.storage import ChatStorageError, ChatStore
 from idiolect.config import ConfigError, TrainConfig, load_config
 from idiolect.data.local import (
     DataError,
@@ -37,6 +44,7 @@ from idiolect.ingest.signal import (
 )
 from idiolect.store.duck import DuckRepository, StoreError
 from idiolect.train.mlx import MlxTrainer, TrainError, load_run, training_policy
+from idiolect.tui import ChatTuiError, run_chat_app
 from idiolect.types import PersonId, Split
 
 
@@ -46,6 +54,41 @@ def main(argv: Sequence[str] | None = None) -> int:
     arguments = parser.parse_args(argv)
     try:
         config = load_config(arguments.config)
+        if arguments.command == "chat":
+            validate_chat_policy(config.chat, config.infer)
+            if config.chat.output is None:
+                raise ChatError("Chat output is not configured")
+            store = ChatStore(config.chat.output)
+            initial_assistant = None
+            initial_chat = None
+            rows = discover_assistants(config.train.output, config.data.output)
+            if arguments.chat_command == "run":
+                run_path = _artifact_path(arguments.run, config.train.output)
+                dataset_path = _artifact_path(arguments.dataset, config.data.output)
+                initial_assistant = load_assistant(run_path, dataset_path)
+                selected = next(
+                    (
+                        row
+                        for row in rows
+                        if row.run_id == str(initial_assistant.run.ref.id)
+                    ),
+                    None,
+                )
+                if selected is not None and not selected.available:
+                    raise ChatDiscoveryError(
+                        selected.error or "Assistant is unavailable"
+                    )
+            elif arguments.chat_command == "resume":
+                initial_chat = store.load(arguments.saved_chat)
+            run_chat_app(
+                config.chat,
+                config.infer.generation,
+                assistants=rows,
+                store=store,
+                initial_assistant=initial_assistant,
+                initial_chat=initial_chat,
+            )
+            return 0
         if arguments.command == "data":
             repository = DuckRepository(config.store.database_path)
             people = summarize_people(repository.messages())
@@ -177,7 +220,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             max_messages = (
                 arguments.max_messages
                 if arguments.max_messages is not None
-                else None if arguments.follow else config.signal.max_messages
+                else None
+                if arguments.follow
+                else config.signal.max_messages
             )
             signal = replace(
                 config.signal,
@@ -194,6 +239,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
     except (
         ConfigError,
+        ChatDiscoveryError,
+        ChatError,
+        ChatStorageError,
+        ChatTuiError,
         DataError,
         EvalBackendError,
         EvaluationError,
@@ -222,7 +271,9 @@ def _parser() -> argparse.ArgumentParser:
     signal = commands.add_parser("signal", help="collect Signal group messages")
     signal_commands = signal.add_subparsers(dest="signal_command", required=True)
     signal_commands.add_parser("groups", help="list known Signal groups")
-    collect = signal_commands.add_parser("collect", help="collect queued Signal messages")
+    collect = signal_commands.add_parser(
+        "collect", help="collect queued Signal messages"
+    )
     wait = collect.add_mutually_exclusive_group()
     wait.add_argument("--timeout", type=int, help="receive timeout in seconds")
     collect.add_argument("--max-messages", type=int, help="maximum event count")
@@ -251,6 +302,15 @@ def _parser() -> argparse.ArgumentParser:
     build.add_argument("--name", required=True, help="target name in model text")
     train = commands.add_parser("train", help="train configured local adapters")
     train.add_argument("dataset", type=Path, help="immutable dataset directory")
+    chat = commands.add_parser("chat", help="chat with verified local adapters")
+    chat_commands = chat.add_subparsers(dest="chat_command")
+    chat_run = chat_commands.add_parser("run", help="open one run and dataset pair")
+    chat_run.add_argument("run", type=Path, help="run ID or immutable run directory")
+    chat_run.add_argument(
+        "dataset", type=Path, help="dataset ID or immutable dataset directory"
+    )
+    chat_resume = chat_commands.add_parser("resume", help="resume one saved chat")
+    chat_resume.add_argument("saved_chat", help="saved chat ID")
     infer = commands.add_parser("infer", help="generate local model text")
     infer_commands = infer.add_subparsers(dest="infer_command", required=True)
     infer_text = infer_commands.add_parser("text", help="generate one private prompt")
@@ -343,6 +403,14 @@ def _inference_target(
 
 def _read_prompt(path: Path) -> str:
     try:
-        return sys.stdin.read() if path == Path("-") else path.read_text(encoding="utf-8")
+        return (
+            sys.stdin.read() if path == Path("-") else path.read_text(encoding="utf-8")
+        )
     except (OSError, UnicodeError) as error:
         raise InferenceError(f"Cannot read inference prompt: {path}") from error
+
+
+def _artifact_path(value: Path, root: Path | None) -> Path:
+    if value.exists() or value.is_absolute() or len(value.parts) != 1:
+        return value
+    return value if root is None else root / value

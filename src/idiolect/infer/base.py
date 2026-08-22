@@ -1,11 +1,12 @@
 """Define local text generation contracts."""
 
+from collections.abc import Iterator
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 from typing import Protocol
 
-from idiolect.config import InferConfig, TrainDataConfig
+from idiolect.config import GenerationConfig, InferConfig, TrainDataConfig
 from idiolect.prompt import ModelInput
 
 
@@ -40,6 +41,25 @@ class BackendResult:
     finish_reason: str
     prompt_tokens: int
     generated_tokens: int
+    prompt_throughput: float | None = None
+    generation_throughput: float | None = None
+    peak_memory: float | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class GenerationEvent:
+    """Keep one streaming text delta or final generation result."""
+
+    text: str = ""
+    result: BackendResult | None = None
+
+
+class Cancellation(Protocol):
+    """Report whether one generation must stop."""
+
+    def is_set(self) -> bool:
+        """Return true when cancellation is requested."""
+        ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,6 +94,20 @@ class Session(Protocol):
 
     def close(self) -> None:
         """Release the loaded model."""
+        ...
+
+
+class StreamingSession(Session, Protocol):
+    """Generate streaming text with one loaded model."""
+
+    def stream(
+        self,
+        value: ModelInput,
+        seed: int,
+        config: GenerationConfig,
+        cancel: Cancellation | None = None,
+    ) -> Iterator[GenerationEvent]:
+        """Yield text deltas and one final result."""
         ...
 
 

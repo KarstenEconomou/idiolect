@@ -28,9 +28,6 @@ Run the second command only after the batch commands finish.
 Refresh records once after an update changes normalization:
 
 ```console
-set -a
-source .env
-set +a
 just idiolect signal reindex
 ```
 
@@ -131,3 +128,8 @@ second equal build returns the same directory. The loader rejects missing,
 changed, or unrecorded files.
 
 All dataset files are private. Git ignores `var/`. Do not copy a dataset, manifest, or adapter into a tracked path.
+
+The verified dataset metadata reader exposes only the dataset ID, target name,
+recorded context-message count, and split counts needed by local chat discovery.
+It first verifies the complete immutable dataset and does not read Signal or
+DuckDB.

@@ -4,6 +4,7 @@ import json
 from collections.abc import Mapping, Sequence
 from datetime import datetime
 
+from idiolect.prompt import ConversationEntry, render_conversation
 from idiolect.types import (
     ChatExample,
     Example,
@@ -28,12 +29,17 @@ def render_example(
     name = normalize_person_name(target_name)
     target_id = example.target.author_id
     messages = {message.id: message for message in example.context}
-    lines = [f"You are {name}. Write only {name}'s next message.", "", "Conversation:"]
+    entries: list[ConversationEntry] = []
     for item in _timeline(example):
         if isinstance(item, Message):
-            lines.extend(_message_lines(item, target_id, name, person_names, messages))
+            rendered = _message_lines(item, target_id, name, person_names, messages)
         else:
-            lines.extend(_reaction_lines(item, target_id, name, person_names, messages))
+            rendered = _reaction_lines(item, target_id, name, person_names, messages)
+        entries.append(
+            ConversationEntry(
+                rendered[1][1:-1], rendered[2] if len(rendered) == 3 else None
+            )
+        )
 
     target_text = example.target.text
     if target_text is None:
@@ -42,7 +48,11 @@ def render_example(
     reply = _reply_text(example.target, target_id, name, person_names, messages)
     if reply is not None:
         target_meta.append(reply)
-    lines.extend(("", f"[{' | '.join(target_meta)}]"))
+    prompt = render_conversation(
+        name,
+        tuple(entries),
+        next_response=" | ".join(target_meta),
+    )
     completion = _render_text(
         target_text,
         example.target.mentions,
@@ -50,7 +60,7 @@ def render_example(
         name,
         person_names,
     )
-    return ChatExample(prompt="\n".join(lines), completion=completion)
+    return ChatExample(prompt=prompt, completion=completion)
 
 
 def _message_lines(

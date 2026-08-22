@@ -8,6 +8,7 @@ This directory contains the replication record for the current system.
 - [Dataset build](dataset.md): Build immutable target-specific MLX-LM files.
 - [Adapter training](train.md): Configure and run local QLoRA adapters.
 - [Local inference](infer.md): Generate fixed base and adapter predictions.
+- [Local chat](chat.md): Stream multi-turn replies and save private snapshots.
 - [Model evaluation](eval.md): Compare policy fidelity and run private blind ratings.
 - [Security](security.md): Separate public settings from private data.
 - [macOS service](launchd.md): Run collection with `launchd`.
@@ -16,8 +17,8 @@ This directory contains the replication record for the current system.
 ## Current state
 
 The package implements the Signal collector, DuckDB store, context renderer,
-dataset builder, MLX-LM trainer, local inference runner, automatic policy
-evaluation, and private familiar-panel workflow.
+dataset builder, MLX-LM trainer, local inference runner, supervised chat TUI,
+automatic policy evaluation, and private familiar-panel workflow.
 
 The collector uses this flow:
 

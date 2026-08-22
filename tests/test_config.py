@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from idiolect.chat.runtime import ChatError, validate_chat_policy
 from idiolect.config import ConfigError, load_config
 from idiolect.train.mlx import training_policy
 
@@ -196,6 +197,17 @@ def test_inference_rejects_duplicate_seeds(tmp_path: Path) -> None:
 
     with pytest.raises(ConfigError, match="Inference seeds must be unique"):
         load_config(path, {})
+
+
+def test_unknown_chat_value_is_rejected_only_at_chat_boundary(tmp_path: Path) -> None:
+    """Check that private older settings still load for unrelated stages."""
+    path = tmp_path / "chat.toml"
+    path.write_text("[chat]\nfuture_value = true\n", encoding="utf-8")
+
+    config = load_config(path, {})
+
+    with pytest.raises(ChatError, match="unknown values: future_value"):
+        validate_chat_policy(config.chat, config.infer)
 
 
 @pytest.mark.parametrize(

@@ -13,6 +13,9 @@ mod config 'just/config.just'
 # Generate text with local models and adapters.
 mod infer 'just/infer.just'
 
+# Chat with verified local adapters.
+mod chat 'just/chat.just'
+
 # Evaluate trained model policies.
 mod eval 'just/eval.just'
 
@@ -28,9 +31,13 @@ setup:
 setup-train:
     uv sync --extra train
 
+# Install local model and terminal chat packages.
+setup-chat:
+    uv sync --extra train --extra chat
+
 # Run the Idiolect command-line interface.
 idiolect *arguments:
-    uv run idiolect "$@"
+    uv run --env-file .env idiolect "$@"
 
 # Build the source archive and wheel.
 build:
@@ -54,4 +61,4 @@ check: lint typecheck test
 
 # Train the canonical configuration and keep the Mac awake.
 train dataset:
-    caffeinate -i uv run idiolect --config conf/idiolect.toml train "{{ dataset }}"
+    caffeinate -i uv run --env-file .env idiolect --config conf/idiolect.toml train "{{ dataset }}"

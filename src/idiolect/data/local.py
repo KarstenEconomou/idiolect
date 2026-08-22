@@ -60,6 +60,16 @@ class BuildResult:
 
 
 @dataclass(frozen=True, slots=True)
+class DatasetMetadata:
+    """Keep verified metadata needed outside dataset construction."""
+
+    dataset: DatasetRef
+    target_name: str
+    context_messages: int
+    counts: Mapping[Split, int]
+
+
+@dataclass(frozen=True, slots=True)
 class _RenderedExample:
     """Keep one model row and its private source record."""
 
@@ -183,6 +193,27 @@ def load_dataset(path: Path) -> BuildResult:
     except (TypeError, ValueError) as error:
         raise DataError(f"Dataset path does not contain an ID: {path}") from error
     return _existing_result(path, dataset_id)
+
+
+def load_dataset_metadata(path: Path) -> DatasetMetadata:
+    """Load verified target, context, identity, and split metadata."""
+    result = load_dataset(path)
+    try:
+        manifest = json.loads((path / "manifest.json").read_text(encoding="utf-8"))
+        recipe = manifest["recipe"]
+        target_name = recipe["target_name"]
+        context = recipe["context"]
+        if (
+            not isinstance(target_name, str)
+            or not target_name
+            or not isinstance(context, int)
+            or isinstance(context, bool)
+            or context < 1
+        ):
+            raise TypeError
+    except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError) as error:
+        raise DataError(f"Cannot read dataset metadata: {path}") from error
+    return DatasetMetadata(result.dataset, target_name, context, result.counts)
 
 
 def summarize_people(messages: Iterable[Message]) -> tuple[PersonSummary, ...]:

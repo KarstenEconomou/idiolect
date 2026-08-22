@@ -64,6 +64,9 @@ def test_mlx_backend_applies_adapter_format_seed_and_sampling(
             finish_reason="stop",
             prompt_tokens=3,
             generation_tokens=1,
+            prompt_tps=120.5,
+            generation_tps=42.25,
+            peak_memory=3.75,
         )
 
     mlx_lm.__dict__["load"] = load
@@ -144,4 +147,7 @@ def test_mlx_backend_applies_adapter_format_seed_and_sampling(
         },
     )
     assert result.text == "reply"
+    assert result.prompt_throughput == 120.5
+    assert result.generation_throughput == 42.25
+    assert result.peak_memory == 3.75
     assert seen["cache_cleared"] is True

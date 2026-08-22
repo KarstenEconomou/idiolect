@@ -46,15 +46,10 @@ Add the Signal account to `.env`. Use the international number format.
 IDIOLECT_SIGNAL_ACCOUNT="+14165550123"
 ```
 
-Load the file for an interactive command:
-
-```console
-set -a
-source .env
-set +a
-```
-
-Idiolect does not load `.env` by itself. The local `launchd` agent loads it before it starts Idiolect.
+Just recipes that launch Idiolect pass `.env` to `uv`. You do not need to load
+it in the current shell. The local `launchd` agent also loads it before it
+starts Idiolect. A direct `uv run idiolect` command does not load it unless you
+include `--env-file .env`.
 
 These environment values are available:
 
@@ -88,7 +83,8 @@ Add the required IDs to `.env` as one JSON list. Use single shell quotes around 
 IDIOLECT_SIGNAL_CHATS='["GROUP_ID_ONE=", "GROUP_ID_TWO="]'
 ```
 
-Reload `.env` after each change. The chat list is private metadata. Do not put a real group ID in `conf/idiolect.toml`.
+The next Just command reads the updated `.env`. The chat list is private
+metadata. Do not put a real group ID in `conf/idiolect.toml`.
 Keep the outer single quotes. Use double quotes around each ID. Do not use a trailing comma.
 
 ## Run collection

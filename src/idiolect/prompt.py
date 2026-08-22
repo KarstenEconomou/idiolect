@@ -1,4 +1,4 @@
-"""Apply one fixed model text format."""
+"""Apply the fixed model conversation and text formats."""
 
 from dataclasses import dataclass
 from typing import Any
@@ -25,6 +25,35 @@ class ModelInput:
     turns: tuple[Turn, ...]
     has_prefill: bool
     completion_role: str = "assistant"
+
+
+@dataclass(frozen=True, slots=True)
+class ConversationEntry:
+    """Keep one neutral rendered conversation entry."""
+
+    header: str
+    content: str | None = None
+
+
+def conversation_instruction(target_name: str) -> str:
+    """Return the fixed target instruction."""
+    return f"You are {target_name}. Write only {target_name}'s next message."
+
+
+def render_conversation(
+    target_name: str,
+    entries: tuple[ConversationEntry, ...],
+    *,
+    next_response: str = "next response",
+) -> str:
+    """Render entries with the fixed training conversation grammar."""
+    lines = [conversation_instruction(target_name), "", "Conversation:"]
+    for entry in entries:
+        lines.extend(("", f"[{entry.header}]"))
+        if entry.content is not None:
+            lines.append(entry.content)
+    lines.extend(("", f"[{next_response}]"))
+    return "\n".join(lines)
 
 
 def format_prompt(prompt: str, config: TrainDataConfig) -> ModelInput:
@@ -54,9 +83,7 @@ def format_row(
     """Format one complete training row."""
     validate_prompt_config(config)
     prompt = f"{config.prompt_prefix}{prompt}{config.prompt_suffix}"
-    completion = (
-        f"{config.completion_prefix}{completion}{config.completion_suffix}"
-    )
+    completion = f"{config.completion_prefix}{completion}{config.completion_suffix}"
     if config.format == "completion":
         return {"prompt": prompt, "completion": completion}
     messages = []

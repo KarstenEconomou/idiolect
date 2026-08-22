@@ -146,13 +146,10 @@ class EvalConfig:
 
 
 @dataclass(frozen=True, slots=True)
-class InferConfig:
-    """Set the text generation options."""
+class GenerationConfig:
+    """Set generation-only model options."""
 
-    output: Path | None = None
     backend: str = ""
-    seeds: tuple[int, ...] = ()
-    max_examples: int = 0
     max_prompt_tokens: int = 0
     max_tokens: int = 128
     temperature: float = 0.7
@@ -162,7 +159,45 @@ class InferConfig:
     min_tokens_to_keep: int = 1
     repetition_penalty: float = 1.0
     repetition_context_size: int = 20
+
+
+@dataclass(frozen=True, slots=True)
+class InferConfig(GenerationConfig):
+    """Set batch inference and generation options."""
+
+    output: Path | None = None
+    seeds: tuple[int, ...] = ()
+    max_examples: int = 0
     specified: frozenset[str] = frozenset()
+
+    @property
+    def generation(self) -> GenerationConfig:
+        """Return the generation-only part of this policy."""
+        return GenerationConfig(
+            backend=self.backend,
+            max_prompt_tokens=self.max_prompt_tokens,
+            max_tokens=self.max_tokens,
+            temperature=self.temperature,
+            top_p=self.top_p,
+            top_k=self.top_k,
+            min_p=self.min_p,
+            min_tokens_to_keep=self.min_tokens_to_keep,
+            repetition_penalty=self.repetition_penalty,
+            repetition_context_size=self.repetition_context_size,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ChatConfig:
+    """Set the local interactive chat policy."""
+
+    output: Path | None = None
+    seed: int = 0
+    participant_name: str = ""
+    context_policy: str = ""
+    history: str = ""
+    specified: frozenset[str] = frozenset()
+    unknown: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True, slots=True)
@@ -175,6 +210,7 @@ class AppConfig:
     train: TrainConfig = field(default_factory=TrainConfig)
     eval: EvalConfig = field(default_factory=EvalConfig)
     infer: InferConfig = field(default_factory=InferConfig)
+    chat: ChatConfig = field(default_factory=ChatConfig)
 
 
 def load_config(
@@ -197,7 +233,12 @@ def load_config(
     train_values = _section(values, "train")
     eval_values = _section(values, "eval")
     infer_values = _section(values, "infer")
-    _check_keys(values, {"signal", "store", "data", "train", "eval", "infer"}, "root")
+    chat_values = _section(values, "chat")
+    _check_keys(
+        values,
+        {"signal", "store", "data", "train", "eval", "infer", "chat"},
+        "root",
+    )
     _check_keys(
         signal_values,
         {"binary", "data_dir", "timeout", "max_messages"},
@@ -308,7 +349,8 @@ def load_config(
 
     signal = SignalConfig(
         account=env.get("IDIOLECT_SIGNAL_ACCOUNT"),
-        binary=env.get("IDIOLECT_SIGNAL_BIN") or _str(signal_values, "binary", "signal-cli"),
+        binary=env.get("IDIOLECT_SIGNAL_BIN")
+        or _str(signal_values, "binary", "signal-cli"),
         data_dir=_optional_path(
             env.get("IDIOLECT_SIGNAL_DATA_DIR") or signal_values.get("data_dir")
         ),
@@ -348,9 +390,7 @@ def load_config(
         test_batches=_int(train_values, "test_batches", 0),
         max_seq_length=_int(train_values, "max_seq_length", 0),
         grad_checkpoint=_bool(train_values, "grad_checkpoint", False),
-        grad_accumulation_steps=_int(
-            train_values, "grad_accumulation_steps", 0
-        ),
+        grad_accumulation_steps=_int(train_values, "grad_accumulation_steps", 0),
         clear_cache_threshold=_int(train_values, "clear_cache_threshold", 0),
         steps_per_report=_int(train_values, "steps_per_report", 0),
         steps_per_eval=_int(train_values, "steps_per_eval", 0),
@@ -389,9 +429,7 @@ def load_config(
         confidence_level=_float(eval_values, "confidence_level", 0.0),
         long_match_chars=_int(eval_values, "long_match_chars", 0),
         max_empty_rate=_float(eval_values, "max_empty_rate", 0.0),
-        max_format_violation_rate=_float(
-            eval_values, "max_format_violation_rate", 0.0
-        ),
+        max_format_violation_rate=_float(eval_values, "max_format_violation_rate", 0.0),
         max_truncation_rate=_float(eval_values, "max_truncation_rate", 0.0),
         max_memorization_rate_delta=_float(
             eval_values, "max_memorization_rate_delta", 0.0
@@ -400,9 +438,7 @@ def load_config(
         ballots_per_rater=_int(eval_values, "ballots_per_rater", 0),
         control_fraction=_float(eval_values, "control_fraction", 0.0),
         min_panel_raters=_int(eval_values, "min_panel_raters", 0),
-        min_primary_comparisons=_int(
-            eval_values, "min_primary_comparisons", 0
-        ),
+        min_primary_comparisons=_int(eval_values, "min_primary_comparisons", 0),
         specified=frozenset(eval_values),
     )
     infer = InferConfig(
@@ -418,16 +454,26 @@ def load_config(
         min_p=_float(infer_values, "min_p", 0.0),
         min_tokens_to_keep=_int(infer_values, "min_tokens_to_keep", 1),
         repetition_penalty=_float(infer_values, "repetition_penalty", 1.0),
-        repetition_context_size=_int(
-            infer_values, "repetition_context_size", 20
-        ),
+        repetition_context_size=_int(infer_values, "repetition_context_size", 20),
         specified=frozenset(infer_values),
+    )
+    chat = ChatConfig(
+        output=_optional_path(chat_values.get("output")),
+        seed=_int(chat_values, "seed", 0),
+        participant_name=_str(chat_values, "participant_name", ""),
+        context_policy=_str(chat_values, "context_policy", ""),
+        history=_str(chat_values, "history", ""),
+        specified=frozenset(chat_values),
+        unknown=frozenset(
+            set(chat_values)
+            - {"output", "seed", "participant_name", "context_policy", "history"}
+        ),
     )
     _validate_signal(signal)
     _validate_train(train)
     _validate_eval(eval_config)
     _validate_infer(infer)
-    return AppConfig(signal, store, data, train, eval_config, infer)
+    return AppConfig(signal, store, data, train, eval_config, infer, chat)
 
 
 def _section(values: Mapping[str, Any], name: str) -> Mapping[str, Any]:
@@ -441,7 +487,9 @@ def _check_keys(values: Mapping[str, Any], allowed: set[str], section: str) -> N
     unknown = sorted(set(values) - allowed)
     if unknown:
         names = ", ".join(unknown)
-        raise ConfigError(f"Configuration section {section} has unknown values: {names}")
+        raise ConfigError(
+            f"Configuration section {section} has unknown values: {names}"
+        )
 
 
 def _str(values: Mapping[str, Any], name: str, default: str) -> str:

@@ -2,14 +2,17 @@
 
 import contextlib
 import sys
+from collections.abc import Iterator
 from importlib.metadata import PackageNotFoundError
 from typing import Any
 
-from idiolect.config import InferConfig
+from idiolect.config import GenerationConfig, InferConfig
 from idiolect.infer.base import (
     BackendResult,
+    Cancellation,
+    GenerationEvent,
     ModelTarget,
-    Session,
+    StreamingSession,
 )
 from idiolect.infer.local import InferenceError
 from idiolect.model import mlx_runtime_fingerprint
@@ -29,7 +32,7 @@ class MlxBackend:
                 "Inference packages are not installed. Run: uv sync --extra train"
             ) from error
 
-    def load(self, target: ModelTarget) -> Session:
+    def load(self, target: ModelTarget) -> StreamingSession:
         """Load one base model and its optional adapter."""
         try:
             from mlx_lm import load
@@ -46,14 +49,14 @@ class MlxBackend:
                         if target.adapter_path is not None
                         else None
                     ),
-                    tokenizer_config={
-                        "trust_remote_code": target.trust_remote_code
-                    },
+                    tokenizer_config={"trust_remote_code": target.trust_remote_code},
                 )
             model = loaded[0]
             tokenizer = loaded[1]
         except Exception as error:
-            raise InferenceError(f"Cannot load inference target: {target.id}") from error
+            raise InferenceError(
+                f"Cannot load inference target: {target.id}"
+            ) from error
         if not tokenizer.has_chat_template:
             raise InferenceError("Inference tokenizer does not have a chat template")
         return _MlxSession(model, tokenizer)
@@ -75,6 +78,32 @@ class _MlxSession:
         config: InferConfig,
     ) -> BackendResult:
         """Generate one result with MLX-LM."""
+        text = []
+        result = None
+        for event in self.stream(value, seed, config):
+            text.append(event.text)
+            if event.result is not None:
+                result = event.result
+        if result is None:
+            raise InferenceError("MLX-LM did not return a complete result")
+        return BackendResult(
+            "".join(text),
+            result.finish_reason,
+            result.prompt_tokens,
+            result.generated_tokens,
+            result.prompt_throughput,
+            result.generation_throughput,
+            result.peak_memory,
+        )
+
+    def stream(
+        self,
+        value: ModelInput,
+        seed: int,
+        config: GenerationConfig,
+        cancel: Cancellation | None = None,
+    ) -> Iterator[GenerationEvent]:
+        """Yield one MLX-LM generation as text deltas."""
         try:
             import mlx.core as mx
             from mlx_lm import stream_generate
@@ -93,8 +122,8 @@ class _MlxSession:
                 repetition_penalty=config.repetition_penalty,
                 repetition_context_size=config.repetition_context_size,
             )
-            text = []
             final = None
+            cancelled = False
             with contextlib.redirect_stdout(sys.stderr):
                 for response in stream_generate(
                     self._model,
@@ -104,16 +133,27 @@ class _MlxSession:
                     sampler=sampler,
                     logits_processors=processors,
                 ):
-                    text.append(response.text)
+                    if cancel is not None and cancel.is_set():
+                        cancelled = True
+                        final = response
+                        break
+                    yield GenerationEvent(text=response.text)
                     final = response
-            if final is None or final.finish_reason is None:
+            if final is None:
                 raise InferenceError("MLX-LM did not return a complete result")
-            return BackendResult(
-                "".join(text),
-                final.finish_reason,
+            finish_reason = "cancelled" if cancelled else final.finish_reason
+            if finish_reason is None:
+                raise InferenceError("MLX-LM did not return a complete result")
+            result = BackendResult(
+                "",
+                finish_reason,
                 final.prompt_tokens,
                 final.generation_tokens,
+                _metric(final, "prompt_tps", "prompt_throughput"),
+                _metric(final, "generation_tps", "generation_throughput"),
+                _metric(final, "peak_memory"),
             )
+            yield GenerationEvent(result=result)
         except InferenceError:
             raise
         except Exception as error:
@@ -127,19 +167,27 @@ class _MlxSession:
             del self._model
             del self._tokenizer
             mx.clear_cache()
-        except (AttributeError, ImportError):
+        except AttributeError, ImportError:
             return
 
     def _tokens(self, value: ModelInput) -> list[int]:
-        turns = [
-            {"role": turn.role, "content": turn.content} for turn in value.turns
-        ]
+        turns = [{"role": turn.role, "content": turn.content} for turn in value.turns]
         options = {"tokenize": True, "return_dict": False}
         if value.has_prefill:
             options["continue_final_message"] = True
         else:
             options["add_generation_prompt"] = True
         tokens = self._tokenizer.apply_chat_template(turns, **options)
-        if not isinstance(tokens, list) or not all(isinstance(token, int) for token in tokens):
+        if not isinstance(tokens, list) or not all(
+            isinstance(token, int) for token in tokens
+        ):
             raise InferenceError("Inference tokenizer returned invalid prompt tokens")
         return tokens
+
+
+def _metric(value: Any, *names: str) -> float | None:
+    for name in names:
+        metric = getattr(value, name, None)
+        if isinstance(metric, (int, float)) and not isinstance(metric, bool):
+            return float(metric)
+    return None

@@ -53,4 +53,4 @@ train name dataset:
         printf 'error: configuration does not exist: %s\n' "$config" >&2
         exit 2
     fi
-    exec caffeinate -i uv run idiolect --config "$config" train "{{ dataset }}"
+    exec caffeinate -i uv run --env-file .env idiolect --config "$config" train "{{ dataset }}"

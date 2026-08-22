@@ -284,3 +284,52 @@ def test_eval_policy_uses_every_supplied_run(
     assert seen[0][1] == "fixed-dataset"
     assert "state=eligible" in output.out
     assert output.err == ""
+
+
+def test_chat_opens_chooser_without_model_or_private_data(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    """Check that landing discovery does not load MLX, Signal, or DuckDB."""
+    config_path = tmp_path / "chat.toml"
+    config_path.write_text(
+        f"""
+[data]
+output = "{(tmp_path / "data").as_posix()}"
+
+[train]
+output = "{(tmp_path / "runs").as_posix()}"
+
+[infer]
+backend = "mlx-lm"
+max_prompt_tokens = 1920
+max_tokens = 128
+temperature = 0.7
+top_p = 0.8
+top_k = 20
+min_p = 0.0
+min_tokens_to_keep = 1
+repetition_penalty = 1.0
+repetition_context_size = 20
+
+[chat]
+output = "{(tmp_path / "chat").as_posix()}"
+seed = 101
+participant_name = "person_01"
+context_policy = "recorded-window-drop-oldest"
+history = "explicit-save"
+""",
+        encoding="utf-8",
+    )
+    seen = []
+    monkeypatch.setattr(idiolect.cli, "run_chat_app", lambda *args, **kwargs: seen.append((args, kwargs)))
+
+    code = main(("--config", str(config_path), "chat"))
+
+    output = capsys.readouterr()
+    assert code == 0
+    assert len(seen) == 1
+    assert seen[0][1]["assistants"] == ()
+    assert output.out == ""
+    assert output.err == ""
