@@ -166,16 +166,19 @@ or dataset. Verified adapters follow it with identities such as
 `IDIOLECT // DIXIE@7f3a91c2 [Qwen3-14B-4bit]`. Direct adapter launch and resume
 are also available. The visible target-name segment is always uppercase. The
 landing table is the `REGISTRY`. It has no search field or pointer
-activation. Use the arrow keys and Enter to select a row. In chat, use the mouse
-wheel or Ctrl+Up and Ctrl+Down to scroll the transcript. Chat headers retain the
-full canonical assistant name; assistant turns use only the uppercase target
-name. Transcript turns format focused Markdown for emphasis, retained-prefix
-headings, subtly shaded code, compact nested lists, and indented quotes without
-changing saved text. Explicit HTTP and HTTPS Markdown links keep their complete
-destination visible and use clickable underlined labels. Type `/` to open the
-keyboard-driven `/exit` and `/registry` menu, and use Tab to complete its selected
-command. Unsaved changes open the horizontal DISCONNECT, RECORD, and RESUME
-confirmation before navigation.
+activation. Use the arrow keys and Enter to select a row. Saved TRACE rows show
+their names below the canonical model identity and use the muted metadata
+selection style; press Space to collapse or expand the highlighted trace name.
+In chat, use the mouse wheel or Ctrl+Up and Ctrl+Down to scroll the transcript.
+Chat headers retain the full canonical
+assistant name; assistant turns use only the uppercase target name. Transcript
+turns format focused Markdown for emphasis, retained-prefix headings, subtly
+shaded code, compact nested lists, and indented quotes without changing saved
+text. Explicit HTTP and HTTPS Markdown links keep their complete destination
+visible and use clickable underlined labels. Type `/` to open the keyboard-driven
+`/exit` and `/registry` menu, and use Tab to complete its selected command.
+Unsaved changes open the horizontal DISCONNECT, RECORD, and RESUME confirmation;
+RECORD then requests an optional trace name before navigation.
 
 ```console
 just chat run RUN_ID DATASET_ID

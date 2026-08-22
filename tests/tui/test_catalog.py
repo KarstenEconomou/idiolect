@@ -1,6 +1,7 @@
 """Test assistant registry row formatting."""
 
 from rich.cells import cell_len
+from rich.console import Console
 
 from idiolect.tui.catalog import CatalogLayout
 
@@ -63,3 +64,62 @@ def test_catalog_data_labels_identify_entry_lineage() -> None:
     }
 
     assert all(data in row for data, row in rows.items())
+
+
+def test_catalog_entry_matches_metadata_until_ready_row_is_selected() -> None:
+    """Check muted metadata fields and selected READY entry emphasis."""
+    layout = CatalogLayout.for_terminal(80)
+    unselected = layout.text("MODEL", "DATA", "32", "READY")
+    selected = layout.text("MODEL", "DATA", "32", "READY", selected=True)
+    console = Console()
+
+    data_style = unselected.get_style_at_offset(
+        console, unselected.plain.index("DATA")
+    )
+    entry_style = unselected.get_style_at_offset(
+        console, unselected.plain.index("READY")
+    )
+    selected_entry_style = selected.get_style_at_offset(
+        console, selected.plain.index("READY")
+    )
+
+    assert data_style.dim and data_style.bold is False
+    assert entry_style.dim and entry_style.bold is False
+    assert selected_entry_style.dim is False
+    assert selected_entry_style.bold is False
+
+
+def test_catalog_trace_places_metadata_name_below_model() -> None:
+    """Check the expanded trace hierarchy and metadata name color."""
+    layout = CatalogLayout.for_terminal(80)
+    row = layout.text(
+        "IDIOLECT // DIXIE@BASE [M]",
+        "TRACE",
+        "—",
+        "READY",
+        trace_name="Night session",
+    )
+    model_line, trace_line = row.plain.splitlines()
+    trace_style = row.get_style_at_offset(
+        Console(), row.plain.index("Night session")
+    )
+
+    assert model_line.startswith("IDIOLECT // DIXIE@BASE [M]")
+    assert "Night session" not in model_line
+    assert trace_line.startswith(" Night session")
+    assert trace_style.color is not None
+    assert trace_style.color.number == 8
+
+    selected = layout.text(
+        "IDIOLECT // DIXIE@BASE [M]",
+        "TRACE",
+        "—",
+        "READY",
+        selected=True,
+        trace_name="Night session",
+    )
+    selected_trace_style = selected.get_style_at_offset(
+        Console(), selected.plain.index("Night session")
+    )
+    assert selected_trace_style.color is None
+    assert selected_trace_style.dim

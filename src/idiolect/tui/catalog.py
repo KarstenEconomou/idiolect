@@ -3,7 +3,13 @@
 from dataclasses import dataclass
 
 from rich.cells import set_cell_size
+from rich.style import Style
 from rich.text import Text
+
+_METADATA = Style(dim=True, bold=False)
+_TRACE_NAME = Style(color="bright_black", bold=False)
+_READY_SELECTED = Style(dim=False, bold=False)
+_FAILED = Style(color="red", dim=True, bold=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,16 +59,27 @@ class CatalogLayout:
         status: str,
         *,
         failed: bool = False,
+        selected: bool = False,
+        trace_name: str | None = None,
     ) -> Text:
-        """Return one registry line with status emphasis."""
+        """Return one styled registry entry and optional trace name."""
         value = Text(set_cell_size(model, self.model))
         if self.data:
-            value.append(" ", style="dim")
-            value.append(set_cell_size(data, self.data), style="dim")
+            value.append(" ", style=_METADATA)
+            value.append(set_cell_size(data, self.data), style=_METADATA)
         if self.window:
-            value.append(" ", style="dim")
-            value.append(set_cell_size(window, self.window), style="dim")
-        value.append(" ", style="dim")
-        status_style = "red" if failed else "bold"
+            value.append(" ", style=_METADATA)
+            value.append(set_cell_size(window, self.window), style=_METADATA)
+        value.append(" ", style=_METADATA)
+        status_style = (
+            _FAILED if failed else _READY_SELECTED if selected else _METADATA
+        )
         value.append(set_cell_size(status, self.status), style=status_style)
+        if trace_name is not None:
+            trace_style = _METADATA if selected else _TRACE_NAME
+            value.append("\n")
+            value.append(" ", style=trace_style)
+            value.append(
+                set_cell_size(trace_name, max(self.model - 1, 1)), trace_style
+            )
         return value

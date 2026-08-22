@@ -1,7 +1,7 @@
 """Define widgets for the local chat interface."""
 
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import ClassVar, cast
 
 from rich.console import Group
@@ -15,7 +15,7 @@ from textual.containers import Horizontal, Vertical
 from textual.message import Message
 from textual.screen import ModalScreen
 from textual.widget import Widget
-from textual.widgets import Button, OptionList, Static, TextArea
+from textual.widgets import Button, Input, OptionList, Static, TextArea
 
 from idiolect.tui.commands import COMMAND_DESCRIPTIONS, COMMANDS
 from idiolect.tui.markdown import ChatMarkdown
@@ -24,11 +24,43 @@ from idiolect.tui.markdown import ChatMarkdown
 class KeyboardOptionList(OptionList):
     """Select options with arrow keys and Enter."""
 
+    selection_changed: Callable[[str], None] | None = None
+
     BINDINGS: ClassVar[list[Binding]] = [
         Binding("up", "cursor_up", "Up", show=False),
         Binding("down", "cursor_down", "Down", show=False),
         Binding("enter", "select", "Select", show=False),
     ]
+
+    class DetailsToggled(Message):
+        """Request a details toggle for one highlighted option."""
+
+        def __init__(self, key: str) -> None:
+            """Set the highlighted option key."""
+            self.key = key
+            super().__init__()
+
+    async def _on_key(self, event: events.Key) -> None:
+        if event.key == "space" and self.highlighted is not None:
+            option = self.get_option_at_index(self.highlighted)
+            if option.id is not None:
+                event.prevent_default()
+                event.stop()
+                self.post_message(self.DetailsToggled(option.id))
+                return
+        await super()._on_key(event)
+
+    def watch_highlighted(self, highlighted: int | None) -> None:
+        """Refresh selection-dependent prompts before the next screen render."""
+        if highlighted is not None and highlighted < len(self.options):
+            option = self.get_option_at_index(highlighted)
+            if (
+                not option.disabled
+                and option.id is not None
+                and self.selection_changed is not None
+            ):
+                self.selection_changed(option.id)
+        super().watch_highlighted(highlighted)
 
     async def _on_click(self, event: events.Click) -> None:
         event.prevent_default()
@@ -267,3 +299,42 @@ class ConfirmModal(ModalScreen[str]):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Return the selected confirmation action."""
         self.dismiss(event.button.id or "cancel")
+
+
+class TraceNameModal(ModalScreen[str | None]):
+    """Request an optional name before one trace is recorded."""
+
+    def compose(self) -> ComposeResult:
+        """Create the trace name input."""
+        with Vertical(id="trace-name-dialog"):
+            yield Static("TRACE NAME", markup=False, id="trace-name-message")
+            yield Input(placeholder="Blank uses default", id="trace-name")
+
+    def on_mount(self) -> None:
+        """Focus the trace name and place the dialog."""
+        self.query_one(Input).focus()
+        self.call_after_refresh(self._place_dialog)
+
+    def on_resize(self) -> None:
+        """Place the dialog next to the composer."""
+        self.call_after_refresh(self._place_dialog)
+
+    def _place_dialog(self) -> None:
+        composer_bar = self.app.query_one("#composer-bar", Horizontal)
+        dialog = self.query_one("#trace-name-dialog", Vertical)
+        dialog.styles.width = composer_bar.region.width
+        dialog.styles.offset = (
+            composer_bar.region.x,
+            composer_bar.region.y - dialog.region.height,
+        )
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        """Return the entered name, including an empty default request."""
+        self.dismiss(event.value)
+
+    def on_key(self, event: events.Key) -> None:
+        """Resume the chat when naming is cancelled."""
+        if event.key == "escape":
+            self.dismiss(None)
+            event.prevent_default()
+            event.stop()

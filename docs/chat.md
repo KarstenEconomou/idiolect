@@ -47,7 +47,13 @@ does not download a model.
 
 The landing screen displays the base persona, verified adapters, and saved
 snapshots in `REGISTRY`. It has no search field or pointer activation.
-Use the arrow keys and Enter to select a row.
+Use the arrow keys and Enter to select a row. DATA, WINDOW, and ENTRY values are
+muted metadata. The selected `READY` entry becomes bright; unavailable entries
+remain failures. A saved `TRACE` keeps the canonical model identity on its first
+line and shows the trace name indented below it in metadata gray. Trace names
+are expanded by default and use the muted selection color with their highlighted
+TRACE, matching DATA and WINDOW. Highlight a trace and press Space to collapse
+or expand its name without opening it.
 
 Verified run/dataset pairs and saved lineage leaves follow the default row. Each
 adapter has the identity `IDIOLECT // NAME@run [MODEL]`. `run` is the first eight
@@ -88,11 +94,14 @@ Escape to close the menu without clearing the composer. Commands are:
 
 Either idle command opens the horizontal DISCONNECT, RECORD, and RESUME
 confirmation when the transcript has unsaved changes. DISCONNECT is selected
-first. RECORD writes an immutable snapshot before the requested navigation. The
-footer aligns with transcript text, sits directly below the composer, and
-replaces telemetry with navigation hints while the command menu or confirmation
-is open. The transcript follows its newest turn above an open menu and returns
-to the bottom when the menu closes.
+first. RECORD requests an optional trace name before it writes the immutable
+snapshot and continues the requested navigation. Enter records the typed name.
+An empty or whitespace-only name uses the generated default based on the first
+user message. Escape resumes the chat without recording. The footer aligns with
+transcript text, sits directly below the composer, and replaces telemetry with
+navigation hints while the command menu, confirmation, or trace name field is
+open. The transcript follows its newest turn above an open menu and returns to
+the bottom when the menu closes.
 
 The TUI formats a focused Markdown subset in user and assistant turns, including
 saved history and replies while they stream. Bold and italic emphasis behave as
@@ -159,8 +168,9 @@ var/chat/CHAT_ID/
 
 The content identity includes assistant digests, chat and generation policies,
 title, parent snapshot, turns, attempts, finish reasons, seeds, and telemetry.
-Creation time is not part of the ID. Saving an unchanged transcript returns its
-existing artifact. A resumed transcript saves as a child. The chooser presents
-verified lineage leaves and preserves every older snapshot on disk.
+Creation time is not part of the ID. Saving an unchanged transcript with its
+current name returns its existing artifact. A resumed transcript saves as a
+child. The chooser presents verified lineage leaves and preserves every older
+snapshot on disk.
 If a confirmation save fails, the requested navigation or exit is cancelled and
 the memory-only transcript stays open.

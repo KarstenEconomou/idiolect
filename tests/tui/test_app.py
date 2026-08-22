@@ -4,6 +4,7 @@ import asyncio
 import re
 import threading
 from collections.abc import Callable, Iterator
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import cast
 
@@ -12,12 +13,12 @@ from rich.text import Text
 from textual import events
 from textual.containers import Horizontal, VerticalScroll
 from textual.pilot import Pilot
-from textual.widgets import OptionList, Static
+from textual.widgets import Input, OptionList, Static
 
 from idiolect.chat.discovery import Assistant, DiscoveryItem
 from idiolect.chat.runtime import ChatRuntime
 from idiolect.chat.state import ChatSession, ChatTurn, TurnTelemetry
-from idiolect.chat.storage import ChatStorageError, ChatStore
+from idiolect.chat.storage import ChatStorageError, ChatStore, SavedChat
 from idiolect.chat.worker import WorkerState
 from idiolect.config import ChatConfig, GenerationConfig
 from idiolect.tui.app import ChatApp
@@ -75,6 +76,79 @@ def test_registry_opens_highlighted_assistant_from_keyboard(tmp_path) -> None:
             await _wait_for_chat(app, pilot)
             assert runtime.session is not None
             assert runtime.session.assistant is assistant
+
+    asyncio.run(verify())
+
+
+def test_registry_expands_and_collapses_trace_names(tmp_path) -> None:
+    """Check trace hierarchy, entry emphasis, hints, and Space disclosure."""
+    chat = ChatConfig(output=tmp_path)
+    generation = GenerationConfig()
+    assistant = _assistant()
+    saved = SavedChat(
+        "a" * 64,
+        tmp_path / ("a" * 64),
+        datetime(2026, 8, 22, tzinfo=UTC),
+        "Night session",
+        None,
+        assistant,
+        chat,
+        generation,
+        (),
+    )
+    runtime = ImmediateRuntime(chat, generation)
+    app = ChatApp(
+        chat,
+        generation,
+        assistants=(DiscoveryItem(assistant.name, "BASE", None, assistant),),
+        store=cast(ChatStore, RegistryStore(saved)),
+        runtime_factory=cast(Callable[..., ChatRuntime], lambda *_args: runtime),
+    )
+
+    async def verify() -> None:
+        async with app.run_test(size=(80, 24)) as pilot:
+            chooser = app.query_one("#chooser", OptionList)
+            trace = chooser.get_option_at_index(1).prompt
+            assert isinstance(trace, Text)
+            model_line, trace_line = trace.plain.splitlines()
+            assert model_line.startswith(assistant.name)
+            assert "Night session" not in model_line
+            assert trace_line.startswith(" Night session")
+            assert "SPACE DETAILS" in str(
+                app.query_one("#catalog-hints", Static).content
+            )
+            unselected_entry = trace.get_style_at_offset(
+                Console(), trace.plain.index("READY")
+            )
+            assert unselected_entry.dim
+
+            await pilot.press("down")
+            await pilot.pause()
+            trace = chooser.get_option_at_index(1).prompt
+            assert isinstance(trace, Text)
+            selected_entry = trace.get_style_at_offset(
+                Console(), trace.plain.index("READY")
+            )
+            selected_name = trace.get_style_at_offset(
+                Console(), trace.plain.index("Night session")
+            )
+            assert selected_entry.dim is False
+            assert selected_name.color is None
+            assert selected_name.dim
+
+            await pilot.press("space")
+            await pilot.pause()
+            collapsed = chooser.get_option_at_index(1).prompt
+            assert isinstance(collapsed, Text)
+            assert "Night session" not in collapsed.plain
+            assert "\n" not in collapsed.plain
+            assert runtime.session is None
+
+            await pilot.press("space")
+            await pilot.pause()
+            expanded = chooser.get_option_at_index(1).prompt
+            assert isinstance(expanded, Text)
+            assert "\n Night session" in expanded.plain
 
     asyncio.run(verify())
 
@@ -398,6 +472,12 @@ def test_failed_confirmation_save_keeps_memory_only_chat(tmp_path) -> None:
             ] == ["DISCONNECT", "RECORD", "RESUME"]
             await pilot.press("right", "enter")
             await pilot.pause()
+            assert app.screen.query_one("#trace-name", Input).has_focus
+            assert str(app.query_one("#footer", Static).content) == (
+                "ENTER RECORD    ESC RESUME"
+            )
+            await pilot.press("enter")
+            await pilot.pause()
 
             assert runtime.closed is False
             assert runtime.session is session
@@ -405,6 +485,42 @@ def test_failed_confirmation_save_keeps_memory_only_chat(tmp_path) -> None:
             assert app.query_one("#chat").display
 
     asyncio.run(verify())
+
+
+def test_record_requests_trace_name_and_uses_default_for_blank(tmp_path) -> None:
+    """Check explicit and blank trace names before registry navigation."""
+
+    async def verify(value: str, expected: str | None) -> None:
+        chat = ChatConfig(output=tmp_path)
+        generation = GenerationConfig()
+        runtime = ImmediateRuntime(chat, generation)
+        store = RecordingStore()
+        app = ChatApp(
+            chat,
+            generation,
+            store=cast(ChatStore, store),
+            runtime_factory=cast(Callable[..., ChatRuntime], lambda *_args: runtime),
+            initial_assistant=_assistant(),
+        )
+        async with app.run_test() as pilot:
+            await _wait_for_chat(app, pilot)
+            assert runtime.session is not None
+            runtime.session.add_user("default trace name")
+            app.query_one(Composer).insert("/registry")
+            await pilot.press("enter", "right", "enter")
+            await pilot.pause()
+
+            name = app.screen.query_one("#trace-name", Input)
+            assert name.has_focus
+            name.value = value
+            await pilot.press("enter")
+            await pilot.pause()
+
+            assert store.titles == [expected]
+            assert app.query_one("#landing").display
+
+    asyncio.run(verify("Named trace", "Named trace"))
+    asyncio.run(verify("   ", None))
 
 
 def test_command_menu_filters_navigates_and_returns_to_registry(tmp_path) -> None:
@@ -743,6 +859,39 @@ class FailingStore:
     def save(self, _session: ChatSession, _title: str | None = None) -> None:
         """Raise a controlled storage error."""
         raise ChatStorageError("Synthetic disk failure")
+
+
+class RecordingStore:
+    """Record requested trace titles without writing private artifacts."""
+
+    def __init__(self) -> None:
+        """Create an empty title record."""
+        self.titles: list[str | None] = []
+
+    def leaves(self) -> tuple[()]:
+        """Return no saved chat rows."""
+        return ()
+
+    def save(
+        self,
+        _session: ChatSession,
+        title: str | None = None,
+    ) -> SimpleNamespace:
+        """Record the requested title and return one synthetic trace."""
+        self.titles.append(title)
+        return SimpleNamespace(id="a" * 64, title=title or "default trace name")
+
+
+class RegistryStore:
+    """Return fixed saved traces for registry tests."""
+
+    def __init__(self, *saved: SavedChat) -> None:
+        """Set the fixed trace rows."""
+        self.saved = saved
+
+    def leaves(self) -> tuple[SavedChat, ...]:
+        """Return the fixed trace rows."""
+        return self.saved
 
 
 def _assistant() -> Assistant:

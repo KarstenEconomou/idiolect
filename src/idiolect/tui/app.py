@@ -29,6 +29,7 @@ from idiolect.tui.widgets import (
     ConfirmModal,
     KeyboardOptionList,
     LoadingStatus,
+    TraceNameModal,
     Transcript,
 )
 
@@ -93,6 +94,12 @@ class ChatApp(App[None]):
     #confirm-actions Button { width: auto; min-width: 0; height: 1; padding: 0 1; border: none; background: $terminal; color: $metadata; text-style: none; }
     #confirm-actions Button:hover { border: none; background: $terminal; color: $metadata; text-style: none; }
     #confirm-actions Button:focus, #confirm-actions Button.-active { border: none; background: $terminal; color: $accent; text-style: bold; }
+    #trace-name-dialog { width: 100%; height: 2; padding: 0 1; background: $terminal; border: none; }
+    #trace-name-message { height: 1; color: ansi_white; text-style: bold; }
+    #trace-name { height: 1; border: none; padding: 0 1; background: $terminal; color: $terminal; }
+    #trace-name:focus { border: none; }
+    #trace-name > .input--placeholder { color: $metadata; }
+    #trace-name > .input--cursor { color: $terminal; background: $terminal; text-style: reverse; }
     Button { border: tall $metadata; background: $terminal; color: $terminal; }
     Button:hover, Button:focus, Button.-active { border: tall $accent; background: $terminal; color: $terminal; background-tint: transparent; tint: transparent; text-style: reverse bold; }
     ModalScreen { background: transparent; }
@@ -140,6 +147,7 @@ class ChatApp(App[None]):
         self.initial_assistant = initial_assistant
         self.initial_chat = initial_chat
         self._rows: dict[str, DiscoveryItem | SavedChat] = {}
+        self._collapsed_traces: set[str] = set()
         self._generating = False
         self._loading = False
         self._streaming_text = ""
@@ -147,6 +155,7 @@ class ChatApp(App[None]):
         self._command_index = 0
         self._dismissed_command_text: str | None = None
         self._confirmation_open = False
+        self._trace_name_open = False
         self._load_status_text: str | None = None
         self._status_text: str | None = None
         self._footer_text: str | None = None
@@ -217,6 +226,20 @@ class ChatApp(App[None]):
         if self._loading:
             return
         self._open_row(str(event.option.id))
+
+    def on_keyboard_option_list_details_toggled(
+        self,
+        event: KeyboardOptionList.DetailsToggled,
+    ) -> None:
+        """Expand or collapse the highlighted trace name."""
+        row = self._rows.get(event.key)
+        if not isinstance(row, SavedChat):
+            return
+        if row.id in self._collapsed_traces:
+            self._collapsed_traces.remove(row.id)
+        else:
+            self._collapsed_traces.add(row.id)
+        self._refresh_catalog_prompts(event.key)
 
     def _open_row(self, key: str) -> None:
         row = self._rows.get(key)
@@ -415,7 +438,11 @@ class ChatApp(App[None]):
 
     def _update_footer(self) -> None:
         if self._confirmation_open:
-            self._set_footer("←→ MOVE    ENTER SELECT    ESC RESUME")
+            self._set_footer(
+                "ENTER RECORD    ESC RESUME"
+                if self._trace_name_open
+                else "←→ MOVE    ENTER SELECT    ESC RESUME"
+            )
             return
         if self._command_matches:
             self._set_footer(
@@ -516,15 +543,22 @@ class ChatApp(App[None]):
         self._fill_chooser()
 
     def _after_landing_confirm(self, choice: str | None) -> None:
-        self._confirmation_open = False
-        self._update_confirmation_spacing()
-        self._update_footer()
-        if choice == "save" and not self._save_from_confirmation():
+        if choice == "save":
+            self._push_trace_name(self._after_landing_name)
             return
-        if choice in {"save", "discard"}:
+        self._close_confirmation()
+        if choice == "discard":
             self.query_one("#chat").display = False
             self.query_one("#landing").display = True
             self._fill_chooser()
+
+    def _after_landing_name(self, title: str | None) -> None:
+        self._close_confirmation()
+        if title is None or not self._save_from_confirmation(title):
+            return
+        self.query_one("#chat").display = False
+        self.query_one("#landing").display = True
+        self._fill_chooser()
 
     def _request_quit(self) -> None:
         if self.runtime.session is not None and self.runtime.session.dirty:
@@ -534,20 +568,38 @@ class ChatApp(App[None]):
             self.exit()
 
     def _after_quit_confirm(self, choice: str | None) -> None:
-        self._confirmation_open = False
-        self._update_confirmation_spacing()
-        self._update_footer()
-        if choice == "save" and not self._save_from_confirmation():
+        if choice == "save":
+            self._push_trace_name(self._after_quit_name)
             return
-        if choice in {"save", "discard"}:
+        self._close_confirmation()
+        if choice == "discard":
             self.runtime.close()
             self.exit()
 
+    def _after_quit_name(self, title: str | None) -> None:
+        self._close_confirmation()
+        if title is None or not self._save_from_confirmation(title):
+            return
+        self.runtime.close()
+        self.exit()
+
     def _push_confirmation(self, callback: Callable[[str | None], None]) -> None:
         self._confirmation_open = True
+        self._trace_name_open = False
         self._update_confirmation_spacing()
         self._update_footer()
         self.push_screen(ConfirmModal(), callback)
+
+    def _push_trace_name(self, callback: Callable[[str | None], None]) -> None:
+        self._trace_name_open = True
+        self._update_footer()
+        self.push_screen(TraceNameModal(), callback)
+
+    def _close_confirmation(self) -> None:
+        self._confirmation_open = False
+        self._trace_name_open = False
+        self._update_confirmation_spacing()
+        self._update_footer()
 
     def _update_confirmation_spacing(self) -> None:
         scroller = self.query_one("#transcript-scroll", VerticalScroll)
@@ -555,12 +607,12 @@ class ChatApp(App[None]):
         scroller.styles.padding = (1, 2, bottom, 2)
         self.call_after_refresh(self._scroll_transcript_end)
 
-    def _save_from_confirmation(self) -> bool:
+    def _save_from_confirmation(self, title: str) -> bool:
         if self.store is None:
             self.notify("Chat output is not configured", severity="error")
             return False
         try:
-            saved = self.store.save(self._session())
+            saved = self.store.save(self._session(), title if title.strip() else None)
         except ChatStorageError as error:
             self.notify(str(error), severity="error")
             return False
@@ -643,11 +695,15 @@ class ChatApp(App[None]):
     def _fill_chooser(self) -> None:
         self._catalog_width = self.size.width
         chooser = self.query_one("#chooser", OptionList)
+        assert isinstance(chooser, KeyboardOptionList)
+        chooser.selection_changed = self._refresh_catalog_prompts
         chooser.clear_options()
         self._rows.clear()
         options = []
         available = 0
         saved_chats = () if self.store is None else self.store.leaves()
+        saved_ids = {saved.id for saved in saved_chats}
+        self._collapsed_traces.intersection_update(saved_ids)
         layout = CatalogLayout.for_terminal(self.size.width)
         self.query_one("#catalog-columns", Static).update(
             layout.line("MODEL", "DATA", "WINDOW", "ENTRY")
@@ -679,10 +735,13 @@ class ChatApp(App[None]):
             options.append(Option(text, id=key, disabled=not row.available))
         for saved in saved_chats:
             text = layout.text(
-                f"{saved.title} · {saved.assistant.name}",
+                saved.assistant.name,
                 "TRACE",
                 "—",
                 "READY",
+                trace_name=(
+                    None if saved.id in self._collapsed_traces else saved.title
+                ),
             )
             key = f"saved-{saved.id}"
             self._rows[key] = saved
@@ -692,11 +751,51 @@ class ChatApp(App[None]):
         if saved_chats:
             summary += f" · {len(saved_chats)} saved"
         self.query_one("#catalog-summary", Static).update(summary)
+        hints = "↑↓ MOVE    ENTER SELECT"
+        if saved_chats:
+            hints += "    SPACE DETAILS"
+        hints += "    ESC STOP    CTRL+C QUIT"
+        self.query_one("#catalog-hints", Static).update(hints)
         for option_index, option in enumerate(chooser.options):
             if not option.disabled:
                 chooser.highlighted = option_index
                 chooser.focus()
                 break
+
+    def _refresh_catalog_prompts(self, selected_key: str) -> None:
+        chooser = self.query_one("#chooser", OptionList)
+        layout = CatalogLayout.for_terminal(self.size.width)
+        for option in chooser.options:
+            if option.id is None:
+                continue
+            row = self._rows.get(option.id)
+            if isinstance(row, DiscoveryItem):
+                if row.available and row.assistant is not None:
+                    assistant = row.assistant
+                    data = "BASE" if assistant.run is None else "CONSTRUCT"
+                    prompt = layout.text(
+                        row.label,
+                        data,
+                        str(assistant.context_messages),
+                        "READY",
+                        selected=option.id == selected_key,
+                    )
+                else:
+                    prompt = layout.text(row.label, "—", "—", "FAULT", failed=True)
+            elif isinstance(row, SavedChat):
+                prompt = layout.text(
+                    row.assistant.name,
+                    "TRACE",
+                    "—",
+                    "READY",
+                    selected=option.id == selected_key,
+                    trace_name=(
+                        None if row.id in self._collapsed_traces else row.title
+                    ),
+                )
+            else:
+                continue
+            chooser.replace_option_prompt(option.id, prompt)
 
     def _session(self) -> ChatSession:
         if self.runtime.session is None:
