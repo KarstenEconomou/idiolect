@@ -73,19 +73,27 @@ Document only the present implementation. Never describe prior implementations, 
 
 ## Tests
 
-Every test must protect useful behavior or a stable contract. A test must fail for a plausible implementation defect. Do not add tests only to increase coverage, execute lines, confirm that imports succeed, or restate implementation details.
+Optimize for confidence per test, not test count or raw coverage. Before editing a suite, inspect the relevant tests and production contracts. Review existing tests critically. Delete, consolidate, or rewrite tests that do not materially increase confidence.
 
-- Test public behavior, data contracts, boundary conditions, error handling, and regression cases. Do not bind tests to private helpers or incidental call order.
-- Never read live configuration, credentials, environment-specific paths, `var/`, user files, or real Signal data. Use pytest fixtures, `tmp_path`, synthetic messages, and safe test settings.
+- Test public behavior, data contracts, invariants, boundary conditions, failure behavior, integration contracts, and known regressions. A test must fail for a plausible implementation defect.
+- Remove tests that only execute lines, restate implementation details, test getters or constants, check obvious constructors, repeat equivalent cases, or mechanically enumerate branches with the same meaning. Do not preserve the existing test count or coverage percentage as a goal.
+- Do not write tautological schema tests. Test schemas only when serialization is nontrivial, validation expresses business rules, compatibility or migration matters, aliases or coercion matter, the schema is an external API, or a previous bug requires regression coverage. Assert the behavior, not every declared field and default.
+- Cover a representative happy path, meaningful boundaries, important invalid inputs, and known regressions. Use parameterization only when cases establish one semantic property. Avoid arbitrary permutations and combinatorial lists when one representative case protects the contract.
+- Preserve tests that protect historical bugs, external contracts, subtle edge cases, or behavior not covered elsewhere. If the purpose is unclear but legitimate, rename or rewrite the test so the regression is explicit.
+- Keep assertions focused on one behavior or one closely related contract. Name tests for behavior, such as `test_rejects_unknown_metric_when_loading_eval_config`.
+- Never read live configuration, credentials, environment-specific paths, `var/`, user files, or real Signal data. Use explicit pytest fixtures or factories, `tmp_path`, synthetic messages, and safe test settings. Fixtures must not silently fall back to live configuration or mutable machine state.
+- Keep fixtures minimal, deterministic, scoped, and easy to override. Use a factory when tests need small mutations of one valid object. Avoid giant fixtures and elaborate abstractions for one-off setup.
 - Never contact Signal, cloud services, model hubs, tracking services, or other networks. Replace external boundaries with fakes or mocks.
 - Never download a model or run real training, fine-tuning, inference, GPU work, or another expensive routine in tests. Mock the expensive boundary and assert the inputs, outputs, state changes, and failures that the application owns.
 - Test chat worker behavior with fake backends and TUI behavior with a fake runtime. Do not import MLX, load weights, contact a model hub, or require a GPU in chat tests.
-- Prefer small in-memory fakes when behavior across a boundary matters. Use mocks only at defined ports. Do not mock the unit under test.
-- Make tests deterministic. Fix clocks, random seeds, identifiers, and ordering when they affect results. Tests must not depend on execution order or machine state.
+- Prefer small in-memory fakes when behavior across a boundary matters. Use mocks only at defined ports. Do not mock the unit under test or assert incidental call order.
+- Make tests deterministic. Fix clocks, random seeds, identifiers, and ordering when they affect results. Do not use sleeps or timing assumptions when state polling, synchronization events, or fake clocks can express the contract. Tests must not depend on execution order or machine state.
 - Use temporary DuckDB databases, Parquet files, and artifact directories for storage integration tests. Fixtures must create and clean up all test state.
 - Test dataset splitting for time-order preservation and leakage prevention. Test ingestion and storage for duplicate-event handling when those features exist.
 - Keep tests fast enough for `just test` on a development machine. If a defect cannot be tested without live data or expensive work, test the local decision logic and validate the external integration outside pytest.
 - Do not weaken an assertion, replace a meaningful test with an import check, or change production behavior only to make a test pass.
+
+After a cleanup, review every remaining test and ask: "What realistic regression would this catch?" Remove it unless the answer is convincing or it serves a documented structural purpose. Run the affected tests and the broader relevant suite. Report tests removed or consolidated, fixtures introduced, live-state dependencies eliminated, important coverage retained or added, questionable tests kept and why, and the commands and results.
 
 Name files `test_*.py` and tests `test_<behavior>`. Use a regression test for each bug fix.
 
