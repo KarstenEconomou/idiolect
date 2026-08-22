@@ -7,7 +7,7 @@ from collections.abc import Callable, Iterator
 from types import SimpleNamespace
 from typing import cast
 
-from rich.console import Console
+from rich.console import Console, RenderableType
 from rich.text import Text
 from textual import events
 from textual.containers import Horizontal, VerticalScroll
@@ -79,8 +79,8 @@ def test_registry_opens_highlighted_assistant_from_keyboard(tmp_path) -> None:
     asyncio.run(verify())
 
 
-def test_transcript_is_literal_and_scrollable(tmp_path) -> None:
-    """Check transcript labels, identity, telemetry, and navigation."""
+def test_transcript_formats_markdown_and_remains_scrollable(tmp_path) -> None:
+    """Check transcript Markdown, identity, telemetry, and navigation."""
     chat = ChatConfig(output=tmp_path)
     generation = GenerationConfig(max_prompt_tokens=1000)
     runtime = TranscriptRuntime(chat, generation)
@@ -104,19 +104,33 @@ def test_transcript_is_literal_and_scrollable(tmp_path) -> None:
             transcript_text = transcript.plain
             assert "USER:" in transcript_text
             assert "DIXIE:" in transcript_text
-            assert "USER:\n User message 0\n [bold]literal[/bold]" in transcript_text
+            assert "USER:\n User **message** 0\n [bold]literal[/bold]" in transcript_text
             assert "IDIOLECT //" not in transcript_text
             console = Console(width=20, color_system=None)
             with console.capture() as capture:
                 console.print(transcript.content)
             rendered_lines = capture.get().splitlines()
             assert rendered_lines[0] == "USER:"
+            assert rendered_lines[1].strip() == "User message 0"
             assert rendered_lines[1].startswith(" ")
             assert rendered_lines[2].startswith(" ")
             assert rendered_lines[3].startswith(" ")
             assert runtime.session is not None
             assert runtime.session.turns[0].content == (
-                "User message 0\n[bold]literal[/bold]"
+                "User **message** 0\n[bold]literal[/bold]"
+            )
+            segments = tuple(console.render(cast(RenderableType, transcript.content)))
+            assert any(
+                segment.text == "message"
+                and segment.style is not None
+                and segment.style.bold
+                for segment in segments
+            )
+            assert any(
+                segment.text == "reply"
+                and segment.style is not None
+                and segment.style.italic
+                for segment in segments
             )
             assert str(app.query_one("#identity", Static).content) == (
                 "IDIOLECT // DIXIE@BASE [M]"
@@ -620,10 +634,10 @@ class TranscriptRuntime(ImmediateRuntime):
             turn
             for index in range(12)
             for turn in (
-                ChatTurn("user", f"User message {index}\n[bold]literal[/bold]"),
+                ChatTurn("user", f"User **message** {index}\n[bold]literal[/bold]"),
                 ChatTurn(
                     "assistant",
-                    f"Assistant reply {index}\nwith a second line",
+                    f"Assistant *reply* {index}\nwith a second line",
                     telemetry=TurnTelemetry(
                         prompt_tokens=500,
                         generated_tokens=64,

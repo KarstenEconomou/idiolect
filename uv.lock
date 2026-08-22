@@ -445,6 +445,7 @@ dependencies = [
 
 [package.optional-dependencies]
 chat = [
+    { name = "markdown-it-py" },
     { name = "textual" },
 ]
 train = [
@@ -464,6 +465,7 @@ dev = [
 requires-dist = [
     { name = "duckdb", specifier = ">=1.5.5" },
     { name = "huggingface-hub", marker = "extra == 'train'", specifier = ">=1.28.0" },
+    { name = "markdown-it-py", marker = "extra == 'chat'", specifier = ">=4,<5" },
     { name = "mlx-lm", extras = ["train"], marker = "extra == 'train'", specifier = ">=0.31.3" },
     { name = "pytz", specifier = ">=2026.3.post1" },
     { name = "textual", marker = "extra == 'chat'", specifier = ">=8,<9" },

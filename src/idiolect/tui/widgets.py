@@ -18,6 +18,7 @@ from textual.widget import Widget
 from textual.widgets import Button, OptionList, Static, TextArea
 
 from idiolect.tui.commands import COMMAND_DESCRIPTIONS, COMMANDS
+from idiolect.tui.markdown import ChatMarkdown
 
 
 class KeyboardOptionList(OptionList):
@@ -152,21 +153,32 @@ class CommandMenu(Widget):
 
 
 class Transcript(Static):
-    """Render transcript labels and consistently inset message blocks."""
+    """Render transcript labels and focused Markdown message blocks."""
 
     plain = ""
+    _cached_turns: tuple[tuple[str, str], ...] = ()
+    _cached_messages: tuple[ChatMarkdown, ...] = ()
 
     def set_turns(self, turns: Sequence[tuple[str, str]]) -> None:
         """Set labeled turns without changing their stored message text."""
+        current = tuple(turns)
+        messages = tuple(
+            self._cached_messages[index]
+            if index < len(self._cached_turns) and turn == self._cached_turns[index]
+            else ChatMarkdown(turn[1])
+            for index, turn in enumerate(current)
+        )
         renderables: list[Text | Padding] = []
         plain_blocks = []
-        for index, (name, message) in enumerate(turns):
+        for index, ((name, message), rendered) in enumerate(zip(current, messages)):
             if index:
                 renderables.append(Text(""))
             renderables.append(Text(f"{name}:", style="blue"))
-            renderables.append(Padding(Text(message), (0, 0, 0, 1)))
+            renderables.append(Padding(rendered, (0, 0, 0, 1)))
             displayed = message.replace("\n", "\n ")
             plain_blocks.append(f"{name}:\n {displayed}")
+        self._cached_turns = current
+        self._cached_messages = messages
         self.plain = "\n\n".join(plain_blocks)
         self.update(Group(*renderables))
 

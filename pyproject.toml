@@ -29,6 +29,7 @@ train = [
     "mlx-lm[train]>=0.31.3",
 ]
 chat = [
+    "markdown-it-py>=4,<5",
     "textual>=8,<9",
 ]
 

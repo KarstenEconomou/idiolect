@@ -16,17 +16,23 @@ TUI tests.
   primary text, and inactive row names. Use ANSI blue only for accents and active
   primary labels; bright black for metadata, help text, telemetry, inactive
   actions, dividers, and idle borders; ANSI white for table and menu headings;
-  and ANSI red for failures and unavailable actions. Do not add RGB colors,
+  and ANSI red for failures and unavailable actions. Use bright black as the
+  character-width background for transcript code. Do not add RGB colors,
   opaque modal backdrops, tints, or separate surface colors.
 - Bold product marks, primary page titles, canonical chat identities, table and
   menu headings, ready status labels, and the primary label of the current
-  selection. Do not bold body text, telemetry, help text, descriptions, or
-  inactive actions. Give supporting metadata in a selected item the accent color
-  with dim styling.
+  selection. Do not bold body text outside focused transcript Markdown,
+  telemetry, help text, descriptions, or inactive actions. Give supporting
+  metadata in a selected item the accent color with dim styling.
 - Use uppercase for interface nouns, identities, transcript speaker labels,
   table headings, status values, action labels, telemetry, and keyboard hints.
   Keep command names lowercase. Write command descriptions in sentence case and
-  end them with a period. Render transcript and model content literally without
+  end them with a period. Render transcript content with the focused Markdown
+  rules below. Keep stored content unchanged.
+- Support Markdown emphasis, ATX headings, inline code, fenced code, and lists
+  in every transcript turn. Keep heading prefixes and authored list markers.
+  Add one indentation cell per list level. Hide emphasis and code delimiters.
+  Keep unsupported or unmatched markup literal, and do not interpret Rich
   markup.
 - Use a metadata-colored solid border for idle input and an accent-colored solid
   border for focused input. Use terminal-native reversed cursor and selection
