@@ -153,66 +153,12 @@ Evaluate every configured training seed together on the fixed validation split:
 just eval policy var/data/DATASET_ID var/runs/RUN_ID_ONE var/runs/RUN_ID_TWO
 ```
 
-Install the chat environment and open the assistant registry:
+Install the chat environment and open the registry:
 
 ```console
 just setup-chat
 just chat
-```
 
-The first chooser row is `IDIOLECT // DIXIE@BASE [Qwen3-14B-4bit]`. It uses the
-configured base model with the DIXIE system persona and does not require a run
-or dataset. Verified adapters follow it with identities such as
-`IDIOLECT // DIXIE@7f3a91c2 [Qwen3-14B-4bit]`. Direct adapter launch and resume
-are also available. The visible target-name segment is always uppercase. The
-landing table is the `REGISTRY`. It has no search field or pointer
-activation. Use the arrow keys to choose a row and Enter to connect. Registry
-rows show MODEL identity, TYPE, and ENTRY readiness;
-the blue watermark uses a dim, non-bold tagline, and chat and SPECS headers show
-the matching `· ·` motif with one blank face cell at their right edge.
-TYPE and ENTRY use the slash menu's description styling, and FAULT rows match an
-unavailable `/save`. Saved TRACE rows show their ellipsized names to the right of
-the canonical model identity; press Space from any registry row to collapse or
-expand all trace names. Press T to cycle the unlisted ANSI accent themes through
-green, yellow, blue, purple, and cyan; green is the default. Press S on a READY row to open its scrollable SPECS page
-without loading the model, and press Escape to return to the same row. SPECS
-shows model, policy, and lineage metadata with the command menu's primary-label
-and metadata-description styling and compact labels. Every field value,
-including evaluation bars, uses the transcript's one-cell inset beneath its
-label across wrapped lines. Trailing blank system-prompt lines are omitted.
-DIXIE BASE also shows a clearly
-labeled synthetic fidelity scorecard; adapters and traces remain NOT EVALUATED
-because chat does not inspect private evaluation artifacts. Use Left and Right
-in SPECS to cycle with wrapping through READY registry rows; FAULT rows are
-skipped, and Escape returns to the newly selected row. When a TRACE is
-highlighted, press Backspace to manage it in the horizontal TRACE menu. The
-heading repeats the trace name, and the subject name blinks while the menu is
-open. The TRACE controls use the same outer inset as the chat composer. ERASE
-removes that lineage leaf, RENAME replaces it with a newly named immutable leaf,
-and RETAIN keeps it.
-In chat, use the mouse wheel or Ctrl+Up and Ctrl+Down to scroll the transcript.
-Chat headers retain the full canonical
-assistant name; assistant turns use only the uppercase target name. Transcript
-turns format focused Markdown for emphasis, retained-prefix headings, code on
-an ANSI bright-black background, compact nested lists, and indented quotes
-without changing saved text. Explicit HTTP and HTTPS Markdown links keep their
-complete destination visible and use clickable underlined labels. Type `/` to
-open the keyboard-driven
-`/exit`, `/registry`, `/save`, and `/specs` menu, and use Tab to complete its
-selected command. `/specs` temporarily shows the active model and returns to the
-unchanged chat on Escape. `/save` requests an optional trace name and records a checkpoint without
-leaving chat. Transient alerts share the right-aligned error-message slot;
-successful saves use metadata gray, while errors use red. The empty naming field
-previews its generated default. The command
-is available only while the transcript has new unsaved data. Input submitted
-before model loading completes reports that the `CONNECTION` is not ready.
-Unsaved changes open the horizontal DISCONNECT, SAVE, and RESUME confirmation;
-SAVE then requests an optional trace name before navigation.
-The chat footer prioritizes measured context use, then groups output size and
-generation rate. Wider terminals progressively add first-token latency and peak
-memory.
-
-```console
 just chat run RUN_ID DATASET_ID
 just chat resume CHAT_ID
 ```
