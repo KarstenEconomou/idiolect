@@ -29,7 +29,20 @@ def test_catalog_row_has_a_stable_cell_width_for_unicode_names() -> None:
     assert cell_len(row.plain) == sum(
         (layout.model, layout.data, layout.window, layout.status)
     ) + 3
-    assert row.plain.endswith("AVAILABLE".ljust(layout.status))
+    assert row.plain.endswith("AVAILABLE")
+
+
+def test_catalog_status_ends_at_the_right_edge_of_the_line() -> None:
+    """Check status labels align with the registry divider edge."""
+    layout = CatalogLayout.for_terminal(80)
+
+    header = layout.line("MODEL", "DATA", "WINDOW", "STATUS")
+    available = layout.text("MODEL", "DATA", "WINDOW", "AVAILABLE")
+    unavailable = layout.text("MODEL", "DATA", "WINDOW", "UNAVAILABLE")
+
+    assert header.endswith("STATUS")
+    assert available.plain.endswith("AVAILABLE")
+    assert unavailable.plain.endswith("UNAVAILABLE")
 
 
 def test_catalog_metadata_columns_leave_room_for_values() -> None:
