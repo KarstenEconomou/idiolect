@@ -42,7 +42,10 @@ def test_import_and_stats_use_configured_store(
     stats_output = capsys.readouterr()
 
     assert import_code == 0
-    assert "received=6 stored=4 messages=3 reactions=1 skipped=2 duplicates=0" in import_output.out
+    assert (
+        "received=6 stored=4 messages=3 reactions=1 skipped=2 duplicates=0"
+        in import_output.out
+    )
     assert import_output.err == ""
     assert reindex_code == 0
     assert "scanned=4 updated=4 messages=3 reactions=1 skipped=0" in reindex_output.out
@@ -90,21 +93,25 @@ def test_train_command_uses_fixed_dataset_and_config(
     capsys,
 ) -> None:
     """Check that the CLI passes one verified dataset to the trainer."""
-    assert main(
-        ("--config", str(local_config), "signal", "import", str(signal_events))
-    ) == 0
+    assert (
+        main(("--config", str(local_config), "signal", "import", str(signal_events)))
+        == 0
+    )
     capsys.readouterr()
-    assert main(
-        (
-            "--config",
-            str(local_config),
-            "data",
-            "build",
-            "--self",
-            "--name",
-            "DIXIE",
+    assert (
+        main(
+            (
+                "--config",
+                str(local_config),
+                "data",
+                "build",
+                "--self",
+                "--name",
+                "DIXIE",
+            )
         )
-    ) == 0
+        == 0
+    )
     capsys.readouterr()
     dataset_path = next((local_config.parent / "data").iterdir())
     seen = []
@@ -155,9 +162,7 @@ def test_inference_text_reads_stdin_and_writes_json_lines(
         def text(self, target, prompt, config) -> tuple[Prediction, ...]:
             """Record the prompt and return one fixed prediction."""
             seen.append((target, prompt, config))
-            return (
-                Prediction("example", 0, 101, 202, "reply", "stop", 8, 2),
-            )
+            return (Prediction("example", 0, 101, 202, "reply", "stop", 8, 2),)
 
     monkeypatch.setattr(idiolect.cli, "configured_target", lambda config: "base")
     monkeypatch.setattr(idiolect.cli, "MlxBackend", object)
@@ -299,7 +304,21 @@ def test_chat_opens_chooser_without_model_or_private_data(
 output = "{(tmp_path / "data").as_posix()}"
 
 [train]
+base_model = "mlx-community/Qwen3-8B-4bit"
+model_source = "hub"
+model_revision = "fixed"
+model_cache = "{(tmp_path / "models").as_posix()}"
 output = "{(tmp_path / "runs").as_posix()}"
+
+[train.data]
+format = "chat"
+system_prompt = ""
+prompt_role = "user"
+completion_role = "assistant"
+prompt_prefix = ""
+prompt_suffix = ""
+completion_prefix = ""
+completion_suffix = ""
 
 [inference]
 backend = "mlx-lm"
@@ -319,17 +338,28 @@ seed = 101
 participant_name = "person_01"
 context_policy = "recorded-window-drop-oldest"
 history = "explicit-save"
+default_model = "train-base"
+default_name = "DIXIE"
+default_context_messages = 32
+default_system_prompt = "Speak with terse technical precision."
 """,
         encoding="utf-8",
     )
     seen = []
-    monkeypatch.setattr(idiolect.cli, "run_chat_app", lambda *args, **kwargs: seen.append((args, kwargs)))
+    monkeypatch.setattr(
+        idiolect.cli,
+        "run_chat_app",
+        lambda *args, **kwargs: seen.append((args, kwargs)),
+    )
 
     code = main(("--config", str(config_path), "chat"))
 
     output = capsys.readouterr()
     assert code == 0
     assert len(seen) == 1
-    assert seen[0][1]["assistants"] == ()
+    assistants = seen[0][1]["assistants"]
+    assert len(assistants) == 1
+    assert assistants[0].label == "IDIOLECT // DIXIE@BASE [Qwen3-8B-4bit]"
+    assert assistants[0].assistant.run is None
     assert output.out == ""
     assert output.err == ""

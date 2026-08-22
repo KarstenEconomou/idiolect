@@ -10,6 +10,8 @@ from pathlib import Path
 
 from idiolect.chat.discovery import (
     ChatDiscoveryError,
+    DiscoveryItem,
+    default_assistant,
     discover_assistants,
     load_assistant,
 )
@@ -55,13 +57,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         config = load_config(arguments.config)
         if arguments.command == "chat":
-            validate_chat_policy(config.chat, config.inference)
+            validate_chat_policy(config.chat, config.inference, config.train)
             if config.chat.output is None:
                 raise ChatError("Chat output is not configured")
             store = ChatStore(config.chat.output)
             initial_assistant = None
             initial_chat = None
-            rows = discover_assistants(config.train.output, config.data.output)
+            default = default_assistant(config.train, config.chat)
+            rows = (
+                DiscoveryItem(default.name, "BASE", None, default),
+                *discover_assistants(config.train.output, config.data.output),
+            )
             if arguments.chat_command == "run":
                 run_path = _artifact_path(arguments.run, config.train.output)
                 dataset_path = _artifact_path(arguments.dataset, config.data.output)
@@ -70,7 +76,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     (
                         row
                         for row in rows
-                        if row.run_id == str(initial_assistant.run.ref.id)
+                        if row.run_id == initial_assistant.run_id
                     ),
                     None,
                 )
@@ -312,8 +318,12 @@ def _parser() -> argparse.ArgumentParser:
     chat_resume = chat_commands.add_parser("resume", help="resume one saved chat")
     chat_resume.add_argument("saved_chat", help="saved chat ID")
     inference = commands.add_parser("inference", help="generate local model text")
-    inference_commands = inference.add_subparsers(dest="inference_command", required=True)
-    inference_text = inference_commands.add_parser("text", help="generate one private prompt")
+    inference_commands = inference.add_subparsers(
+        dest="inference_command", required=True
+    )
+    inference_text = inference_commands.add_parser(
+        "text", help="generate one private prompt"
+    )
     _inference_target_options(inference_text)
     inference_text.add_argument(
         "input",
@@ -327,7 +337,9 @@ def _parser() -> argparse.ArgumentParser:
         help="generate one immutable dataset split",
     )
     _inference_target_options(inference_data)
-    inference_data.add_argument("dataset", type=Path, help="immutable dataset directory")
+    inference_data.add_argument(
+        "dataset", type=Path, help="immutable dataset directory"
+    )
     inference_data.add_argument(
         "--split",
         type=Split,

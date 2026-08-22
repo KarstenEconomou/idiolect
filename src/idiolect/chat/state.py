@@ -177,7 +177,7 @@ def prepare_prompt(
                 for turn in selected
             ),
         )
-        model_input = format_prompt(prompt, state.assistant.run.data)
+        model_input = format_prompt(prompt, state.assistant.data)
         token_count = tokenizer(model_input)
         if token_count <= state.generation.max_prompt_tokens:
             digest = _model_input_digest(model_input)

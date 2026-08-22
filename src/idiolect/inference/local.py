@@ -223,6 +223,7 @@ class LocalInferencer:
 def configured_target(
     config: TrainConfig,
     resolver: Callable[[ModelSpec], Path] = resolve_model,
+    expected_digest: str | None = None,
 ) -> ModelTarget:
     """Resolve and verify the configured base target."""
     try:
@@ -234,7 +235,7 @@ def configured_target(
     spec = _model_spec(config)
     try:
         path = resolver(spec)
-        digest = verify_model(path, spec)
+        digest = verify_model(path, spec, expected_digest)
     except ModelError as error:
         raise InferenceError(str(error)) from error
     value = {
@@ -378,7 +379,9 @@ def _dataset_rows(
             prompt = value["prompt"]
             completion = value["completion"]
         except (KeyError, TypeError, json.JSONDecodeError) as error:
-            raise InferenceError(f"Dataset row is not valid: {path}:{index + 1}") from error
+            raise InferenceError(
+                f"Dataset row is not valid: {path}:{index + 1}"
+            ) from error
         if not isinstance(prompt, str) or not isinstance(completion, str):
             raise InferenceError(f"Dataset row text is not valid: {path}:{index + 1}")
         identity = {
@@ -428,9 +431,7 @@ def _recipe(
         "dataset_id": str(dataset.id),
         "dataset_digest": dataset_digest,
         "split": split.value,
-        "examples": [
-            {"index": value[0], "example_id": value[1]} for value in rows
-        ],
+        "examples": [{"index": value[0], "example_id": value[1]} for value in rows],
         "target": {
             "id": target.id,
             "mode": target.mode.value,
@@ -470,7 +471,7 @@ def _find_artifact(
             continue
         try:
             value = json.loads((path / "manifest.json").read_text(encoding="utf-8"))
-        except (OSError, ValueError, json.JSONDecodeError):
+        except OSError, ValueError, json.JSONDecodeError:
             continue
         if not isinstance(value, dict) or not _same_json(value.get("recipe"), recipe):
             continue
@@ -684,7 +685,7 @@ def _is_digest(value: str) -> bool:
 def _same_json(first: object, second: object) -> bool:
     try:
         return _json_bytes(first) == _json_bytes(second)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return False
 
 
@@ -694,7 +695,9 @@ def _artifact_file(root: Path, name: object) -> Path:
     root_path = root.resolve()
     path = (root / name).resolve()
     if not path.is_relative_to(root_path) or not path.is_file():
-        raise InferenceError(f"Inference manifest contains an invalid file path: {name}")
+        raise InferenceError(
+            f"Inference manifest contains an invalid file path: {name}"
+        )
     return path
 
 

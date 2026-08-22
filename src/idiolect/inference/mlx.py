@@ -2,7 +2,7 @@
 
 import contextlib
 import sys
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from importlib.metadata import PackageNotFoundError
 from typing import Any
 
@@ -102,6 +102,7 @@ class _MlxSession:
         seed: int,
         config: GenerationConfig,
         cancel: Cancellation | None = None,
+        prompt_progress: Callable[[int, int], None] | None = None,
     ) -> Iterator[GenerationEvent]:
         """Yield one MLX-LM generation as text deltas."""
         try:
@@ -124,14 +125,19 @@ class _MlxSession:
             )
             final = None
             cancelled = False
+            generation_options: dict[str, Any] = {
+                "max_tokens": config.max_tokens,
+                "sampler": sampler,
+                "logits_processors": processors,
+            }
+            if prompt_progress is not None:
+                generation_options["prompt_progress_callback"] = prompt_progress
             with contextlib.redirect_stdout(sys.stderr):
                 for response in stream_generate(
                     self._model,
                     self._tokenizer,
                     tokens,
-                    max_tokens=config.max_tokens,
-                    sampler=sampler,
-                    logits_processors=processors,
+                    **generation_options,
                 ):
                     if cancel is not None and cancel.is_set():
                         cancelled = True

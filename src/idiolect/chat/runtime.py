@@ -1,7 +1,7 @@
 """Coordinate chat state with the supervised model worker."""
 
-from collections.abc import Iterator
-from dataclasses import dataclass
+from collections.abc import Callable, Iterator
+from dataclasses import dataclass, replace
 
 from idiolect.chat.discovery import Assistant
 from idiolect.chat.state import ChatSession, TurnTelemetry, prepare_prompt
@@ -11,7 +11,9 @@ from idiolect.chat.worker import (
     DiagnosticEvent,
     FailureEvent,
     GenerateCommand,
+    LoadBaseCommand,
     LoadCommand,
+    PrefillEvent,
     ProbeCommand,
     ProbeEvent,
     StateEvent,
@@ -19,10 +21,21 @@ from idiolect.chat.worker import (
     WorkerState,
     WorkerSupervisor,
 )
-from idiolect.config import ChatConfig, GenerationConfig, InferenceConfig
+from idiolect.config import ChatConfig, GenerationConfig, InferenceConfig, TrainConfig
+from idiolect.prompt import PromptError, validate_prompt_config
 
 _CHAT_KEYS = frozenset(
-    {"output", "seed", "participant_name", "context_policy", "history"}
+    {
+        "output",
+        "seed",
+        "participant_name",
+        "context_policy",
+        "history",
+        "default_model",
+        "default_name",
+        "default_context_messages",
+        "default_system_prompt",
+    }
 )
 _GENERATION_KEYS = frozenset(
     {
@@ -55,7 +68,11 @@ class RuntimeStats:
     weighted_generation_throughput: float | None
 
 
-def validate_chat_policy(chat: ChatConfig, inference: InferenceConfig) -> None:
+def validate_chat_policy(
+    chat: ChatConfig,
+    inference: InferenceConfig,
+    train: TrainConfig,
+) -> None:
     """Verify complete chat and generation policy at the chat boundary."""
     if chat.unknown:
         raise ChatError(
@@ -79,6 +96,30 @@ def validate_chat_policy(chat: ChatConfig, inference: InferenceConfig) -> None:
         raise ChatError("Chat context_policy is not supported")
     if chat.history != "explicit-save":
         raise ChatError("Chat history policy is not supported")
+    if chat.default_model != "train-base":
+        raise ChatError("Chat default_model must be train-base")
+    if not chat.default_name.strip():
+        raise ChatError("Chat default_name must contain text")
+    if any(character in "[]|@\r\n" for character in chat.default_name):
+        raise ChatError("Chat default_name contains a reserved character")
+    if chat.default_context_messages < 1:
+        raise ChatError("Chat default_context_messages must be greater than zero")
+    if not chat.default_system_prompt.strip():
+        raise ChatError("Chat default_system_prompt must contain text")
+    if not train.base_model or not train.model_source:
+        raise ChatError("Chat default model is not configured in [train]")
+    if train.model_source not in {"hub", "path"}:
+        raise ChatError("Chat default model_source must be hub or path")
+    if train.model_source == "hub" and not train.model_revision:
+        raise ChatError("Chat default hub model requires model_revision")
+    if train.model_source == "hub" and train.model_cache is None:
+        raise ChatError("Chat default hub model requires model_cache")
+    try:
+        validate_prompt_config(
+            replace(train.data, system_prompt=chat.default_system_prompt)
+        )
+    except PromptError as error:
+        raise ChatError(str(error)) from error
     if inference.backend != "mlx-lm":
         raise ChatError("Chat backend must be mlx-lm")
     if inference.max_prompt_tokens < 1 or inference.max_tokens < 1:
@@ -100,7 +141,9 @@ class ChatRuntime:
         self.chat = chat
         self.generation = generation
         self._worker_factory = worker_factory
-        self.worker = None
+        # Start the process before Textual takes control of the terminal. Model
+        # resolution and loading still start only after assistant selection.
+        self.worker = self._worker_factory()
         self.session: ChatSession | None = None
         self.state = WorkerState.PROBING
         self.probe: dict[str, object] = {}
@@ -108,11 +151,11 @@ class ChatRuntime:
 
     def select(self, assistant: Assistant) -> ChatSession:
         """Switch to one assistant and load its recorded model once."""
-        if self.worker is not None:
-            self.worker.shutdown()
-        self.worker = self._worker_factory()
+        self._ensure_worker()
+        if self.worker is None:
+            raise ChatError("The model worker is not running")
         self.worker.send(ProbeCommand())
-        self.worker.send(LoadCommand(str(assistant.run.ref.path)))
+        self.worker.send(_load_command(assistant))
         self.chat = self._configured_chat
         self.generation = self._configured_generation
         self.session = ChatSession(assistant, self.chat, self.generation)
@@ -121,17 +164,21 @@ class ChatRuntime:
 
     def attach(self, session: ChatSession) -> None:
         """Load the assistant for one resumed in-memory session."""
-        if self.worker is not None:
-            self.worker.shutdown()
-        self.worker = self._worker_factory()
+        self._ensure_worker()
+        if self.worker is None:
+            raise ChatError("The model worker is not running")
         self.worker.send(ProbeCommand())
-        self.worker.send(LoadCommand(str(session.assistant.run.ref.path)))
+        self.worker.send(_load_command(session.assistant))
         self.chat = session.chat
         self.generation = session.generation
         self.session = session
         self._wait_ready()
 
-    def generate(self, attempt: int = 0) -> Iterator[str]:
+    def generate(
+        self,
+        attempt: int = 0,
+        prompt_progress: Callable[[int, int], None] | None = None,
+    ) -> Iterator[str]:
         """Yield one reply and commit its final measured turn."""
         if self.worker is None or self.session is None:
             raise ChatError("Select an assistant before generation")
@@ -148,6 +195,9 @@ class ChatRuntime:
                 if isinstance(event, DeltaEvent):
                     pieces.append(event.text)
                     yield event.text
+                elif isinstance(event, PrefillEvent):
+                    if prompt_progress is not None:
+                        prompt_progress(event.current, event.total)
                 elif isinstance(event, StateEvent):
                     self.state = event.state
                 elif isinstance(event, ProbeEvent):
@@ -191,11 +241,19 @@ class ChatRuntime:
             raise ChatError("Select an assistant before reload")
         self.attach(self.session)
 
+    def ensure_worker(self) -> None:
+        """Start a replacement worker before background model loading starts."""
+        self._ensure_worker()
+
     def close(self) -> None:
         """Release the worker process."""
         if self.worker is not None:
             self.worker.shutdown()
             self.worker = None
+
+    def _ensure_worker(self) -> None:
+        if self.worker is None or not self.worker.alive:
+            self.worker = self._worker_factory()
 
     @property
     def stats(self) -> RuntimeStats:
@@ -234,6 +292,7 @@ class ChatRuntime:
             if isinstance(event, StateEvent):
                 self.state = event.state
                 if event.state == WorkerState.READY:
+                    self._record_model_digest()
                     return
             elif isinstance(event, ProbeEvent):
                 self.probe.update(event.values)
@@ -243,3 +302,25 @@ class ChatRuntime:
                 raise ChatError(event.message)
             elif event is None and not self.worker.alive:
                 raise WorkerError("The model worker stopped during load")
+
+    def _record_model_digest(self) -> None:
+        if self.session is None or self.session.assistant.base_model is None:
+            return
+        value = self.probe.get("model_digest")
+        if isinstance(value, str):
+            self.session.assistant = replace(
+                self.session.assistant,
+                base_model_digest=value,
+            )
+
+
+def _load_command(assistant: Assistant) -> LoadCommand | LoadBaseCommand:
+    if assistant.run is not None:
+        return LoadCommand(str(assistant.run.ref.path))
+    if assistant.base_model is None:
+        raise ChatError("The assistant model is not configured")
+    return LoadBaseCommand(
+        assistant.base_model,
+        assistant.data,
+        assistant.base_model_digest,
+    )

@@ -15,8 +15,9 @@ attachment, and reaction context, builds causally filtered and source-audited
 immutable target-specific datasets, uses MLX-LM QLoRA to train adapters, and
 generates reproducible local predictions.
 
-It also provides a private multi-turn terminal chat for verified adapters. The
-chat uses the same conversation grammar as training, streams local replies, and
+It also provides a private multi-turn terminal chat for the configured DIXIE
+base persona and verified adapters. The chat uses the same conversation grammar
+as training, streams local replies, and
 saves only explicit immutable snapshots.
 
 ```text
@@ -152,16 +153,23 @@ Evaluate every configured training seed together on the fixed validation split:
 just eval policy var/data/DATASET_ID var/runs/RUN_ID_ONE var/runs/RUN_ID_TWO
 ```
 
-Install the chat environment and open the searchable assistant chooser:
+Install the chat environment and open the assistant registry:
 
 ```console
 just setup-chat
 just chat
 ```
 
-The chooser shows identities such as
-`IDIOLECT // DIXIE@7f3a91c2 [Qwen3-14B-4bit]`. Direct launch and resume are
-also available. The visible target-name segment is always uppercase.
+The first chooser row is `IDIOLECT // DIXIE@BASE [Qwen3-14B-4bit]`. It uses the
+configured base model with the DIXIE system persona and does not require a run
+or dataset. Verified adapters follow it with identities such as
+`IDIOLECT // DIXIE@7f3a91c2 [Qwen3-14B-4bit]`. Direct adapter launch and resume
+are also available. The visible target-name segment is always uppercase. The
+landing table is the `REGISTRY`. It has no search field or pointer
+activation. Use the arrow keys and Enter to select a row. In chat, use the mouse
+wheel or Ctrl+Up and Ctrl+Down to scroll the transcript. Chat headers retain the
+full canonical assistant name; assistant turns use only the uppercase target
+name.
 
 ```console
 just chat run RUN_ID DATASET_ID

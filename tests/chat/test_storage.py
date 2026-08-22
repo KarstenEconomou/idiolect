@@ -2,8 +2,6 @@
 
 import json
 from datetime import UTC, datetime
-from types import SimpleNamespace
-from typing import cast
 
 import pytest
 
@@ -11,6 +9,10 @@ from idiolect.chat.discovery import Assistant
 from idiolect.chat.state import ChatSession, TurnTelemetry
 from idiolect.chat.storage import ChatStorageError, ChatStore
 from idiolect.config import ChatConfig, GenerationConfig, TrainDataConfig
+from idiolect.data.local import BuildResult
+from idiolect.model import ModelSpec
+from idiolect.train.base import LoadedRun
+from idiolect.types import DatasetId, DatasetRef, PersonId, RunId, RunRef
 
 
 def test_snapshot_is_private_idempotent_and_creates_lineage(
@@ -59,27 +61,86 @@ def test_snapshot_rejects_changed_turn_content(tmp_path, monkeypatch) -> None:
         store.load(saved.id)
 
 
+def test_base_snapshot_restores_system_persona_and_model_digest(tmp_path) -> None:
+    """Check that a base chat resumes with its fixed persona and model."""
+    state, _assistant = _base_state(tmp_path)
+    store = ChatStore(tmp_path / "chat")
+    state.add_user("private")
+
+    saved = store.save(state)
+    resumed = store.resume(saved.id)
+
+    assert resumed.assistant.run is None
+    assert resumed.assistant.model_digest == "c" * 64
+    assert resumed.assistant.data.system_prompt == "Be concise."
+
+
 def _state(tmp_path):
     """Return one synthetic state with complete recorded identity fields."""
-    run_path = tmp_path / "runs" / ("a" * 64)
-    dataset_path = tmp_path / "data" / ("b" * 64)
-    assistant = SimpleNamespace(
-        name="IDIOLECT // DIXIE@aaaaaaaa [Qwen3-14B-4bit]",
-        target_name="DIXIE",
-        context_messages=4,
-        run=SimpleNamespace(
-            ref=SimpleNamespace(id="a" * 64, path=run_path),
-            data=TrainDataConfig(
-                format="chat", prompt_role="user", completion_role="assistant"
-            ),
-            model=SimpleNamespace(name="org/Qwen3-14B-4bit", revision="fixed"),
-            model_digest="c" * 64,
-            adapter_digest="d" * 64,
-        ),
-        dataset=SimpleNamespace(
-            dataset=SimpleNamespace(id="b" * 64, path=dataset_path)
-        ),
+    created = datetime(2026, 8, 21, tzinfo=UTC)
+    run_id = RunId("a" * 64)
+    dataset_id = DatasetId("b" * 64)
+    model = ModelSpec("org/Qwen3-14B-4bit", "hub", "fixed", tmp_path / "models", False)
+    data = TrainDataConfig(
+        format="chat",
+        prompt_role="user",
+        completion_role="assistant",
     )
+    run = LoadedRun(
+        RunRef(run_id, dataset_id, tmp_path / "runs" / run_id, created),
+        model,
+        "c" * 64,
+        data,
+        tmp_path / "runs" / run_id / "adapter",
+        "d" * 64,
+        {},
+        17,
+        2048,
+    )
+    dataset = BuildResult(
+        DatasetRef(
+            dataset_id,
+            PersonId("person"),
+            tmp_path / "data" / dataset_id,
+            created,
+        ),
+        {},
+    )
+    assistant = Assistant(
+        "IDIOLECT // DIXIE@aaaaaaaa [Qwen3-14B-4bit]",
+        "DIXIE",
+        "Qwen3-14B-4bit",
+        run,
+        dataset,
+        4,
+    )
+    return _session(tmp_path, assistant), assistant
+
+
+def _base_state(tmp_path):
+    """Return one synthetic configured base assistant state."""
+    data = TrainDataConfig(
+        format="chat",
+        system_prompt="Be concise.",
+        prompt_role="user",
+        completion_role="assistant",
+    )
+    assistant = Assistant(
+        "IDIOLECT // DIXIE@BASE [Qwen3-14B-4bit]",
+        "DIXIE",
+        "Qwen3-14B-4bit",
+        None,
+        None,
+        4,
+        ModelSpec("org/Qwen3-14B-4bit", "hub", "fixed", tmp_path / "models", False),
+        data,
+        "c" * 64,
+    )
+    return _session(tmp_path, assistant), assistant
+
+
+def _session(tmp_path, assistant):
+    """Return one synthetic session for an assistant."""
     chat = ChatConfig(
         output=tmp_path / "chat",
         seed=101,
@@ -87,5 +148,4 @@ def _state(tmp_path):
         context_policy="recorded-window-drop-oldest",
         history="explicit-save",
     )
-    typed = cast(Assistant, assistant)
-    return ChatSession(typed, chat, GenerationConfig(max_prompt_tokens=100)), typed
+    return ChatSession(assistant, chat, GenerationConfig(max_prompt_tokens=100))

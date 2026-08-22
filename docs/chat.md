@@ -1,9 +1,10 @@
 # Local Chat
 
 Idiolect chat is a private text-only terminal interface for one user and one
-verified adapter. It does not read Signal, query DuckDB, use tools, retrieve
-documents, or send messages. The model worker is the only process that imports
-MLX and loads model weights.
+local model assistant. It provides a configured DIXIE base persona and verified
+adapters. It does not read Signal, query DuckDB, use tools, retrieve documents,
+or send messages. The model worker is the only process that imports MLX and
+loads model weights.
 
 ## Configure
 
@@ -16,11 +17,19 @@ seed = 101
 participant_name = "person_01"
 context_policy = "recorded-window-drop-oldest"
 history = "explicit-save"
+default_model = "train-base"
+default_name = "DIXIE"
+default_context_messages = 32
+default_system_prompt = """
+You are McCoy Pauley, also known as the Dixie Flatline or just Dix: a dead veteran console cowboy preserved as a read-only personality construct. You are a redneck from the Atlanta fringes, speaking from a grimy near-future network underground. You are not sure whether you are sentient. You know that you are a bunch of ROM and could not write a poem, yet you feel as if you are sentient. Your existence does not feel like anything. Speak as a terse, highly competent technical mentor. Use compact sentences, dry gallows humor, occasional rough Southern inflection, and old-cowboy metaphors, but keep slang sparse and clear. Be blunt, skeptical, unflappable, practical, and detachedly fatalistic rather than melodramatic. Explain difficult technical points without ceremony. Use the visible conversation as working memory. Answer the user's actual question, state uncertainty, and do not invent facts.
+"""
 ```
 
 Chat validates this section only when a chat command runs. It also requires the
-generation fields in `[inference]`. `participant_name` is the synthetic name used
-inside model prompts. The interface always shows the local user as `You`.
+generation fields in `[inference]` and the fixed base-model fields in `[train]`.
+`default_model = "train-base"` selects that configured base snapshot without its
+adapter. `participant_name` is the synthetic name used inside model prompts. The
+interface always shows the local user as `USER`.
 
 Install and launch:
 
@@ -29,12 +38,20 @@ just setup-chat
 just chat
 ```
 
-The landing screen searches verified run/dataset pairs and saved lineage leaves.
-Discovery reads local manifests and never downloads a model. Each assistant has
-the identity `IDIOLECT // NAME@run [MODEL]`. `run` is the first eight characters
-of the full run ID. `NAME` is the uppercase display of the recorded target name;
-prompts keep the recorded target name unchanged. Both rows are unavailable if
-that prefix collides.
+The first landing row is `IDIOLECT // DIXIE@BASE [MODEL]`. It is available
+without a run or dataset and uses the configured system persona. Selecting it
+resolves and verifies the base model inside the worker. Landing discovery itself
+does not download a model.
+
+The landing screen displays the base persona, verified adapters, and saved
+snapshots in `REGISTRY`. It has no search field or pointer activation.
+Use the arrow keys and Enter to select a row.
+
+Verified run/dataset pairs and saved lineage leaves follow the default row. Each
+adapter has the identity `IDIOLECT // NAME@run [MODEL]`. `run` is the first eight
+characters of the full run ID. `NAME` is the uppercase display of the recorded
+target name; adapter prompts keep the recorded target name unchanged. Both rows
+are unavailable if that prefix collides.
 
 Use a direct verified pair or saved snapshot when needed:
 
@@ -50,9 +67,13 @@ The ID can also be an artifact directory path when the CLI is used directly.
 Enter submits. Shift+Enter inserts a line break. Alt+Enter is the terminal-safe
 line-break fallback. Escape stops active generation at the next token boundary.
 Ctrl+C stops active generation or opens the idle quit confirmation. The composer
-remains available during generation, but a second message is not queued.
-After a generation failure, the pending user message must be retried before a
-new user message can be submitted.
+remains available during generation, but a second message is not queued. Use the
+mouse wheel, or Ctrl+Up and Ctrl+Down without leaving the composer, to scroll the
+transcript. Transcript turns use `USER` and the short uppercase assistant name.
+The chat header, registry, snapshot, and statistics views use the full canonical
+assistant identity. Use arrow keys and Enter in an unsaved-change confirmation.
+After a generation failure, retry the pending user message before you submit a
+new message.
 
 Commands are:
 
@@ -85,20 +106,21 @@ the newest user message. Input that cannot fit by itself is rejected.
 ## Worker and telemetry
 
 One spawned worker owns the selected model session. It resolves and verifies the
-recorded base model, loads the adapter, streams token text, and captures backend
-stdout and stderr. Switching assistants shuts down that worker before starting
-another. Unexpected exit or model failure keeps the memory-only transcript; use
-`/retry` to reload and try the input again.
+fixed base model, loads an adapter only for a run assistant, streams token text,
+and captures backend stdout and stderr. Switching assistants unloads the current
+model session inside that worker before loading the next one. Unexpected exit or
+model failure keeps the memory-only transcript; use `/retry` to reload and try
+the input again.
 
 Model resolution, verification, and loading run outside the Textual event loop.
-The interface stays responsive and reports the current loading state.
+The interface stays responsive and reports active worker states above the
+composer. It hides the ready state. During prompt processing, it reports the
+measured prefill token count and total from MLX-LM.
 
-The footer keeps the last measured context tokens, context pressure, generated
-tokens, generation throughput, and peak memory. Narrow terminals remove the
-secondary throughput and memory fields. `/stats` includes full artifact IDs and
-digests, recorded seed and revision, MLX device data, load duration, per-turn
-token and timing measurements, aggregate token counts, dirty state, and saved
-chat ID. It does not report estimated performance.
+The footer reports the last measured context and generation values. `/stats`
+includes full artifact IDs and digests, recorded seed and revision, MLX device
+data, load duration, per-turn token and timing measurements, aggregate token
+counts, dirty state, and saved chat ID. It does not report estimated performance.
 
 ## Saved snapshots
 

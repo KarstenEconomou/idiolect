@@ -10,8 +10,9 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-from idiolect.config import GenerationConfig
+from idiolect.config import GenerationConfig, TrainConfig, TrainDataConfig
 from idiolect.inference.base import BackendResult
+from idiolect.model import ModelSpec
 from idiolect.prompt import ModelInput, Turn
 
 
@@ -42,6 +43,15 @@ class LoadCommand:
     """Request one verified adapter load."""
 
     run_path: str
+
+
+@dataclass(frozen=True, slots=True)
+class LoadBaseCommand:
+    """Request one configured base-model load."""
+
+    model: ModelSpec
+    data: TrainDataConfig
+    expected_digest: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,6 +88,7 @@ class ShutdownCommand:
 type WorkerCommand = (
     ProbeCommand
     | LoadCommand
+    | LoadBaseCommand
     | CountCommand
     | GenerateCommand
     | CancelCommand
@@ -105,6 +116,14 @@ class DeltaEvent:
     """Report one generated text delta."""
 
     text: str
+
+
+@dataclass(frozen=True, slots=True)
+class PrefillEvent:
+    """Report measured prompt prefill progress."""
+
+    current: int
+    total: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -141,6 +160,7 @@ type WorkerEvent = (
     StateEvent
     | ProbeEvent
     | CountEvent
+    | PrefillEvent
     | DeltaEvent
     | CompleteEvent
     | DiagnosticEvent
@@ -250,15 +270,42 @@ def worker_main(commands: Any, events: Any, cancel: Any) -> None:
                     events.put(StateEvent(WorkerState.PROBING))
                     events.put(ProbeEvent(_probe()))
                     continue
-                if isinstance(command, LoadCommand):
+                if isinstance(command, (LoadCommand, LoadBaseCommand)):
                     if session is not None:
                         session.close()
                     events.put(StateEvent(WorkerState.RESOLVING))
-                    from idiolect.inference.local import recorded_target
+                    from idiolect.inference.local import (
+                        configured_target,
+                        recorded_target,
+                    )
                     from idiolect.inference.mlx import MlxBackend
+                    from idiolect.model import resolve_model
 
-                    target = recorded_target(Path(command.run_path), adapter=True)
-                    events.put(StateEvent(WorkerState.VERIFYING))
+                    def resolve_for_load(spec: ModelSpec) -> Path:
+                        """Resolve the model and report the next load state."""
+                        path = resolve_model(spec)
+                        events.put(StateEvent(WorkerState.VERIFYING))
+                        return path
+
+                    if isinstance(command, LoadCommand):
+                        target = recorded_target(
+                            Path(command.run_path),
+                            adapter=True,
+                            resolver=resolve_for_load,
+                        )
+                    else:
+                        target = configured_target(
+                            TrainConfig(
+                                base_model=command.model.name,
+                                model_source=command.model.source,
+                                model_revision=command.model.revision,
+                                model_cache=command.model.cache,
+                                trust_remote_code=command.model.trust_remote_code,
+                                data=command.data,
+                            ),
+                            resolver=resolve_for_load,
+                            expected_digest=command.expected_digest,
+                        )
                     backend = MlxBackend()
                     _ = backend.version
                     events.put(StateEvent(WorkerState.LOADING))
@@ -268,6 +315,7 @@ def worker_main(commands: Any, events: Any, cancel: Any) -> None:
                         ProbeEvent(
                             {
                                 "load_duration": time.perf_counter() - started,
+                                "model_digest": target.model_digest,
                                 "model_size": _path_size(target.model_path),
                                 "adapter_size": (
                                     _path_size(target.adapter_path)
@@ -305,6 +353,9 @@ def worker_main(commands: Any, events: Any, cancel: Any) -> None:
                         command.seed,
                         command.config,
                         cancel,
+                        lambda current, total: events.put(
+                            PrefillEvent(current, total)
+                        ),
                     ):
                         if event.text:
                             if first_at is None:
@@ -356,6 +407,23 @@ def command_value(command: WorkerCommand) -> dict[str, Any]:
         }
     if isinstance(command, CountCommand):
         return {"type": "count", "prompt": _prompt_value(command.prompt)}
+    if isinstance(command, LoadBaseCommand):
+        return {
+            "type": "load-base",
+            "model": {
+                "name": command.model.name,
+                "source": command.model.source,
+                "revision": command.model.revision,
+                "cache": (
+                    str(command.model.cache)
+                    if command.model.cache is not None
+                    else None
+                ),
+                "trust_remote_code": command.model.trust_remote_code,
+            },
+            "data": asdict(command.data),
+            "expected_digest": command.expected_digest,
+        }
     if isinstance(command, ProbeCommand):
         value = {"type": "probe"}
     elif isinstance(command, LoadCommand):
@@ -378,6 +446,19 @@ def command_from_value(value: dict[str, Any]) -> WorkerCommand:
         return ProbeCommand()
     if kind == "load":
         return LoadCommand(value["run_path"])
+    if kind == "load-base":
+        model = value["model"]
+        return LoadBaseCommand(
+            ModelSpec(
+                model["name"],
+                model["source"],
+                model["revision"],
+                Path(model["cache"]) if model["cache"] is not None else None,
+                model["trust_remote_code"],
+            ),
+            TrainDataConfig(**value["data"]),
+            value["expected_digest"],
+        )
     if kind == "cancel":
         return CancelCommand()
     if kind == "unload":

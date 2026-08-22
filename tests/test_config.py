@@ -208,7 +208,7 @@ def test_unknown_chat_value_is_rejected_only_at_chat_boundary(tmp_path: Path) ->
     config = load_config(path, {})
 
     with pytest.raises(ChatError, match="unknown values: future_value"):
-        validate_chat_policy(config.chat, config.inference)
+        validate_chat_policy(config.chat, config.inference, config.train)
 
 
 @pytest.mark.parametrize(

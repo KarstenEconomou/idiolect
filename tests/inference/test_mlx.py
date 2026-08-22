@@ -59,6 +59,10 @@ def test_mlx_backend_applies_adapter_format_seed_and_sampling(
     def stream_generate(model, current_tokenizer, tokens, **options):
         print("generate diagnostic")
         seen["generate"] = (model, current_tokenizer, tokens, options)
+        progress = options.get("prompt_progress_callback")
+        if progress is not None:
+            progress(0, len(tokens))
+            progress(len(tokens), len(tokens))
         yield SimpleNamespace(
             text="reply",
             finish_reason="stop",
@@ -106,7 +110,6 @@ def test_mlx_backend_applies_adapter_format_seed_and_sampling(
     session = MlxBackend().load(target)
     model_input = format_prompt("context", target.data)
     result = session.generate(model_input, 123, config)
-    session.close()
 
     output = capsys.readouterr()
     assert output.out == ""
@@ -150,4 +153,18 @@ def test_mlx_backend_applies_adapter_format_seed_and_sampling(
     assert result.prompt_throughput == 120.5
     assert result.generation_throughput == 42.25
     assert result.peak_memory == 3.75
+
+    progress = []
+    list(
+        session.stream(
+            model_input,
+            456,
+            config,
+            prompt_progress=lambda current, total: progress.append((current, total)),
+        )
+    )
+    assert progress == [(0, 3), (3, 3)]
+    assert callable(seen["generate"][3]["prompt_progress_callback"])
+
+    session.close()
     assert seen["cache_cleared"] is True

@@ -6,11 +6,14 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
+from idiolect.config import ChatConfig, TrainConfig, TrainDataConfig
 from idiolect.data.local import (
     BuildResult,
     DataError,
     load_dataset_metadata,
 )
+from idiolect.inference.base import TargetMode
+from idiolect.model import ModelSpec
 from idiolect.train.base import LoadedRun
 from idiolect.train.mlx import TrainError, load_run
 from idiolect.types import Split
@@ -22,19 +25,74 @@ class ChatDiscoveryError(ValueError):
 
 @dataclass(frozen=True, slots=True)
 class Assistant:
-    """Keep one verified run and dataset pair for chat."""
+    """Keep one fixed local model assistant for chat."""
 
     name: str
     target_name: str
     model_basename: str
-    run: LoadedRun
-    dataset: BuildResult
+    run: LoadedRun | None
+    dataset: BuildResult | None
     context_messages: int
+    base_model: ModelSpec | None = None
+    base_data: TrainDataConfig | None = None
+    base_model_digest: str | None = None
+
+    @property
+    def mode(self) -> TargetMode:
+        """Return the model target mode for this assistant."""
+        return (
+            TargetMode.CONFIG_BASE
+            if self.base_model is not None
+            else TargetMode.RUN_ADAPTER
+        )
+
+    @property
+    def data(self) -> TrainDataConfig:
+        """Return the model prompt policy for this assistant."""
+        if self.run is not None:
+            return self.run.data
+        if self.base_data is not None:
+            return self.base_data
+        raise ChatDiscoveryError("The assistant prompt policy is not available")
+
+    @property
+    def model(self) -> ModelSpec:
+        """Return the fixed model specification for this assistant."""
+        if self.run is not None:
+            return self.run.model
+        if self.base_model is not None:
+            return self.base_model
+        raise ChatDiscoveryError("The assistant model is not available")
+
+    @property
+    def model_digest(self) -> str | None:
+        """Return the verified model digest when it is available."""
+        return self.run.model_digest if self.run is not None else self.base_model_digest
+
+    @property
+    def adapter_digest(self) -> str | None:
+        """Return the adapter digest when this assistant uses an adapter."""
+        return self.run.adapter_digest if self.run is not None else None
+
+    @property
+    def training_seed(self) -> int | None:
+        """Return the training seed when this assistant uses an adapter."""
+        return self.run.seed if self.run is not None else None
+
+    @property
+    def run_id(self) -> str | None:
+        """Return the run ID when this assistant uses an adapter."""
+        return str(self.run.ref.id) if self.run is not None else None
+
+    @property
+    def dataset_id(self) -> str | None:
+        """Return the dataset ID when this assistant uses an adapter."""
+        return str(self.dataset.dataset.id) if self.dataset is not None else None
 
     @property
     def counts(self) -> Mapping[Split, int]:
         """Return the verified dataset split counts."""
-        return self.dataset.counts
+        return {} if self.dataset is None else self.dataset.counts
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,8 +122,30 @@ def model_basename(value: str) -> str:
 def canonical_name(target_name: str, run_id: str, model_name: str) -> str:
     """Return one canonical local assistant name."""
     return (
-        f"IDIOLECT // {target_name.upper()}@{run_id[:8]} "
-        f"[{model_basename(model_name)}]"
+        f"IDIOLECT // {target_name.upper()}@{run_id[:8]} [{model_basename(model_name)}]"
+    )
+
+
+def default_assistant(train: TrainConfig, chat: ChatConfig) -> Assistant:
+    """Create the configured base-model assistant without model resolution."""
+    model = ModelSpec(
+        train.base_model,
+        train.model_source,
+        train.model_revision,
+        train.model_cache,
+        train.trust_remote_code,
+    )
+    data = replace(train.data, system_prompt=chat.default_system_prompt)
+    basename = model_basename(model.name)
+    return Assistant(
+        f"IDIOLECT // {chat.default_name.upper()}@BASE [{basename}]",
+        chat.default_name.upper(),
+        basename,
+        None,
+        None,
+        chat.default_context_messages,
+        model,
+        data,
     )
 
 
@@ -129,8 +209,8 @@ def discover_assistants(
             rows.append(
                 DiscoveryItem(
                     assistant.name,
-                    str(assistant.run.ref.id),
-                    str(assistant.dataset.dataset.id),
+                    assistant.run_id or path.name,
+                    assistant.dataset_id,
                     assistant,
                 )
             )

@@ -1,6 +1,6 @@
 """Define local text generation contracts."""
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -106,6 +106,7 @@ class StreamingSession(Session, Protocol):
         seed: int,
         config: GenerationConfig,
         cancel: Cancellation | None = None,
+        prompt_progress: Callable[[int, int], None] | None = None,
     ) -> Iterator[GenerationEvent]:
         """Yield text deltas and one final result."""
         ...

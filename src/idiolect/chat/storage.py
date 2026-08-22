@@ -12,22 +12,32 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TypeGuard
 
-from idiolect.chat.discovery import Assistant, load_assistant
+from idiolect.chat.discovery import Assistant, load_assistant, model_basename
 from idiolect.chat.state import ChatSession, ChatTurn, TurnTelemetry
-from idiolect.config import ChatConfig, GenerationConfig
+from idiolect.config import ChatConfig, GenerationConfig, TrainDataConfig
+from idiolect.inference.base import TargetMode
+from idiolect.model import ModelSpec
+from idiolect.prompt import validate_prompt_config
 
-_SNAPSHOT_VERSION = 1
+_SNAPSHOT_VERSION = 2
 _ASSISTANT_KEYS = {
     "name",
     "target_name",
+    "mode",
+    "context_messages",
     "run_id",
     "run_path",
     "dataset_id",
     "dataset_path",
     "model_name",
+    "model_source",
     "model_revision",
+    "model_cache",
+    "trust_remote_code",
     "model_digest",
     "adapter_digest",
+    "training_seed",
+    "data",
 }
 _GENERATION_KEYS = {
     "backend",
@@ -197,27 +207,17 @@ class ChatStore:
                 or set(assistant_value) != _ASSISTANT_KEYS
             ):
                 raise TypeError
-            assistant = load_assistant(
-                Path(_required_text(assistant_value, "run_path")),
-                Path(_required_text(assistant_value, "dataset_path")),
-            )
-            if (
-                assistant.name != _required_text(assistant_value, "name")
-                or str(assistant.run.ref.id)
-                != _required_text(assistant_value, "run_id")
-                or str(assistant.dataset.dataset.id)
-                != _required_text(assistant_value, "dataset_id")
-                or assistant.target_name
-                != _required_text(assistant_value, "target_name")
-                or assistant.run.model.name
-                != _required_text(assistant_value, "model_name")
-                or assistant.run.model.revision
-                != _required_text(assistant_value, "model_revision")
-                or assistant.run.model_digest
-                != _required_text(assistant_value, "model_digest")
-                or assistant.run.adapter_digest
-                != _required_text(assistant_value, "adapter_digest")
-            ):
+            mode = _required_text(assistant_value, "mode")
+            if mode == TargetMode.RUN_ADAPTER.value:
+                assistant = load_assistant(
+                    Path(_required_text(assistant_value, "run_path")),
+                    Path(_required_text(assistant_value, "dataset_path")),
+                )
+            elif mode == TargetMode.CONFIG_BASE.value:
+                assistant = _base_assistant(assistant_value)
+            else:
+                raise TypeError
+            if _json_bytes(_assistant_value(assistant)) != _json_bytes(assistant_value):
                 raise ChatStorageError(
                     "Saved chat assistant does not match local artifacts"
                 )
@@ -280,18 +280,97 @@ class ChatStore:
 
 
 def _assistant_value(assistant: Assistant) -> dict[str, Any]:
+    model = assistant.model
+    run = assistant.run
+    dataset = assistant.dataset
+    model_digest = assistant.model_digest
+    if model_digest is None:
+        raise ChatStorageError("Load the base model before saving the chat")
     return {
         "name": assistant.name,
         "target_name": assistant.target_name,
-        "run_id": str(assistant.run.ref.id),
-        "run_path": str(assistant.run.ref.path.resolve()),
-        "dataset_id": str(assistant.dataset.dataset.id),
-        "dataset_path": str(assistant.dataset.dataset.path.resolve()),
-        "model_name": assistant.run.model.name,
-        "model_revision": assistant.run.model.revision,
-        "model_digest": assistant.run.model_digest,
-        "adapter_digest": assistant.run.adapter_digest,
+        "mode": assistant.mode.value,
+        "context_messages": assistant.context_messages,
+        "run_id": str(run.ref.id) if run is not None else None,
+        "run_path": str(run.ref.path.resolve()) if run is not None else None,
+        "dataset_id": str(dataset.dataset.id) if dataset is not None else None,
+        "dataset_path": (
+            str(dataset.dataset.path.resolve()) if dataset is not None else None
+        ),
+        "model_name": model.name,
+        "model_source": model.source,
+        "model_revision": model.revision,
+        "model_cache": str(model.cache) if model.cache is not None else None,
+        "trust_remote_code": model.trust_remote_code,
+        "model_digest": model_digest,
+        "adapter_digest": assistant.adapter_digest,
+        "training_seed": assistant.training_seed,
+        "data": asdict(assistant.data),
     }
+
+
+def _base_assistant(value: dict[str, Any]) -> Assistant:
+    if any(
+        value[name] is not None
+        for name in (
+            "run_id",
+            "run_path",
+            "dataset_id",
+            "dataset_path",
+            "adapter_digest",
+            "training_seed",
+        )
+    ):
+        raise TypeError
+    cache = value["model_cache"]
+    if cache is not None and not isinstance(cache, str):
+        raise TypeError
+    trust = value["trust_remote_code"]
+    context = value["context_messages"]
+    if not isinstance(trust, bool) or not _nonnegative_int(context) or context < 1:
+        raise TypeError
+    digest = _required_text(value, "model_digest")
+    if not _digest(digest):
+        raise TypeError
+    model = ModelSpec(
+        _required_text(value, "model_name"),
+        _required_text(value, "model_source"),
+        _text(value, "model_revision"),
+        Path(cache) if cache is not None else None,
+        trust,
+    )
+    data = _train_data_config(value["data"])
+    validate_prompt_config(data)
+    assistant = Assistant(
+        _required_text(value, "name"),
+        _required_text(value, "target_name"),
+        model_basename(model.name),
+        None,
+        None,
+        context,
+        model,
+        data,
+        digest,
+    )
+    return assistant
+
+
+def _train_data_config(value: Any) -> TrainDataConfig:
+    fields = {
+        "format",
+        "system_prompt",
+        "prompt_role",
+        "completion_role",
+        "prompt_prefix",
+        "prompt_suffix",
+        "completion_prefix",
+        "completion_suffix",
+    }
+    if not isinstance(value, dict) or set(value) != fields:
+        raise TypeError
+    if not all(isinstance(value[name], str) for name in fields):
+        raise TypeError
+    return TrainDataConfig(**value)
 
 
 def _chat_value(config: ChatConfig) -> dict[str, Any]:
@@ -309,6 +388,10 @@ def _chat_config(value: Any) -> ChatConfig:
         "participant_name",
         "context_policy",
         "history",
+        "default_model",
+        "default_name",
+        "default_context_messages",
+        "default_system_prompt",
     }:
         raise TypeError
     output = value["output"]
@@ -319,16 +402,29 @@ def _chat_config(value: Any) -> ChatConfig:
         or isinstance(value["seed"], bool)
         or not all(
             isinstance(value[name], str)
-            for name in ("participant_name", "context_policy", "history")
+            for name in (
+                "participant_name",
+                "context_policy",
+                "history",
+                "default_model",
+                "default_name",
+                "default_system_prompt",
+            )
         )
+        or not isinstance(value["default_context_messages"], int)
+        or isinstance(value["default_context_messages"], bool)
     ):
         raise TypeError
     return ChatConfig(
-        Path(output) if isinstance(output, str) else None,
-        value["seed"],
-        value["participant_name"],
-        value["context_policy"],
-        value["history"],
+        output=Path(output) if isinstance(output, str) else None,
+        seed=value["seed"],
+        participant_name=value["participant_name"],
+        context_policy=value["context_policy"],
+        history=value["history"],
+        default_model=value["default_model"],
+        default_name=value["default_name"],
+        default_context_messages=value["default_context_messages"],
+        default_system_prompt=value["default_system_prompt"],
     )
 
 
@@ -436,8 +532,15 @@ def _character_width(character: str) -> int:
 
 
 def _required_text(value: dict[str, Any], name: str) -> str:
+    result = _text(value, name)
+    if not result:
+        raise TypeError
+    return result
+
+
+def _text(value: dict[str, Any], name: str) -> str:
     result = value[name]
-    if not isinstance(result, str) or not result:
+    if not isinstance(result, str):
         raise TypeError
     return result
 

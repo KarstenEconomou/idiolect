@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable, Iterable
 from dataclasses import asdict
 from typing import ClassVar
@@ -9,10 +10,10 @@ from typing import ClassVar
 from rich.text import Text
 from textual import events, work
 from textual.app import App, ComposeResult
-from textual.containers import Container, Horizontal, Vertical
-from textual.message import Message
-from textual.screen import ModalScreen
-from textual.widgets import Button, Input, Label, OptionList, RichLog, Static, TextArea
+from textual.binding import Binding
+from textual.containers import Container, Horizontal, Vertical, VerticalScroll
+from textual.timer import Timer
+from textual.widgets import OptionList, Static, TextArea
 from textual.widgets.option_list import Option
 
 from idiolect.chat.discovery import Assistant, DiscoveryItem
@@ -21,7 +22,14 @@ from idiolect.chat.state import ChatSession
 from idiolect.chat.storage import ChatStorageError, ChatStore, SavedChat
 from idiolect.chat.worker import WorkerError
 from idiolect.config import ChatConfig, GenerationConfig
+from idiolect.tui.catalog import CatalogLayout
 from idiolect.tui.commands import COMMANDS, CommandError, completions, parse_command
+from idiolect.tui.widgets import (
+    Composer,
+    ConfirmModal,
+    InfoModal,
+    KeyboardOptionList,
+)
 
 WATERMARK = """     ╭─╮
   ╭──╯ ╰──╮
@@ -30,105 +38,77 @@ WATERMARK = """     ╭─╮
      ╰─╯"""
 
 
-class Composer(TextArea):
-    """Submit Enter while keeping explicit multiline key bindings."""
-
-    class Submitted(Message):
-        """Report one submitted composer value."""
-
-        def __init__(self, value: str) -> None:
-            self.value = value
-            super().__init__()
-
-    async def _on_key(self, event: events.Key) -> None:
-        if event.key == "enter":
-            event.prevent_default()
-            event.stop()
-            self.post_message(self.Submitted(self.text))
-            return
-        if event.key in {"shift+enter", "alt+enter"}:
-            event.prevent_default()
-            event.stop()
-            self.insert("\n")
-            return
-        await super()._on_key(event)
-
-
-class InfoModal(ModalScreen[None]):
-    """Show literal help or measured statistics."""
-
-    def __init__(self, title: str, body: str) -> None:
-        super().__init__()
-        self.title_value = title
-        self.body = body
-
-    def compose(self) -> ComposeResult:
-        """Create the information dialog widgets."""
-        with Vertical(id="info-dialog"):
-            yield Label(self.title_value, id="info-title")
-            yield Static(self.body, markup=False, id="info-body")
-            yield Button("Close", id="close", variant="primary")
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        """Close the information dialog."""
-        self.dismiss()
-
-
-class ConfirmModal(ModalScreen[str]):
-    """Ask how to handle unsaved transcript changes."""
-
-    def compose(self) -> ComposeResult:
-        """Create the unsaved-change choice widgets."""
-        with Vertical(id="confirm-dialog"):
-            yield Static("This chat has unsaved changes.", markup=False)
-            with Horizontal():
-                yield Button("Save", id="save", variant="primary")
-                yield Button("Discard", id="discard", variant="warning")
-                yield Button("Cancel", id="cancel")
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        """Return the selected unsaved-change choice."""
-        self.dismiss(event.button.id or "cancel")
-
-
 class ChatApp(App[None]):
-    """Run the searchable landing chooser and sparse chat screen."""
+    """Run the assistant registry and local chat screen."""
 
     CSS = """
-    $background: #090b0d;
-    $surface: #111518;
-    $amber: #e2a447;
-    $cyan: #45c5d4;
-    $body: #e8dfcf;
-    $muted: #7b8588;
-    $failure: #d2645a;
-    Screen { background: $background; color: $body; }
-    #landing { align: center middle; padding: 1 3; }
-    #landing-box { width: 90%; max-width: 100; height: 90%; border: heavy $amber; background: $surface; padding: 1 2; }
-    #watermark { color: $amber; height: 7; text-align: center; text-style: bold; }
-    #search { border: tall $cyan; margin-bottom: 1; background: $background; }
-    #search:focus { border: heavy $amber; }
-    #load-status { height: 1; color: $cyan; text-style: bold; }
-    #chooser { height: 1fr; border: tall $cyan; background: $background; }
-    OptionList > .option-list--option-highlighted { color: $background; background: $amber; text-style: bold; }
-    OptionList > .option-list--option-disabled { color: $failure; }
+    $terminal: ansi_default;
+    $accent: ansi_blue;
+    $metadata: ansi_bright_black;
+    $failure: ansi_red;
+    Screen { background: $terminal; color: $terminal; }
+    #landing { align: center middle; padding: 1 2; }
+    #landing-box { width: 100%; max-width: 120; height: 100%; background: $terminal; }
+    #watermark { color: $accent; height: 5; padding: 0 2; text-align: left; text-style: bold; }
+    #catalog-heading { height: 1; margin-top: 1; padding: 0 2; }
+    #catalog-title { width: 1fr; text-style: bold; }
+    #catalog-summary { width: auto; color: $metadata; }
+    #catalog-subtitle { height: 1; padding: 0 2; color: $metadata; }
+    #catalog-columns { height: 1; padding: 0 2; color: $metadata; text-style: bold; }
+    #load-status { display: none; height: 1; padding: 0 2; color: $accent; text-style: bold; }
+    #chooser { height: 1fr; padding: 0 2; border: none; color: $terminal; background: $terminal; background-tint: transparent; scrollbar-color: $metadata; scrollbar-background: $terminal; }
+    OptionList > .option-list--option { padding: 0; color: $terminal; background: $terminal; }
+    OptionList > .option-list--option-highlighted, OptionList:focus > .option-list--option-highlighted { color: $terminal; background: $accent; text-style: bold; }
+    OptionList > .option-list--option-disabled { color: $failure; text-style: dim; }
+    OptionList > .option-list--option-hover { color: $terminal; background: $terminal; text-style: reverse; }
+    #catalog-hints { height: 1; padding: 0 2; color: $metadata; }
     #chat { display: none; }
-    #identity { height: 3; padding: 1 2; color: $amber; background: $surface; border-bottom: heavy $amber; text-style: bold; }
-    #transcript { height: 1fr; padding: 1 3; background: $background; scrollbar-color: $cyan; scrollbar-background: $surface; }
-    #composer { height: 6; border: tall $cyan; margin: 0 1; background: $surface; }
-    #composer:focus { border: heavy $amber; }
-    #completion { height: auto; max-height: 5; color: $amber; background: $surface; padding: 0 2; }
-    #footer { height: 1; color: $cyan; background: $surface; padding: 0 2; text-style: bold; }
-    #info-dialog, #confirm-dialog { width: 80%; max-width: 90; height: auto; padding: 1 2; background: $surface; border: heavy $amber; }
-    #info-title { color: $amber; text-style: bold; border-bottom: tall $cyan; }
+    #identity { height: 2; padding: 0 2; color: $accent; background: $terminal; border-bottom: solid $metadata; text-style: bold; }
+    #transcript-scroll { height: 1fr; padding: 1 2; background: $terminal; scrollbar-size: 0 0; }
+    #transcript { width: 100%; height: auto; background: $terminal; }
+    #composer { height: auto; min-height: 3; max-height: 10; border: solid $metadata; margin: 0 1; padding: 0 1; background: $terminal; scrollbar-size: 0 0; }
+    #composer:focus { border: solid $accent; }
+    #composer .text-area--cursor, #composer .text-area--selection { color: $terminal; background: $terminal; text-style: reverse; }
+    #composer .text-area--cursor-line, #composer .text-area--matching-bracket { background: $terminal; }
+    #composer .text-area--gutter, #composer .text-area--suggestion, #composer .text-area--placeholder { color: $metadata; background: $terminal; }
+    #completion { height: auto; max-height: 5; color: $accent; background: $terminal; padding: 0 2; }
+    #status { display: none; height: 1; color: $accent; background: $terminal; padding: 0 1; text-style: bold; }
+    #footer { height: 1; color: $metadata; background: $terminal; padding: 0 1; }
+    #info-dialog { width: 80%; max-width: 90; height: auto; padding: 1 2; background: $terminal; border: solid $metadata; }
+    #info-title { color: $accent; text-style: bold; border-bottom: solid $metadata; }
     #info-body { max-height: 70vh; overflow-y: auto; }
-    Button { border: tall $cyan; background: $background; color: $body; }
-    Button:focus { border: heavy $amber; color: $amber; }
+    #confirm-dialog { width: 100%; height: 2; padding: 0 1; background: $terminal; border: none; }
+    #confirm-message { height: 1; color: $metadata; }
+    #confirm-actions { height: 1; }
+    #confirm-actions Button { width: auto; min-width: 0; height: 1; padding: 0 1; border: none; background: $terminal; color: $metadata; text-style: none; }
+    #confirm-actions Button:hover { border: none; background: $terminal; color: $metadata; text-style: none; }
+    #confirm-actions Button:focus, #confirm-actions Button.-active { border: none; background: $terminal; color: $accent; text-style: bold; }
+    Button { border: tall $metadata; background: $terminal; color: $terminal; }
+    Button:hover, Button:focus, Button.-active { border: tall $accent; background: $terminal; color: $terminal; background-tint: transparent; tint: transparent; text-style: reverse bold; }
+    ModalScreen { background: transparent; }
+    Toast { color: $terminal; background: $terminal; border-left: outer $accent; }
+    Toast .toast--title { color: $accent; }
+    Toast.-error { border-left: outer $failure; }
+    Toast.-error .toast--title { color: $failure; }
     """
 
-    BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
-        ("escape", "stop", "Stop"),
-        ("ctrl+c", "interrupt", "Stop or quit"),
+    BINDINGS: ClassVar[list[Binding]] = [
+        Binding("escape", "stop", "Stop"),
+        Binding("ctrl+c", "interrupt", "Stop or quit"),
+        Binding(
+            "ctrl+up",
+            "scroll_transcript_up",
+            "Scroll chat up",
+            show=False,
+            priority=True,
+        ),
+        Binding(
+            "ctrl+down",
+            "scroll_transcript_down",
+            "Scroll chat down",
+            show=False,
+            priority=True,
+        ),
     ]
 
     def __init__(
@@ -141,7 +121,7 @@ class ChatApp(App[None]):
         initial_assistant: Assistant | None = None,
         initial_chat: SavedChat | None = None,
     ) -> None:
-        super().__init__()
+        super().__init__(ansi_color=True)
         self.chat_policy = chat
         self.generation = generation
         self.assistants = tuple(assistants)
@@ -154,62 +134,90 @@ class ChatApp(App[None]):
         self._loading = False
         self._streaming_text = ""
         self._active_attempt = 0
+        self._load_status_text: str | None = None
+        self._status_text: str | None = None
+        self._footer_text: str | None = None
+        self._catalog_width: int | None = None
+        self._loading_timer: Timer | None = None
 
     def compose(self) -> ComposeResult:
         """Create the landing and chat screen widgets."""
         with Container(id="landing"), Vertical(id="landing-box"):
             yield Static(WATERMARK, markup=False, id="watermark")
-            yield Input(placeholder="Search assistants and saved chats", id="search")
+            with Horizontal(id="catalog-heading"):
+                yield Static("REGISTRY", markup=False, id="catalog-title")
+                yield Static("", markup=False, id="catalog-summary")
+            yield Static(
+                "Choose a persona, adapter, or saved snapshot.",
+                markup=False,
+                id="catalog-subtitle",
+            )
+            yield Static("", markup=False, id="catalog-columns")
             yield Static("", markup=False, id="load-status")
-            yield OptionList(id="chooser")
+            yield KeyboardOptionList(id="chooser")
+            yield Static(
+                "↑↓ move · Enter select · Esc stop · Ctrl+C quit",
+                markup=False,
+                id="catalog-hints",
+            )
         with Container(id="chat"):
             yield Static("", markup=False, id="identity")
-            yield RichLog(markup=False, wrap=True, id="transcript")
+            with VerticalScroll(id="transcript-scroll"):
+                yield Static("", markup=False, id="transcript")
             yield Static("", markup=False, id="completion")
+            yield Static("", markup=False, id="status")
             yield Composer(id="composer", language=None)
-            yield Static("probing", markup=False, id="footer")
+            yield Static("", markup=False, id="footer")
 
     def on_mount(self) -> None:
         """Populate the chooser or open a direct selection."""
-        self._fill_chooser("")
-        self.set_interval(0.1, self._refresh_loading_state)
+        self._fill_chooser()
+        self._loading_timer = self.set_interval(0.1, self._refresh_loading_state)
         if self.initial_chat is not None:
-            self._begin_attach(
-                ChatSession(
-                    self.initial_chat.assistant,
-                    self.initial_chat.chat,
-                    self.initial_chat.generation,
-                    self.initial_chat.turns,
-                    self.initial_chat.id,
-                    self.initial_chat.title,
-                )
-            )
+            self._begin_attach(self._saved_session(self.initial_chat))
         elif self.initial_assistant is not None:
             self._begin_select(self.initial_assistant)
 
-    def on_input_changed(self, event: Input.Changed) -> None:
-        """Filter chooser rows with the landing search value."""
-        if event.input.id == "search":
-            self._fill_chooser(event.value)
+    def on_unmount(self) -> None:
+        """Stop the loading-state timer before the screen is removed."""
+        if self._loading_timer is not None:
+            self._loading_timer.stop()
+            self._loading_timer = None
+
+    def on_resize(self, event: events.Resize) -> None:
+        """Update catalog columns when the terminal width changes."""
+        if (
+            self._catalog_width is not None
+            and event.size.width != self._catalog_width
+            and self.query_one("#landing").display
+        ):
+            self.call_after_refresh(self._fill_chooser)
+        elif self.query_one("#chat").display:
+            self.call_after_refresh(self._update_footer)
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         """Open the selected assistant or saved chat."""
         if self._loading:
             return
-        row = self._rows.get(str(event.option.id))
+        self._open_row(str(event.option.id))
+
+    def _open_row(self, key: str) -> None:
+        row = self._rows.get(key)
         if isinstance(row, DiscoveryItem) and row.assistant is not None:
             self._begin_select(row.assistant)
         elif isinstance(row, SavedChat):
-            self._begin_attach(
-                ChatSession(
-                    row.assistant,
-                    row.chat,
-                    row.generation,
-                    row.turns,
-                    row.id,
-                    row.title,
-                )
-            )
+            self._begin_attach(self._saved_session(row))
+
+    @staticmethod
+    def _saved_session(saved: SavedChat) -> ChatSession:
+        return ChatSession(
+            saved.assistant,
+            saved.chat,
+            saved.generation,
+            saved.turns,
+            saved.id,
+            saved.title,
+        )
 
     def on_composer_changed(self, event: TextArea.Changed) -> None:
         """Show command completions for a slash prefix."""
@@ -257,33 +265,59 @@ class ChatApp(App[None]):
         else:
             self._request_quit()
 
+    def action_scroll_transcript_up(self) -> None:
+        """Move the chat viewport up without leaving the composer."""
+        if self.query_one("#chat").display:
+            self.query_one("#transcript-scroll", VerticalScroll).scroll_relative(
+                y=-3,
+                animate=False,
+            )
+
+    def action_scroll_transcript_down(self) -> None:
+        """Move the chat viewport down without leaving the composer."""
+        if self.query_one("#chat").display:
+            self.query_one("#transcript-scroll", VerticalScroll).scroll_relative(
+                y=3,
+                animate=False,
+            )
+
     def _start_generation(self, attempt: int) -> None:
         self._generating = True
         self._streaming_text = ""
         self._active_attempt = attempt
-        self.query_one("#footer", Static).update("generating")
+        self._set_status("generating")
         self._generate_thread(attempt)
 
     @work(thread=True, exclusive=True, group="generation")
     def _generate_thread(self, attempt: int) -> None:
+        last_render = 0.0
         try:
-            for delta in self.runtime.generate(attempt):
+            for delta in self.runtime.generate(attempt, self._report_prefill):
+                if not self._streaming_text:
+                    self.call_from_thread(self._set_status, "generating")
                 self._streaming_text += delta
-                self.call_from_thread(self._render_transcript, True)
+                now = time.monotonic()
+                if now - last_render >= 1 / 12:
+                    self.call_from_thread(self._render_transcript, True)
+                    last_render = now
             self.call_from_thread(self._generation_done)
-        except Exception as error:  # noqa: BLE001 - keep the alternate screen valid.
+        except Exception as error:  # noqa: BLE001
             self.call_from_thread(self._generation_failed, str(error))
 
     def _generation_done(self) -> None:
         self._generating = False
         self._streaming_text = ""
         self._render_transcript()
+        self._update_status()
         self._update_footer()
 
     def _generation_failed(self, message: str) -> None:
         self._generating = False
-        self.query_one("#footer", Static).update("failed")
+        self._set_status("failed")
         self.notify(f"{message}. Use /retry to reload and try again.", severity="error")
+
+    def _report_prefill(self, current: int, total: int) -> None:
+        self.call_from_thread(self._set_status, f"prefill {current}/{total}")
 
     def _show_chat(self) -> None:
         session = self._session()
@@ -293,36 +327,81 @@ class ChatApp(App[None]):
         self.query_one("#chat").display = True
         self.query_one("#identity", Static).update(session.assistant.name)
         self._render_transcript()
+        self._update_status()
         self._update_footer()
         self.query_one(Composer).focus()
 
     def _render_transcript(self, partial: bool = False) -> None:
-        log = self.query_one(RichLog)
-        log.clear()
+        transcript = self.query_one("#transcript", Static)
+        scroller = self.query_one("#transcript-scroll", VerticalScroll)
+        follow_latest = scroller.scroll_y >= scroller.max_scroll_y - 1
         session = self._session()
+        content = Text()
         for turn in session.turns:
-            name = "You" if turn.role == "user" else session.assistant.name
-            log.write(Text(name, style="#d99b43"))
-            log.write(Text(turn.content))
+            if content:
+                content.append("\n\n")
+            name = "USER" if turn.role == "user" else self._chat_name(session)
+            content.append(f"{name}:", style="blue")
+            content.append("\n")
+            content.append(turn.content)
         if partial and self._generating:
-            log.write(Text(session.assistant.name, style="#d99b43"))
-            log.write(Text(self._streaming_text or "…"))
+            if content:
+                content.append("\n\n")
+            content.append(f"{self._chat_name(session)}:", style="blue")
+            content.append("\n")
+            content.append(self._streaming_text or "…")
+        transcript.update(content)
+        if follow_latest:
+            self.call_after_refresh(self._scroll_transcript_end)
+
+    def _scroll_transcript_end(self) -> None:
+        self.query_one("#transcript-scroll", VerticalScroll).scroll_end(animate=False)
+
+    @staticmethod
+    def _chat_name(session: ChatSession) -> str:
+        return session.assistant.target_name.upper()
 
     def _update_footer(self) -> None:
         session = self._session()
         last = next((turn for turn in reversed(session.turns) if turn.telemetry), None)
-        state = self.runtime.state.value
         if last is None or last.telemetry is None:
-            value = state
+            value = ""
         else:
             telemetry = last.telemetry
             pressure = 100 * telemetry.prompt_tokens / self.generation.max_prompt_tokens
-            value = f"{state}  context {telemetry.prompt_tokens}/{self.generation.max_prompt_tokens} {pressure:.0f}%  generated {telemetry.generated_tokens}"
+            fields = [
+                (
+                    "context "
+                    f"{telemetry.prompt_tokens}/{self.generation.max_prompt_tokens} "
+                    f"({pressure:.0f}%)"
+                ),
+                f"generated {telemetry.generated_tokens}",
+            ]
             if self.size.width >= 80 and telemetry.generation_throughput is not None:
-                value += f"  {telemetry.generation_throughput:.1f} tok/s"
+                fields.append(f"{telemetry.generation_throughput:.1f} tok/s")
             if self.size.width >= 105 and telemetry.peak_memory is not None:
-                value += f"  peak {telemetry.peak_memory:.2f} GB"
-        self.query_one("#footer", Static).update(value)
+                fields.append(f"peak {telemetry.peak_memory:.2f} GB")
+            value = "    ".join(fields)
+        self._set_footer(value)
+
+    def _set_footer(self, value: str) -> None:
+        value = value.upper()
+        if value != self._footer_text:
+            self.query_one("#footer", Static).update(value)
+            self._footer_text = value
+
+    def _update_status(self) -> None:
+        self._set_status(self.runtime.state.value)
+
+    def _set_status(self, value: str | None) -> None:
+        normalized = (
+            "" if value is None or value.casefold() == "ready" else value.upper()
+        )
+        status = self.query_one("#status", Static)
+        status.display = bool(normalized)
+        if normalized != self._status_text:
+            status.update(normalized)
+            self._status_text = normalized
 
     def _command(self, name: str, argument: str | None) -> None:
         if name == "save":
@@ -358,12 +437,13 @@ class ChatApp(App[None]):
         assistant = session.assistant
         values = {
             "assistant": assistant.name,
-            "run_id": str(assistant.run.ref.id),
-            "dataset_id": str(assistant.dataset.dataset.id),
-            "base_revision": assistant.run.model.revision,
-            "model_digest": assistant.run.model_digest,
-            "adapter_digest": assistant.run.adapter_digest,
-            "training_seed": assistant.run.seed,
+            "mode": assistant.mode.value,
+            "run_id": assistant.run_id,
+            "dataset_id": assistant.dataset_id,
+            "base_revision": assistant.model.revision,
+            "model_digest": assistant.model_digest,
+            "adapter_digest": assistant.adapter_digest,
+            "training_seed": assistant.training_seed,
             "context_messages": assistant.context_messages,
             "dirty": session.dirty,
             "saved_chat_id": session.saved_chat_id,
@@ -399,7 +479,7 @@ class ChatApp(App[None]):
             return
         self.query_one("#chat").display = False
         self.query_one("#landing").display = True
-        self._fill_chooser("")
+        self._fill_chooser()
 
     def _request_new(self) -> None:
         if self._session().dirty:
@@ -421,6 +501,7 @@ class ChatApp(App[None]):
             self.generation,
         )
         self._render_transcript()
+        self._update_status()
         self._update_footer()
 
     def _after_landing_confirm(self, choice: str | None) -> None:
@@ -429,7 +510,7 @@ class ChatApp(App[None]):
         if choice in {"save", "discard"}:
             self.query_one("#chat").display = False
             self.query_one("#landing").display = True
-            self._fill_chooser("")
+            self._fill_chooser()
 
     def _request_quit(self) -> None:
         if self.runtime.session is not None and self.runtime.session.dirty:
@@ -458,6 +539,8 @@ class ChatApp(App[None]):
         return True
 
     def _begin_select(self, assistant: Assistant) -> None:
+        if not self._prepare_load():
+            return
         self._set_loading(True)
         self._select_thread(assistant)
 
@@ -467,16 +550,26 @@ class ChatApp(App[None]):
         *,
         generate_attempt: int | None = None,
     ) -> None:
+        if not self._prepare_load():
+            return
         self.runtime.session = session
         self._set_loading(True)
         self._show_chat()
         self._attach_thread(session, generate_attempt)
 
+    def _prepare_load(self) -> bool:
+        try:
+            self.runtime.ensure_worker()
+        except Exception as error:  # noqa: BLE001
+            self._load_failed(str(error))
+            return False
+        return True
+
     @work(thread=True, exclusive=True, group="model-load")
     def _select_thread(self, assistant: Assistant) -> None:
         try:
             self.runtime.select(assistant)
-        except Exception as error:  # noqa: BLE001 - keep the event loop active.
+        except Exception as error:  # noqa: BLE001
             self.call_from_thread(self._load_failed, str(error))
             return
         self.call_from_thread(self._load_done, None)
@@ -489,7 +582,7 @@ class ChatApp(App[None]):
     ) -> None:
         try:
             self.runtime.attach(session)
-        except Exception as error:  # noqa: BLE001 - keep the event loop active.
+        except Exception as error:  # noqa: BLE001
             self.call_from_thread(self._load_failed, str(error))
             return
         self.call_from_thread(self._load_done, generate_attempt)
@@ -504,7 +597,7 @@ class ChatApp(App[None]):
         self._set_loading(False)
         if self.runtime.session is not None:
             self._show_chat()
-        self.query_one("#footer", Static).update("failed")
+        self._set_status("failed")
         self.notify(message, severity="error")
 
     def _set_loading(self, value: bool) -> None:
@@ -513,51 +606,78 @@ class ChatApp(App[None]):
         self._refresh_loading_state()
 
     def _refresh_loading_state(self) -> None:
-        if not self._loading:
-            self.query_one("#load-status", Static).update("")
+        if not self.is_mounted or len(self.query("#load-status")) == 0:
             return
-        state = self.runtime.state.value.upper()
-        self.query_one("#load-status", Static).update(f"{state} // MODEL SESSION")
-        if self.query_one("#chat").display:
-            self.query_one("#footer", Static).update(state.lower())
+        state = self.runtime.state.value
+        status = f"{state.upper()} // MODEL SESSION" if self._loading else ""
+        self.query_one("#load-status").display = bool(status)
+        if status != self._load_status_text:
+            self.query_one("#load-status", Static).update(status)
+            self._load_status_text = status
+        if self._loading and self.query_one("#chat").display:
+            self._set_status(state)
 
-    def _fill_chooser(self, search: str) -> None:
+    def _fill_chooser(self) -> None:
+        self._catalog_width = self.size.width
         chooser = self.query_one("#chooser", OptionList)
         chooser.clear_options()
         self._rows.clear()
-        query = search.casefold().strip()
         options = []
+        available = 0
+        saved_chats = () if self.store is None else self.store.leaves()
+        layout = CatalogLayout.for_terminal(self.size.width)
+        self.query_one("#catalog-columns", Static).update(
+            layout.line("MODEL", "DATA", "WINDOW", "STATUS")
+        )
         for index, row in enumerate(self.assistants):
             if row.available and row.assistant is not None:
                 assistant = row.assistant
-                counts = assistant.counts
-                adapter_size = sum(
-                    item.stat().st_size
-                    for item in assistant.run.adapter_path.rglob("*")
-                    if item.is_file()
+                if assistant.run is None:
+                    data = "PERSONA"
+                else:
+                    counts = assistant.counts
+                    data = (
+                        f"{counts.get('train', 0)}/"
+                        f"{counts.get('valid', 0)}/{counts.get('test', 0)}"
+                    )
+                text = layout.text(
+                    row.label,
+                    data,
+                    str(assistant.context_messages),
+                    "Ready",
                 )
-                text = (
-                    f"{row.label}\n"
-                    f"SEED {assistant.run.seed}  ADAPTER {adapter_size / 1_048_576:.1f} MiB  "
-                    f"DATA {counts.get('train', 0)}/{counts.get('valid', 0)}/{counts.get('test', 0)}  "
-                    f"WINDOW {assistant.context_messages}  PROMPT {self.generation.max_prompt_tokens}"
-                )
+                available += 1
             else:
-                text = f"{row.label} — UNAVAILABLE // {row.error}"
-            if query and query not in text.casefold():
-                continue
+                text = layout.text(
+                    row.label,
+                    "—",
+                    "—",
+                    "Unavailable",
+                    failed=True,
+                )
             key = f"assistant-{index}"
             self._rows[key] = row
-            options.append(Option(Text(text), id=key, disabled=not row.available))
-        if self.store is not None:
-            for saved in self.store.leaves():
-                text = f"Saved: {saved.title} — {saved.assistant.name}"
-                if query and query not in text.casefold():
-                    continue
-                key = f"saved-{saved.id}"
-                self._rows[key] = saved
-                options.append(Option(Text(text), id=key))
+            options.append(Option(text, id=key, disabled=not row.available))
+        for saved in saved_chats:
+            text = layout.text(
+                f"{saved.title} · {saved.assistant.name}",
+                "SNAPSHOT",
+                "—",
+                "Saved",
+            )
+            key = f"saved-{saved.id}"
+            self._rows[key] = saved
+            options.append(Option(text, id=key))
         chooser.add_options(options)
+        summary = f"{available} available"
+        if saved_chats:
+            summary += f" · {len(saved_chats)} saved"
+        self.query_one("#catalog-summary", Static).update(summary)
+        for option_index, option in enumerate(chooser.options):
+            if not option.disabled:
+                chooser.highlighted = option_index
+                chooser.focus()
+                break
 
     def _session(self) -> ChatSession:
         if self.runtime.session is None:

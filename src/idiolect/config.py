@@ -196,6 +196,10 @@ class ChatConfig:
     participant_name: str = ""
     context_policy: str = ""
     history: str = ""
+    default_model: str = ""
+    default_name: str = ""
+    default_context_messages: int = 0
+    default_system_prompt: str = ""
     specified: frozenset[str] = frozenset()
     unknown: frozenset[str] = frozenset()
 
@@ -463,10 +467,24 @@ def load_config(
         participant_name=_str(chat_values, "participant_name", ""),
         context_policy=_str(chat_values, "context_policy", ""),
         history=_str(chat_values, "history", ""),
+        default_model=_str(chat_values, "default_model", ""),
+        default_name=_str(chat_values, "default_name", ""),
+        default_context_messages=_int(chat_values, "default_context_messages", 0),
+        default_system_prompt=_str(chat_values, "default_system_prompt", ""),
         specified=frozenset(chat_values),
         unknown=frozenset(
             set(chat_values)
-            - {"output", "seed", "participant_name", "context_policy", "history"}
+            - {
+                "output",
+                "seed",
+                "participant_name",
+                "context_policy",
+                "history",
+                "default_model",
+                "default_name",
+                "default_context_messages",
+                "default_system_prompt",
+            }
         ),
     )
     _validate_signal(signal)

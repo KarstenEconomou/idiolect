@@ -7,9 +7,11 @@ from typing import cast
 from idiolect.chat.discovery import (
     Assistant,
     canonical_name,
+    default_assistant,
     discover_assistants,
     model_basename,
 )
+from idiolect.config import ChatConfig, TrainConfig, TrainDataConfig
 
 
 def test_assistant_name_uses_requested_identity_and_final_model_component() -> None:
@@ -19,6 +21,32 @@ def test_assistant_name_uses_requested_identity_and_final_model_component() -> N
     assert canonical_name("target", "7f3a91c2" + "0" * 56, "org/Qwen") == (
         "IDIOLECT // TARGET@7f3a91c2 [Qwen]"
     )
+
+
+def test_default_assistant_uses_configured_base_and_system_persona() -> None:
+    """Check that DIXIE is available without one run or dataset artifact."""
+    assistant = default_assistant(
+        TrainConfig(
+            base_model="mlx-community/Qwen3-14B-4bit",
+            model_source="hub",
+            model_revision="fixed",
+            data=TrainDataConfig(
+                format="chat",
+                prompt_role="user",
+                completion_role="assistant",
+            ),
+        ),
+        ChatConfig(
+            default_name="Dixie",
+            default_context_messages=32,
+            default_system_prompt="Use terse technical language.",
+        ),
+    )
+
+    assert assistant.name == "IDIOLECT // DIXIE@BASE [Qwen3-14B-4bit]"
+    assert assistant.run is None
+    assert assistant.dataset is None
+    assert assistant.data.system_prompt == "Use terse technical language."
 
 
 def test_discovery_disables_every_colliding_short_run_id(tmp_path, monkeypatch) -> None:
@@ -39,6 +67,8 @@ def test_discovery_disables_every_colliding_short_run_id(tmp_path, monkeypatch) 
     def fake_load(run_path, _dataset_path):
         assistant = SimpleNamespace(
             name=f"IDIOLECT // K@{run_path.name[:8]} [M]",
+            run_id=run_path.name,
+            dataset_id=dataset_id,
             run=SimpleNamespace(ref=SimpleNamespace(id=run_path.name)),
             dataset=SimpleNamespace(dataset=SimpleNamespace(id=dataset_id)),
         )

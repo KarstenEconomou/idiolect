@@ -2,7 +2,7 @@
 
 ## Project
 
-Idiolect is a Python 3.14 package for a local-first ML pipeline. It collects whitelisted Signal group messages, stores source and normalized data in DuckDB, builds immutable target-specific JSONL datasets, trains content-addressed MLX-LM LoRA adapters, generates verified local predictions, provides private multi-turn terminal chat for verified adapters, and evaluates adapter policies against their recorded base models with automatic metrics and private familiar-panel judgments.
+Idiolect is a Python 3.14 package for a local-first ML pipeline. It collects whitelisted Signal group messages, stores source and normalized data in DuckDB, builds immutable target-specific JSONL datasets, trains content-addressed MLX-LM LoRA adapters, generates verified local predictions, provides private multi-turn terminal chat for the configured base persona and verified adapters, and evaluates adapter policies against their recorded base models with automatic metrics and private familiar-panel judgments.
 
 Code lives in `src/idiolect/`. Tests mirror it in `tests/`. Public configuration lives in `conf/`. Operational and replication procedures live in `docs/`. Just modules live in `just/`.
 
@@ -13,14 +13,14 @@ Keep stage boundaries explicit:
 - `data` renders target-relative context and builds datasets.
 - `train` defines training contracts and implements MLX-LM training.
 - `inference` defines generation contracts and implements MLX-LM inference.
-- `chat` discovers verified assistants, owns transcript and context policy, supervises the MLX worker, and stores explicit immutable snapshots.
+- `chat` builds the configured base persona, discovers verified adapter assistants, owns transcript and context policy, supervises the MLX worker, and stores explicit immutable snapshots.
 - `tui` contains only Textual presentation and input handling. Do not put model loading, prompt policy, artifact verification, or snapshot identity logic in this package.
 - `eval` defines scoring contracts, runs immutable local policy evaluations, and collects and summarizes private familiar-panel judgments.
 - `config.py`, `model.py`, `prompt.py`, and `types.py` contain shared policy and data contracts.
 
 Keep external systems behind the existing typed ports. Keep protocol modules free of backend behavior. Keep the CLI thin and put application behavior in its stage module.
 
-Keep chat prompts byte-compatible with the shared training conversation grammar. Show the user as `You`, but serialize the configured participant name in prompts. Format every assistant identity as `IDIOLECT // NAME@run [MODEL]`, where `NAME` is the uppercase display of the recorded target name, `run` is a unique eight-character run prefix, and `MODEL` is the final model repository or path component. Do not change target-name casing inside model prompts. Keep the TUI sparse and use its near-black, amber, cyan, warm off-white, muted gray, and restrained red tokens consistently. Render transcript content as literal plain text.
+Keep chat prompts byte-compatible with the shared training conversation grammar. Show the user as `USER`, but serialize the configured participant name in prompts. Format adapter identities as `IDIOLECT // NAME@run [MODEL]`, where `NAME` is the uppercase display of the recorded target name, `run` is a unique eight-character run prefix, and `MODEL` is the final model repository or path component. Format the configured base persona as `IDIOLECT // NAME@BASE [MODEL]`. Use the uppercase `NAME` for assistant transcript labels, and keep the full canonical identity in the chat header and everywhere outside the transcript. Do not change recorded adapter target-name casing inside model prompts. Keep the TUI sparse. Inherit the terminal's default foreground, background, and ANSI palette. Do not add fixed RGB theme colors. Present assistants and saved chats in `REGISTRY`, a keyboard-driven table without a search field or pointer activation. Keep the chat transcript in a mouse-wheel scroll viewport without a visible scrollbar. Render transcript content as literal plain text.
 
 ## Commands
 
@@ -31,7 +31,7 @@ for Python environment and package operations.
 - `just setup-train`: install optional local MLX-LM training packages.
 - `just setup-chat`: install optional MLX-LM and Textual packages.
 - `just idiolect`: run the CLI.
-- `just chat`: open the searchable local chat chooser while the Mac stays awake.
+- `just chat`: open the local `REGISTRY` while the Mac stays awake.
 - `just chat run <run> <dataset>`: open one verified assistant directly.
 - `just chat resume <chat>`: resume one verified saved snapshot.
 - `just build`: build distributions.
