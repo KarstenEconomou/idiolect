@@ -20,37 +20,37 @@ chat uses the same conversation grammar as training, streams local replies, and
 saves only explicit immutable snapshots.
 
 ```text
-                                                    Signal
-                                                      │
-                                                      ▼
-                                            signal-cli collector
-                                                      │
-                                                      ▼
-                                                normalization
-                                                      │
-                                                      ▼
-                                                  DuckDB
-                                                      │
-                                                      ▼
-                                          target-relative context
-                                                      │
-                                                      ▼
-                                          immutable JSONL dataset
-                                                      │
-              ╭───────────────────────────────────────┴───────────────────╮
-              ▼                                                           ▼
-  recorded base inference                                      MLX-LM QLoRA training
-              │                                                           │
-              │                                       ╭───────────────────┴───────────────────╮
-              │                                       ▼                                       ▼
-              │                               adapter inference                     supervised MLX worker
-              │                                       │                                       │
-              ╰───────────────────────────────────────┤                                       │
-                                                      ▼                                       ▼
-                                        content-addressed predictions               private terminal chat
-                                                      │                                       │
-                                                      ▼                                       ▼
-                                                    evals                       explicit immutable snapshots
+                                  Signal
+                                     │
+                                     ▼
+                           signal-cli collector
+                                     │
+                                     ▼
+                               normalization
+                                     │
+                                     ▼
+                                  DuckDB
+                                     │
+                                     ▼
+                          target-relative context
+                                     │
+                                     ▼
+                          immutable JSONL dataset
+                                     │
+                  ╭──────────────────┴──────────────────╮
+                  ▼                                     ▼
+       recorded base inference                MLX-LM QLoRA training
+                  │                                     │
+                  │                       ╭─────────────┴─────────────╮
+                  │                       ▼                           ▼
+                  │               adapter inference         supervised MLX worker
+                  │                       │                           │
+                  ╰───────────────────────┤                           │
+                                          ▼                           ▼
+                            content-addressed predictions   private terminal chat
+                                          │                           │
+                                          ▼                           ▼
+                                        evals           explicit immutable snapshots
 ```
 
 The canonical configuration keeps Signal data, datasets, model files, adapters,
