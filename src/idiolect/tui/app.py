@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable, Iterable
-from dataclasses import asdict
 from typing import ClassVar
 
 from rich.text import Text
@@ -23,11 +22,11 @@ from idiolect.chat.storage import ChatStorageError, ChatStore, SavedChat
 from idiolect.chat.worker import WorkerError
 from idiolect.config import ChatConfig, GenerationConfig
 from idiolect.tui.catalog import CatalogLayout
-from idiolect.tui.commands import COMMANDS, CommandError, completions, parse_command
+from idiolect.tui.commands import CommandError, completions, parse_command
 from idiolect.tui.widgets import (
+    CommandMenu,
     Composer,
     ConfirmModal,
-    InfoModal,
     KeyboardOptionList,
     LoadingStatus,
 )
@@ -57,14 +56,15 @@ class ChatApp(App[None]):
     #catalog-description { width: 1fr; }
     #catalog-summary { width: auto; }
     #catalog-rule { height: 1; margin: 0; padding: 0 2; color: $metadata; }
-    #catalog-columns { height: 1; padding: 0 2; color: $metadata; text-style: bold; }
+    #catalog-columns { height: 1; padding: 0 2; color: ansi_white; text-style: bold; }
     #load-status { display: none; height: 1; padding: 0 2; color: $metadata; }
     #chooser { height: 1fr; padding: 0 2; border: none; color: $terminal; background: $terminal; background-tint: transparent; scrollbar-color: $metadata; scrollbar-background: $terminal; }
     OptionList > .option-list--option { padding: 0; color: $terminal; background: $terminal; }
     OptionList > .option-list--option-highlighted, OptionList:focus > .option-list--option-highlighted { color: $accent; background: $terminal; text-style: bold; }
     OptionList > .option-list--option-disabled { color: $failure; text-style: dim; }
     OptionList > .option-list--option-hover { color: $accent; background: $terminal; text-style: bold; }
-    #catalog-hints, #footer { height: 1; color: $metadata; background: $terminal; padding: 0 2; }
+    #catalog-hints { height: 1; color: $metadata; background: $terminal; padding: 0 2; }
+    #footer { height: 1; color: $metadata; background: $terminal; padding: 0 2; }
     #chat { display: none; }
     #identity { height: 2; padding: 0 2; color: $accent; background: $terminal; border-bottom: solid $metadata; text-style: bold; }
     #transcript-scroll { height: 1fr; padding: 1 2; background: $terminal; scrollbar-size: 0 0; }
@@ -76,13 +76,18 @@ class ChatApp(App[None]):
     #composer .text-area--cursor, #composer .text-area--selection { color: $terminal; background: $terminal; text-style: reverse; }
     #composer .text-area--cursor-line, #composer .text-area--matching-bracket { background: $terminal; }
     #composer .text-area--gutter, #composer .text-area--suggestion, #composer .text-area--placeholder { color: $metadata; background: $terminal; }
-    #completion { height: auto; max-height: 5; color: $accent; background: $terminal; padding: 0 2; }
+    #command-menu { display: none; height: auto; max-height: 4; margin: 0 1; padding: 0 1; background: $terminal; }
+    #command-message { height: 1; color: ansi_white; text-style: bold; }
+    #command-actions { height: auto; max-height: 3; }
+    .command-action { height: 1; }
+    .command-name { width: 12; height: 1; padding: 0 1; color: $terminal; }
+    .command-description { width: 1fr; height: 1; color: $metadata; }
+    .command-action.-selected .command-name { color: $accent; text-style: bold; }
+    .command-action.-selected .command-description { color: $accent; text-style: dim; }
+    .command-action.-disabled .command-name, .command-action.-disabled .command-description { color: $failure; text-style: dim; }
     #status { display: none; height: 1; color: $metadata; background: $terminal; padding: 0 2; }
-    #info-dialog { width: 80%; max-width: 90; height: auto; padding: 1 2; background: $terminal; border: solid $metadata; }
-    #info-title { color: $accent; text-style: bold; border-bottom: solid $metadata; }
-    #info-body { max-height: 70vh; overflow-y: auto; }
     #confirm-dialog { width: 100%; height: 2; padding: 0 1; background: $terminal; border: none; }
-    #confirm-message { height: 1; color: $metadata; }
+    #confirm-message { height: 1; color: ansi_white; text-style: bold; }
     #confirm-actions { height: 1; }
     #confirm-actions Button { width: auto; min-width: 0; height: 1; padding: 0 1; border: none; background: $terminal; color: $metadata; text-style: none; }
     #confirm-actions Button:hover { border: none; background: $terminal; color: $metadata; text-style: none; }
@@ -137,7 +142,10 @@ class ChatApp(App[None]):
         self._generating = False
         self._loading = False
         self._streaming_text = ""
-        self._active_attempt = 0
+        self._command_matches: tuple[str, ...] = ()
+        self._command_index = 0
+        self._dismissed_command_text: str | None = None
+        self._confirmation_open = False
         self._load_status_text: str | None = None
         self._status_text: str | None = None
         self._footer_text: str | None = None
@@ -152,7 +160,7 @@ class ChatApp(App[None]):
                 yield Static("REGISTRY", markup=False, id="catalog-title")
             with Horizontal(id="catalog-subtitle"):
                 yield Static(
-                    "Choose a persona, adapter, or saved snapshot.",
+                    "Choose a BASE, CONSTRUCT, or TRACE.",
                     markup=False,
                     id="catalog-description",
                 )
@@ -170,7 +178,7 @@ class ChatApp(App[None]):
             yield Static("", markup=False, id="identity")
             with VerticalScroll(id="transcript-scroll"):
                 yield Static("", markup=False, id="transcript")
-            yield Static("", markup=False, id="completion")
+            yield CommandMenu(id="command-menu")
             yield LoadingStatus(id="status")
             with Horizontal(id="composer-bar"):
                 yield Static(">", markup=False, id="composer-prompt")
@@ -227,25 +235,61 @@ class ChatApp(App[None]):
             saved.title,
         )
 
-    def on_composer_changed(self, event: TextArea.Changed) -> None:
-        """Show command completions for a slash prefix."""
-        values = completions(event.text_area.text)
-        self.query_one("#completion", Static).update("  ".join(values))
+    def on_text_area_changed(self, event: TextArea.Changed) -> None:
+        """Show matching commands for one slash prefix."""
+        value = event.text_area.text
+        if value != self._dismissed_command_text:
+            self._dismissed_command_text = None
+        self._command_matches = (
+            () if value == self._dismissed_command_text else completions(value)
+        )
+        self._command_index = 0
+        self._update_command_menu()
+
+    def on_composer_command_moved(self, event: Composer.CommandMoved) -> None:
+        """Move the command highlight with wrapping navigation."""
+        enabled = self._enabled_command_indexes()
+        if not enabled:
+            return
+        current = (
+            enabled.index(self._command_index)
+            if self._command_index in enabled
+            else 0
+        )
+        self._command_index = enabled[(current + event.offset) % len(enabled)]
+        self._update_command_menu()
+
+    def on_composer_command_dismissed(self, event: Composer.CommandDismissed) -> None:
+        """Hide the command menu until the composer value changes."""
+        self._dismissed_command_text = self.query_one(Composer).text
+        self._command_matches = ()
+        self._update_command_menu()
+
+    def on_composer_command_completed(self, event: Composer.CommandCompleted) -> None:
+        """Complete the highlighted command with trailing space."""
+        selected = self._selected_command()
+        if selected is None:
+            return
+        composer = self.query_one(Composer)
+        composer.clear()
+        composer.insert(f"{selected} ")
 
     def on_composer_submitted(self, event: Composer.Submitted) -> None:
         """Run one command or start one user turn."""
         value = event.value
-        if not value.strip() or self._generating:
+        if not value.strip():
             return
         if self._loading:
             self.notify("Wait for the assistant to finish loading", severity="warning")
             return
         composer = self.query_one(Composer)
         try:
-            command = parse_command(value)
+            command = parse_command(self._selected_command() or value)
             if command is not None:
-                self._command(command.name, command.argument)
                 composer.clear()
+                self._command(command.name)
+                return
+            if self._generating:
                 return
             session = self._session()
             session.add_user(value)
@@ -292,8 +336,8 @@ class ChatApp(App[None]):
     def _start_generation(self, attempt: int) -> None:
         self._generating = True
         self._streaming_text = ""
-        self._active_attempt = attempt
         self._set_status("generating")
+        self._update_command_menu()
         self._generate_thread(attempt)
 
     @work(thread=True, exclusive=True, group="generation")
@@ -318,11 +362,13 @@ class ChatApp(App[None]):
         self._render_transcript()
         self._update_status()
         self._update_footer()
+        self._update_command_menu()
 
     def _generation_failed(self, message: str) -> None:
         self._generating = False
         self._set_status("failed")
-        self.notify(f"{message}. Use /retry to reload and try again.", severity="error")
+        self._update_command_menu()
+        self.notify(f"{message}. Return to REGISTRY to start again.", severity="error")
 
     def _report_prefill(self, current: int, total: int) -> None:
         self.call_from_thread(self._set_status, f"prefill {current}/{total}")
@@ -370,6 +416,14 @@ class ChatApp(App[None]):
         return session.assistant.target_name.upper()
 
     def _update_footer(self) -> None:
+        if self._confirmation_open:
+            self._set_footer("←→ MOVE    ENTER SELECT    ESC RESUME")
+            return
+        if self._command_matches:
+            self._set_footer(
+                "↑↓ MOVE    TAB COMPLETE    ENTER SELECT    ESC CLOSE"
+            )
+            return
         session = self._session()
         last = next((turn for turn in reversed(session.turns) if turn.telemetry), None)
         if last is None or last.telemetry is None:
@@ -412,108 +466,61 @@ class ChatApp(App[None]):
             )
             self._status_text = normalized
 
-    def _command(self, name: str, argument: str | None) -> None:
-        if name == "save":
-            if self.store is None:
-                raise ChatStorageError("Chat output is not configured")
-            saved = self.store.save(self._session(), argument)
-            self.notify(f"Saved {saved.id[:8]} — {saved.title}")
-        elif name == "retry":
-            session = self._session()
-            if session.turns and session.turns[-1].role == "user":
-                attempt = self._active_attempt + 1
-                self._active_attempt = attempt
-                self._render_transcript()
-                self._begin_attach(session, generate_attempt=attempt)
-                return
+    def _command(self, name: str) -> None:
+        if name == "exit":
+            self.action_interrupt()
+        elif name == "registry":
+            if self._generating:
+                self.notify(
+                    "Stop the active reply before returning to REGISTRY",
+                    severity="warning",
+                )
             else:
-                attempt = session.retry()
-            self._render_transcript()
-            self._start_generation(attempt)
-        elif name == "stats":
-            self.push_screen(InfoModal("Chat statistics", self._stats_text()))
-        elif name == "help":
-            self.push_screen(InfoModal("Chat commands", "\n".join(COMMANDS)))
-        elif name == "quit":
-            self._request_quit()
-        elif name == "new":
-            self._request_new()
-        elif name in {"assistant", "resume"}:
-            self._return_to_landing()
+                self._return_to_landing()
 
-    def _stats_text(self) -> str:
-        session = self._session()
-        assistant = session.assistant
-        values = {
-            "assistant": assistant.name,
-            "mode": assistant.mode.value,
-            "run_id": assistant.run_id,
-            "dataset_id": assistant.dataset_id,
-            "base_revision": assistant.model.revision,
-            "model_digest": assistant.model_digest,
-            "adapter_digest": assistant.adapter_digest,
-            "training_seed": assistant.training_seed,
-            "context_messages": assistant.context_messages,
-            "dirty": session.dirty,
-            "saved_chat_id": session.saved_chat_id,
-            **self.runtime.probe,
-            **asdict(self.runtime.stats),
-        }
-        last = next((turn for turn in reversed(session.turns) if turn.telemetry), None)
-        if last is not None and last.telemetry is not None:
-            values.update(
-                {
-                    "prompt_tokens_last": last.telemetry.prompt_tokens,
-                    "generated_tokens_last": last.telemetry.generated_tokens,
-                    "prompt_throughput": last.telemetry.prompt_throughput,
-                    "generation_throughput": last.telemetry.generation_throughput,
-                    "time_to_first_token": last.telemetry.time_to_first_token,
-                    "generation_time": last.telemetry.generation_time,
-                    "peak_memory": last.telemetry.peak_memory,
-                    "finish_reason": last.finish_reason,
-                    "rng_seed": last.seed,
-                    "attempt": last.attempt,
-                    "context_pressure": (
-                        last.telemetry.prompt_tokens / self.generation.max_prompt_tokens
-                    ),
-                }
-            )
-        return "\n".join(
-            f"{name}: {value}" for name, value in values.items() if value is not None
+    def _enabled_command_indexes(self) -> tuple[int, ...]:
+        return tuple(
+            index
+            for index, command in enumerate(self._command_matches)
+            if command != "/registry" or not self._generating
         )
+
+    def _selected_command(self) -> str | None:
+        if not self._command_matches:
+            return None
+        return self._command_matches[self._command_index]
+
+    def _update_command_menu(self) -> None:
+        enabled = self._enabled_command_indexes()
+        if enabled and self._command_index not in enabled:
+            self._command_index = enabled[0]
+        selected = self._selected_command()
+        menu = self.query_one("#command-menu", CommandMenu)
+        was_visible = menu.display
+        menu.set_commands(
+            self._command_matches,
+            selected,
+            registry_enabled=not self._generating,
+        )
+        composer = self.query_one(Composer)
+        composer.command_menu_active = bool(self._command_matches)
+        composer.command_menu_escape_enabled = not self._generating
+        self._update_footer()
+        if was_visible or self._command_matches:
+            self.call_after_refresh(self._scroll_transcript_end)
 
     def _return_to_landing(self) -> None:
         if self._session().dirty:
-            self.push_screen(ConfirmModal(), self._after_landing_confirm)
+            self._push_confirmation(self._after_landing_confirm)
             return
         self.query_one("#chat").display = False
         self.query_one("#landing").display = True
         self._fill_chooser()
 
-    def _request_new(self) -> None:
-        if self._session().dirty:
-            self.push_screen(ConfirmModal(), self._after_new_confirm)
-        else:
-            self._new_chat()
-
-    def _after_new_confirm(self, choice: str | None) -> None:
-        if choice == "save" and not self._save_from_confirmation():
-            return
-        if choice in {"save", "discard"}:
-            self._new_chat()
-
-    def _new_chat(self) -> None:
-        current = self._session()
-        self.runtime.session = ChatSession(
-            current.assistant,
-            self.chat_policy,
-            self.generation,
-        )
-        self._render_transcript()
-        self._update_status()
-        self._update_footer()
-
     def _after_landing_confirm(self, choice: str | None) -> None:
+        self._confirmation_open = False
+        self._update_confirmation_spacing()
+        self._update_footer()
         if choice == "save" and not self._save_from_confirmation():
             return
         if choice in {"save", "discard"}:
@@ -523,17 +530,32 @@ class ChatApp(App[None]):
 
     def _request_quit(self) -> None:
         if self.runtime.session is not None and self.runtime.session.dirty:
-            self.push_screen(ConfirmModal(), self._after_quit_confirm)
+            self._push_confirmation(self._after_quit_confirm)
         else:
             self.runtime.close()
             self.exit()
 
     def _after_quit_confirm(self, choice: str | None) -> None:
+        self._confirmation_open = False
+        self._update_confirmation_spacing()
+        self._update_footer()
         if choice == "save" and not self._save_from_confirmation():
             return
         if choice in {"save", "discard"}:
             self.runtime.close()
             self.exit()
+
+    def _push_confirmation(self, callback: Callable[[str | None], None]) -> None:
+        self._confirmation_open = True
+        self._update_confirmation_spacing()
+        self._update_footer()
+        self.push_screen(ConfirmModal(), callback)
+
+    def _update_confirmation_spacing(self) -> None:
+        scroller = self.query_one("#transcript-scroll", VerticalScroll)
+        bottom = 3 if self._confirmation_open else 1
+        scroller.styles.padding = (1, 2, bottom, 2)
+        self.call_after_refresh(self._scroll_transcript_end)
 
     def _save_from_confirmation(self) -> bool:
         if self.store is None:
@@ -556,15 +578,13 @@ class ChatApp(App[None]):
     def _begin_attach(
         self,
         session: ChatSession,
-        *,
-        generate_attempt: int | None = None,
     ) -> None:
         if not self._prepare_load():
             return
         self.runtime.session = session
         self._set_loading(True)
         self._show_chat()
-        self._attach_thread(session, generate_attempt)
+        self._attach_thread(session)
 
     def _prepare_load(self) -> bool:
         try:
@@ -581,26 +601,23 @@ class ChatApp(App[None]):
         except Exception as error:  # noqa: BLE001
             self.call_from_thread(self._load_failed, str(error))
             return
-        self.call_from_thread(self._load_done, None)
+        self.call_from_thread(self._load_done)
 
     @work(thread=True, exclusive=True, group="model-load")
     def _attach_thread(
         self,
         session: ChatSession,
-        generate_attempt: int | None,
     ) -> None:
         try:
             self.runtime.attach(session)
         except Exception as error:  # noqa: BLE001
             self.call_from_thread(self._load_failed, str(error))
             return
-        self.call_from_thread(self._load_done, generate_attempt)
+        self.call_from_thread(self._load_done)
 
-    def _load_done(self, generate_attempt: int | None) -> None:
+    def _load_done(self) -> None:
         self._set_loading(False)
         self._show_chat()
-        if generate_attempt is not None:
-            self._start_generation(generate_attempt)
 
     def _load_failed(self, message: str) -> None:
         self._set_loading(False)

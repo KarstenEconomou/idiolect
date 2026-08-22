@@ -99,7 +99,7 @@ class ChatSession:
             raise ChatStateError("A message must contain text")
         if self.turns and self.turns[-1].role != "assistant":
             raise ChatStateError(
-                "The pending user message requires /retry before another message"
+                "The pending user message requires a retry before another message"
             )
         self.turns.append(ChatTurn("user", content))
 

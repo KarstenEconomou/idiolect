@@ -67,7 +67,7 @@ def test_pending_user_message_rejects_another_user_turn() -> None:
     state.begin_generation()
     state.generating = False
 
-    with pytest.raises(ChatStateError, match="requires /retry"):
+    with pytest.raises(ChatStateError, match="requires a retry"):
         state.add_user("must not append")
 
     assert [turn.content for turn in state.turns] == ["pending"]

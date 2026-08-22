@@ -70,26 +70,29 @@ Ctrl+C stops active generation or opens the idle quit confirmation. The composer
 remains available during generation, but a second message is not queued. Use the
 mouse wheel, or Ctrl+Up and Ctrl+Down without leaving the composer, to scroll the
 transcript. Transcript turns use `USER` and the short uppercase assistant name.
-The chat header, registry, snapshot, and statistics views use the full canonical
-assistant identity. Use arrow keys and Enter in an unsaved-change confirmation.
-After a generation failure, retry the pending user message before you submit a
-new message.
+The chat header, registry, and snapshot use the full canonical assistant
+identity. Use arrow keys and Enter in an unsaved-change confirmation. After a
+generation failure, return to `REGISTRY` to start again.
 
-Commands are:
+Type `/` to open the keyboard-driven command menu above the composer. The menu
+shows up to three command descriptions in vertical rows. Use arrow keys to move,
+Tab to complete the selected command with a trailing space, Enter to select, and
+Escape to close the menu without clearing the composer. Commands are:
 
-- `/assistant`: return to the assistant chooser;
-- `/new`: start a new transcript with the loaded assistant;
-- `/save [title]`: write one immutable snapshot;
-- `/resume`: return to saved-chat selection;
-- `/retry`: replace the latest assistant attempt;
-- `/stats`: show recorded identity and measured runtime values;
-- `/help`: show the command list;
-- `/quit`: confirm and exit.
+- `/exit`: stop an active reply or exit when idle;
+- `/registry`: return to `REGISTRY` when no reply is active.
+
+Either idle command opens the horizontal DISCONNECT, RECORD, and RESUME
+confirmation when the transcript has unsaved changes. DISCONNECT is selected
+first. RECORD writes an immutable snapshot before the requested navigation. The
+footer aligns with transcript text, sits directly below the composer, and
+replaces telemetry with navigation hints while the command menu or confirmation
+is open. The transcript follows its newest turn above an open menu and returns
+to the bottom when the menu closes.
 
 The TUI treats all transcript content as literal plain text. It does not enable
 markup. A stopped partial reply remains an assistant turn with finish reason
-`cancelled`. Retry removes that reply, increments its attempt, and derives a new
-31-bit RNG seed from the configured chat seed, prompt digest, and attempt.
+`cancelled`.
 
 ## Prompt and context policy
 
@@ -109,18 +112,16 @@ One spawned worker owns the selected model session. It resolves and verifies the
 fixed base model, loads an adapter only for a run assistant, streams token text,
 and captures backend stdout and stderr. Switching assistants unloads the current
 model session inside that worker before loading the next one. Unexpected exit or
-model failure keeps the memory-only transcript; use `/retry` to reload and try
-the input again.
+model failure keeps the memory-only transcript. Return to `REGISTRY` to start a
+new chat.
 
 Model resolution, verification, and loading run outside the Textual event loop.
 The interface stays responsive and reports active worker states above the
 composer. It hides the ready state. During prompt processing, it reports the
 measured prefill token count and total from MLX-LM.
 
-The footer reports the last measured context and generation values. `/stats`
-includes full artifact IDs and digests, recorded seed and revision, MLX device
-data, load duration, per-turn token and timing measurements, aggregate token
-counts, dirty state, and saved chat ID. It does not report estimated performance.
+The footer reports the last measured context and generation values when no
+action menu is open. It does not report estimated performance.
 
 ## Saved snapshots
 

@@ -71,5 +71,5 @@ just setup-chat
 Automated chat tests use synthetic assistants, fake token counters, fake worker
 events, and Textual pilot sessions. They do not load a model or use Metal. On
 Apple silicon, manually check the landing probe, one assistant load, streaming,
-prefill progress, stop and retry, the narrow footer, `/stats`, explicit save and
-resume, worker reload, and clean exit.
+prefill progress, stop behavior, command navigation, footer action hints,
+confirmation saves, worker reload, and clean exit.

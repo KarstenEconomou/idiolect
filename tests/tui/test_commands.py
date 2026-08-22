@@ -5,42 +5,39 @@ import pytest
 from idiolect.tui.commands import CommandError, completions, parse_command
 
 
-def test_no_argument_command_is_parsed() -> None:
-    """Check a known command without arguments returns its name."""
-    command = parse_command("/help")
+@pytest.mark.parametrize("value", ["/exit", "/registry", "/exit   "])
+def test_known_command_is_parsed_without_arguments(value: str) -> None:
+    """Check that each command returns its lowercase name."""
+    command = parse_command(value)
 
     assert command is not None
-    assert command.name == "help"
-    assert command.argument is None
-
-
-def test_save_command_keeps_one_quoted_title() -> None:
-    """Check that a save title can contain spaces."""
-    command = parse_command('/save "Night city"')
-
-    assert command is not None
-    assert command.argument == "Night city"
+    assert command.name == value.split()[0][1:]
 
 
 @pytest.mark.parametrize(
     ("value", "message"),
     [
-        ("/remove", "Unknown chat command"),
-        ('/save "Night city', "Command quotes are not complete"),
-        ("/retry now", "/retry does not accept an argument"),
+        ("/quit", "Unknown chat command"),
+        ("/retry", "Unknown chat command"),
+        ("/exit now", "/exit does not accept an argument"),
+        ("/REGISTRY", "Unknown chat command"),
     ],
 )
-def test_invalid_commands_are_rejected(value: str, message: str) -> None:
-    """Check invalid command names, quotes, and arguments."""
+def test_unknown_commands_and_arguments_are_rejected(
+    value: str,
+    message: str,
+) -> None:
+    """Check that the command surface stays fixed and argument-free."""
     with pytest.raises(CommandError, match=message):
         parse_command(value)
 
 
 def test_command_completion_requires_one_command_prefix() -> None:
-    """Check command completion for composer prefixes."""
-    assert completions("/re") == ("/resume", "/retry")
+    """Check command matching for composer prefixes."""
+    assert completions("/") == ("/exit", "/registry")
+    assert completions("/re") == ("/registry",)
     assert completions("message") == ()
-    assert completions("/save title") == ()
+    assert completions("/exit now") == ()
 
 
 def test_regular_message_is_not_a_command() -> None:

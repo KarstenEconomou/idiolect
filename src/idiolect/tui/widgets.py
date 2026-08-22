@@ -12,7 +12,9 @@ from textual.containers import Horizontal, Vertical
 from textual.message import Message
 from textual.screen import ModalScreen
 from textual.widget import Widget
-from textual.widgets import Button, Label, OptionList, Static, TextArea
+from textual.widgets import Button, OptionList, Static, TextArea
+
+from idiolect.tui.commands import COMMAND_DESCRIPTIONS, COMMANDS
 
 
 class KeyboardOptionList(OptionList):
@@ -43,6 +45,9 @@ class KeyboardButton(Button):
 class Composer(TextArea):
     """Submit text or insert an explicit line break."""
 
+    command_menu_active = False
+    command_menu_escape_enabled = False
+
     class Submitted(Message):
         """Report one submitted composer value."""
 
@@ -50,7 +55,41 @@ class Composer(TextArea):
             self.value = value
             super().__init__()
 
+    class CommandMoved(Message):
+        """Request a new highlighted command."""
+
+        def __init__(self, offset: int) -> None:
+            """Set the command selection offset."""
+            self.offset = offset
+            super().__init__()
+
+    class CommandDismissed(Message):
+        """Request that the visible command menu closes."""
+
+    class CommandCompleted(Message):
+        """Request completion of the highlighted command."""
+
     async def _on_key(self, event: events.Key) -> None:
+        if self.command_menu_active and event.key in {"left", "right", "up", "down"}:
+            event.prevent_default()
+            event.stop()
+            offset = -1 if event.key in {"left", "up"} else 1
+            self.post_message(self.CommandMoved(offset))
+            return
+        if (
+            self.command_menu_active
+            and self.command_menu_escape_enabled
+            and event.key == "escape"
+        ):
+            event.prevent_default()
+            event.stop()
+            self.post_message(self.CommandDismissed())
+            return
+        if self.command_menu_active and event.key == "tab":
+            event.prevent_default()
+            event.stop()
+            self.post_message(self.CommandCompleted())
+            return
         if event.key == "enter":
             event.prevent_default()
             event.stop()
@@ -62,6 +101,51 @@ class Composer(TextArea):
             self.insert("\n")
             return
         await super()._on_key(event)
+
+
+class CommandMenu(Widget):
+    """Show keyboard-controlled commands above the composer."""
+
+    def compose(self) -> ComposeResult:
+        """Create the command heading and actions."""
+        yield Static("COMMAND", markup=False, id="command-message")
+        with Vertical(id="command-actions"):
+            for command in COMMANDS:
+                with Horizontal(
+                    id=f"command-{command[1:]}",
+                    classes="command-action",
+                ):
+                    yield Static(
+                        command,
+                        markup=False,
+                        classes="command-name",
+                    )
+                    yield Static(
+                        COMMAND_DESCRIPTIONS[command],
+                        markup=False,
+                        classes="command-description",
+                    )
+
+    def set_commands(
+        self,
+        commands: tuple[str, ...],
+        selected: str | None,
+        *,
+        registry_enabled: bool,
+    ) -> None:
+        """Set visible commands and the highlighted command."""
+        self.display = bool(commands)
+        selected_index = commands.index(selected) if selected in commands else 0
+        start = min(max(selected_index - 2, 0), max(len(commands) - 3, 0))
+        preview = commands[start : start + 3]
+        for command in COMMANDS:
+            action = self.query_one(f"#command-{command[1:]}", Horizontal)
+            action.display = command in preview
+            action.set_class(command == selected, "-selected")
+            action.set_class(
+                command == "/registry" and not registry_enabled,
+                "-disabled",
+            )
 
 
 class LoadingStatus(Widget):
@@ -98,31 +182,6 @@ class LoadingStatus(Widget):
         return Text.assemble(frame, " ", self.state)
 
 
-class InfoModal(ModalScreen[None]):
-    """Show command help or chat statistics."""
-
-    def __init__(self, title: str, body: str) -> None:
-        """Set the dialog title and body."""
-        super().__init__()
-        self.title_value = title
-        self.body = body
-
-    def compose(self) -> ComposeResult:
-        """Create the information dialog."""
-        with Vertical(id="info-dialog"):
-            yield Label(self.title_value, id="info-title")
-            yield Static(self.body, markup=False, id="info-body")
-            yield KeyboardButton("Close", id="close")
-
-    def on_mount(self) -> None:
-        """Focus the close action."""
-        self.query_one(KeyboardButton).focus()
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        """Close the information dialog."""
-        self.dismiss()
-
-
 class ConfirmModal(ModalScreen[str]):
     """Ask how to handle unsaved transcript changes."""
 
@@ -131,8 +190,8 @@ class ConfirmModal(ModalScreen[str]):
         with Vertical(id="confirm-dialog"):
             yield Static("CONNECTION", markup=False, id="confirm-message")
             with Horizontal(id="confirm-actions"):
-                yield KeyboardButton("RECORD", id="save")
                 yield KeyboardButton("DISCONNECT", id="discard")
+                yield KeyboardButton("RECORD", id="save")
                 yield KeyboardButton("RESUME", id="cancel")
 
     def on_mount(self) -> None:
@@ -155,6 +214,11 @@ class ConfirmModal(ModalScreen[str]):
 
     def on_key(self, event: events.Key) -> None:
         """Move focus between confirmation actions."""
+        if event.key == "escape":
+            self.dismiss("cancel")
+            event.prevent_default()
+            event.stop()
+            return
         if event.key not in {"left", "right", "up", "down"}:
             return
         buttons = list(self.query(KeyboardButton))

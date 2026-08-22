@@ -169,7 +169,9 @@ landing table is the `REGISTRY`. It has no search field or pointer
 activation. Use the arrow keys and Enter to select a row. In chat, use the mouse
 wheel or Ctrl+Up and Ctrl+Down to scroll the transcript. Chat headers retain the
 full canonical assistant name; assistant turns use only the uppercase target
-name.
+name. Type `/` to open the keyboard-driven `/exit` and `/registry` menu, and use
+Tab to complete its selected command. Unsaved changes open the horizontal
+DISCONNECT, RECORD, and RESUME confirmation before navigation.
 
 ```console
 just chat run RUN_ID DATASET_ID
@@ -199,8 +201,8 @@ Important constraints:
   use immutable files.
 - Keep the Mac on, awake, and logged in for the LaunchAgent. Training, inference,
   and automatic evaluation recipes use `caffeinate`.
-- Chat never reads Signal or DuckDB, and it never autosaves. Only `/save` or the
-  Save choice in an unsaved-change prompt writes a private snapshot.
+- Chat never reads Signal or DuckDB, and it never autosaves. Only RECORD in the
+  unsaved-change confirmation writes a private snapshot.
 - Treat raw events, hashed records, chat transcripts, and saved snapshots as
   private data.
 
