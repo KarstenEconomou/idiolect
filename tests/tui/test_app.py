@@ -14,15 +14,17 @@ from rich.text import Text
 from textual import events
 from textual.containers import Horizontal, VerticalScroll
 from textual.pilot import Pilot
-from textual.widgets import Input, OptionList, Static
+from textual.widgets import Input, OptionList, Rule, Static
 
 from idiolect.chat.discovery import Assistant, DiscoveryItem
 from idiolect.chat.runtime import ChatRuntime
 from idiolect.chat.state import ChatSession, ChatTurn, TurnTelemetry
 from idiolect.chat.storage import ChatStorageError, ChatStore, SavedChat
 from idiolect.chat.worker import WorkerState
-from idiolect.config import ChatConfig, GenerationConfig
+from idiolect.config import ChatConfig, GenerationConfig, TrainDataConfig
+from idiolect.model import ModelSpec
 from idiolect.tui.app import ChatApp
+from idiolect.tui.specs import HalfCellScrollBarRender
 from idiolect.tui.widgets import (
     CommandMenu,
     Composer,
@@ -70,7 +72,7 @@ def test_registry_opens_highlighted_assistant_from_keyboard(tmp_path) -> None:
             assert isinstance(prompt, Text)
             assert "READY" in prompt.plain
             assert str(app.query_one("#catalog-hints", Static).content) == (
-                "↑↓ MOVE    ENTER CONNECT    CTRL+C QUIT"
+                "↑↓ MOVE    ENTER CONNECT    S SPECS    CTRL+C QUIT"
             )
 
             await pilot.click(chooser, offset=(2, 1))
@@ -82,6 +84,181 @@ def test_registry_opens_highlighted_assistant_from_keyboard(tmp_path) -> None:
             await _wait_for_chat(app, pilot)
             assert runtime.session is not None
             assert runtime.session.assistant is assistant
+
+    asyncio.run(verify())
+
+
+def test_registry_opens_specs_and_returns_to_the_same_row(tmp_path) -> None:
+    """Check SPECS navigation without loading or changing the selection."""
+    chat = ChatConfig(output=tmp_path)
+    generation = GenerationConfig(backend="mlx-lm", max_prompt_tokens=1920)
+    assistant = _assistant()
+    runtime = ImmediateRuntime(chat, generation)
+    app = ChatApp(
+        chat,
+        generation,
+        assistants=(DiscoveryItem(assistant.name, "BASE", None, assistant),),
+        runtime_factory=cast(Callable[..., ChatRuntime], lambda *_args: runtime),
+    )
+
+    async def verify() -> None:
+        async with app.run_test(size=(80, 24)) as pilot:
+            chooser = app.query_one("#chooser", OptionList)
+            assert chooser.highlighted == 0
+
+            await pilot.press("s")
+            await pilot.pause()
+
+            assert app.query_one("#landing").display is False
+            assert app.query_one("#specs").display
+            assert runtime.session is None
+            assert str(app.query_one("#specs-identity", Static).content) == (
+                assistant.name
+            )
+
+            await pilot.press("escape")
+            await pilot.pause()
+
+            assert app.query_one("#landing").display
+            assert app.query_one("#specs").display is False
+            assert chooser.highlighted == 0
+            assert chooser.has_focus
+            assert runtime.session is None
+
+    asyncio.run(verify())
+
+
+def test_specs_page_uses_a_stable_half_cell_scrollbar(tmp_path) -> None:
+    """Check the SPECS scrollbar width and interaction-state colors."""
+    assistant = _assistant()
+    app = ChatApp(
+        ChatConfig(output=tmp_path),
+        GenerationConfig(),
+        assistants=(DiscoveryItem(assistant.name, "BASE", None, assistant),),
+        runtime_factory=cast(
+            Callable[..., ChatRuntime],
+            lambda chat, generation: ImmediateRuntime(chat, generation),
+        ),
+    )
+
+    async def verify() -> None:
+        async with app.run_test(size=(80, 24)) as pilot:
+            await pilot.press("s")
+            await pilot.pause()
+
+            scroller = app.query_one("#specs-scroll", VerticalScroll)
+            assert scroller.styles.scrollbar_size_vertical == 1
+            assert scroller.vertical_scrollbar.renderer is HalfCellScrollBarRender
+            assert (
+                scroller.styles.scrollbar_color_hover
+                == scroller.styles.scrollbar_color
+            )
+            assert (
+                scroller.styles.scrollbar_color_active
+                == scroller.styles.scrollbar_color
+            )
+            assert (
+                scroller.styles.scrollbar_background_hover
+                == scroller.styles.scrollbar_background
+            )
+            assert (
+                scroller.styles.scrollbar_background_active
+                == scroller.styles.scrollbar_background
+            )
+
+    asyncio.run(verify())
+
+
+def test_registry_opens_trace_specs_with_saved_lineage_and_policy(tmp_path) -> None:
+    """Check TRACE registry wiring uses the saved model and generation policy."""
+    chat = ChatConfig(output=tmp_path)
+    generation = GenerationConfig(temperature=0.7)
+    assistant = _assistant()
+    trace = SavedChat(
+        "c" * 64,
+        tmp_path / ("c" * 64),
+        datetime(2026, 8, 22, tzinfo=UTC),
+        "Night session",
+        None,
+        assistant,
+        chat,
+        GenerationConfig(temperature=0.3),
+        (),
+    )
+    runtime = ImmediateRuntime(chat, generation)
+    app = ChatApp(
+        chat,
+        generation,
+        assistants=(DiscoveryItem(assistant.name, "BASE", None, assistant),),
+        store=cast(ChatStore, RegistryStore(trace)),
+        runtime_factory=cast(Callable[..., ChatRuntime], lambda *_args: runtime),
+    )
+
+    async def verify() -> None:
+        async with app.run_test(size=(80, 24)) as pilot:
+            await pilot.press("down", "s")
+            await pilot.pause()
+
+            content = app.query_one("#specs-body", Static).content
+            assert isinstance(content, Text)
+            assert "TRACE\n" in content.plain
+            assert trace.title in content.plain
+            assert trace.id in content.plain
+            assert "TEMPERATURE           0.3" in content.plain
+            assert "NOT EVALUATED" in content.plain
+            assert runtime.session is None
+
+    asyncio.run(verify())
+
+
+def test_registry_does_not_open_specs_for_a_fault(tmp_path) -> None:
+    """Check that an unavailable registry entry has no SPECS action."""
+    app = ChatApp(
+        ChatConfig(output=tmp_path),
+        GenerationConfig(),
+        assistants=(
+            DiscoveryItem("Unavailable assistant", "failed", None, None, "invalid"),
+        ),
+        runtime_factory=cast(
+            Callable[..., ChatRuntime],
+            lambda chat, generation: ImmediateRuntime(chat, generation),
+        ),
+    )
+
+    async def verify() -> None:
+        async with app.run_test(size=(80, 24)) as pilot:
+            assert app.query_one("#chooser", OptionList).highlighted is None
+
+            await pilot.press("s")
+            await pilot.pause()
+
+            assert app.query_one("#landing").display
+            assert app.query_one("#specs").display is False
+
+    asyncio.run(verify())
+
+
+def test_chat_divider_matches_the_page_gutter(tmp_path) -> None:
+    """Check the chat divider has the REGISTRY and SPECS horizontal inset."""
+    chat = ChatConfig(output=tmp_path)
+    generation = GenerationConfig()
+    app = ChatApp(
+        chat,
+        generation,
+        runtime_factory=cast(
+            Callable[..., ChatRuntime],
+            lambda *_args: ImmediateRuntime(chat, generation),
+        ),
+        initial_assistant=_assistant(),
+    )
+
+    async def verify() -> None:
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_chat(app, pilot)
+
+            divider = app.query_one("#identity-rule", Rule)
+            assert divider.content_region.x == 2
+            assert divider.content_region.width == app.size.width - 4
 
     asyncio.run(verify())
 
@@ -1229,12 +1406,24 @@ class RegistryStore:
 
 
 def _assistant() -> Assistant:
-    return cast(
-        Assistant,
-        SimpleNamespace(
-            name="IDIOLECT // DIXIE@BASE [M]",
-            target_name="DIXIE",
-            run=None,
-            context_messages=32,
+    return Assistant(
+        name="IDIOLECT // DIXIE@BASE [M]",
+        target_name="DIXIE",
+        model_basename="M",
+        run=None,
+        dataset=None,
+        context_messages=32,
+        base_model=ModelSpec(
+            "example/M",
+            "hub",
+            "revision-1",
+            None,
+            False,
+        ),
+        base_data=TrainDataConfig(
+            format="chat-template",
+            system_prompt="Speak with terse technical precision.",
+            prompt_role="user",
+            completion_role="assistant",
         ),
     )

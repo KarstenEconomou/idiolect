@@ -65,6 +65,19 @@ an immutable replacement with the same lineage parent. Select `ERASE` to
 permanently remove that verified lineage leaf. A trace with a child cannot be
 renamed or erased.
 
+Press S on any `READY` row to open `SPECS` without resolving or loading the
+model. The scrollable page shows the complete verified model identity, source,
+revision, digests, prompt and generation policy, and available run, dataset, and
+TRACE lineage. It uses the compact `CTX`, `TOK`, `REP`, `GEN`, and `EVAL` labels.
+Prompt-format values use the same one-cell inset as transcript turns, including
+every line of a multiline system prompt. Prefixes and suffixes show control
+whitespace with escapes such as `\n`. Press Escape to return to the same
+highlighted registry row.
+The DIXIE BASE page includes a deterministic fidelity scorecard labeled
+`SYNTHETIC // UI FIXTURE`; its values demonstrate the terminal graphics and are
+not measurements. CONSTRUCT and TRACE pages show `NOT EVALUATED` because chat
+does not scan or infer results from private evaluation artifacts.
+
 Verified run/dataset pairs and saved lineage leaves follow the default row. Each
 adapter has the identity `IDIOLECT // NAME@run [MODEL]`. `run` is the first eight
 characters of the full run ID. `NAME` is the uppercase display of the recorded
@@ -126,9 +139,10 @@ the bottom when the menu closes.
 The TUI formats a focused Markdown subset in user and assistant turns, including
 saved history and replies while they stream. Bold and italic emphasis behave as
 standard Markdown. ATX headings keep their `#` through `######` prefix and bold
-the complete heading line. Inline code and backtick or tilde fenced code use a
-dark muted-gray background without syntax highlighting. Fences and language
-tags are hidden. Lists keep their authored bullets, numbers, and delimiters.
+the complete heading line. Inline code and backtick or tilde fenced code use
+terminal-default text on an ANSI bright-black background without syntax
+highlighting. Fences and language tags are hidden. Lists keep their authored
+bullets, numbers, and delimiters.
 Each list level adds one indentation cell, and wrapped lines align below item
 text.
 Blockquotes keep their `>` markers and add one indentation cell per quote level.

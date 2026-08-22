@@ -35,7 +35,7 @@ _PARSER = _ChatMarkdownIt("zero").enable(
 )
 _BOLD = Style(bold=True)
 _ITALIC = Style(italic=True)
-_CODE = Style(bgcolor="grey23")
+_CODE = Style(bgcolor="bright_black")
 _METADATA = Style(color="bright_black")
 
 

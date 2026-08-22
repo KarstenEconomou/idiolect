@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable, Iterable
-from typing import ClassVar
+from typing import Any, ClassVar, cast
 
 from textual import events, work
 from textual.app import App, ComposeResult
@@ -28,6 +28,7 @@ from idiolect.config import ChatConfig, GenerationConfig
 from idiolect.tui.catalog import CatalogLayout
 from idiolect.tui.commands import CommandError, completions, parse_command
 from idiolect.tui.markdown import is_web_link
+from idiolect.tui.specs import HalfCellScrollBarRender, render_specs
 from idiolect.tui.widgets import (
     CommandMenu,
     Composer,
@@ -108,8 +109,15 @@ class ChatApp(App[None]):
     #catalog-hints { height: 1; color: $metadata; background: $terminal; padding: 0 2; }
     #catalog-error { display: none; height: 1; color: $failure; background: $terminal; padding: 0 2; text-align: right; }
     #footer { height: 1; color: $metadata; background: $terminal; padding: 0 2; }
+    #specs { display: none; background: $terminal; }
+    #specs-identity { height: auto; min-height: 1; margin-top: 1; padding: 0 2; color: $accent; text-style: bold; }
+    #specs-rule { height: 1; margin: 0; padding: 0 2; color: $metadata; }
+    #specs-scroll { height: 1fr; padding: 0 2; background: $terminal; scrollbar-size-vertical: 1; scrollbar-color: $metadata; scrollbar-color-hover: $metadata; scrollbar-color-active: $metadata; scrollbar-background: $terminal; scrollbar-background-hover: $terminal; scrollbar-background-active: $terminal; }
+    #specs-body { width: 100%; height: auto; color: ansi_white; background: $terminal; }
+    #specs-hints { height: 1; color: $metadata; background: $terminal; padding: 0 2; }
     #chat { display: none; }
-    #identity { height: 2; padding: 0 2; color: $accent; background: $terminal; border-bottom: solid $metadata; text-style: bold; }
+    #identity { height: 1; padding: 0 2; color: $accent; background: $terminal; text-style: bold; }
+    #identity-rule { height: 1; margin: 0; padding: 0 2; color: $metadata; }
     #transcript-scroll { height: 1fr; padding: 1 2; background: $terminal; scrollbar-size: 0 0; }
     #transcript { width: 100%; height: auto; background: $terminal; }
     #composer-bar { height: auto; min-height: 3; max-height: 10; border: solid $metadata; margin: 0 1; padding: 0 1; background: $terminal; scrollbar-size: 0 0; }
@@ -216,6 +224,7 @@ class ChatApp(App[None]):
         self._loading_timer: Timer | None = None
         self._error_timer: Timer | None = None
         self._selected_catalog_key: str | None = None
+        self._specs_key: str | None = None
 
     def compose(self) -> ComposeResult:
         """Create the landing and chat screen widgets."""
@@ -239,8 +248,19 @@ class ChatApp(App[None]):
                 markup=False,
                 id="catalog-hints",
             )
+        with Container(id="specs"):
+            yield Static("", markup=False, id="specs-identity")
+            yield Rule(line_style="solid", id="specs-rule")
+            with VerticalScroll(id="specs-scroll"):
+                yield Static("", markup=False, id="specs-body")
+            yield Static(
+                "↑↓ SCROLL    ESC REGISTRY    CTRL+C QUIT",
+                markup=False,
+                id="specs-hints",
+            )
         with Container(id="chat"):
             yield Static("", markup=False, id="identity")
+            yield Rule(line_style="solid", id="identity-rule")
             with VerticalScroll(id="transcript-scroll"):
                 yield Transcript(id="transcript")
             yield CommandMenu(id="command-menu")
@@ -253,6 +273,8 @@ class ChatApp(App[None]):
 
     def on_mount(self) -> None:
         """Populate the chooser or open a direct selection."""
+        specs_scroll = self.query_one("#specs-scroll", VerticalScroll)
+        cast(Any, specs_scroll.vertical_scrollbar).renderer = HalfCellScrollBarRender
         self._fill_chooser()
         self._loading_timer = self.set_interval(0.1, self._refresh_loading_state)
         if self.initial_chat is not None:
@@ -282,6 +304,8 @@ class ChatApp(App[None]):
             self.call_after_refresh(self._fill_chooser)
         elif self.query_one("#chat").display:
             self.call_after_refresh(self._update_footer)
+        elif self.query_one("#specs").display:
+            self.call_after_refresh(self._render_specs)
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         """Open the selected assistant or saved chat."""
@@ -314,6 +338,20 @@ class ChatApp(App[None]):
                 TraceMenuModal(row.title),
                 lambda choice: self._after_trace_action(row, choice),
             )
+
+    def on_keyboard_option_list_specs_requested(
+        self,
+        event: KeyboardOptionList.SpecsRequested,
+    ) -> None:
+        """Open model details for one available registry row."""
+        if self._loading or self._trace_menu_id is not None:
+            return
+        row = self._rows.get(event.key)
+        if isinstance(row, DiscoveryItem):
+            if row.available and row.assistant is not None:
+                self._show_specs(event.key)
+        elif isinstance(row, SavedChat):
+            self._show_specs(event.key)
 
     def _after_trace_action(self, trace: SavedChat, choice: str | None) -> None:
         if choice == "rename":
@@ -472,7 +510,9 @@ class ChatApp(App[None]):
 
     def action_stop(self) -> None:
         """Stop active generation at a token boundary."""
-        if self._generating:
+        if self.query_one("#specs").display:
+            self._show_registry()
+        elif self._generating:
             self.runtime.cancel()
 
     def action_interrupt(self) -> None:
@@ -937,6 +977,47 @@ class ChatApp(App[None]):
                 break
         self._update_catalog_hints()
 
+    def _show_specs(self, key: str) -> None:
+        """Show details for one registry entry without loading its model."""
+        self._specs_key = key
+        self.query_one("#landing").display = False
+        self.query_one("#chat").display = False
+        self.query_one("#specs").display = True
+        self._render_specs()
+        self.query_one("#specs-scroll", VerticalScroll).focus()
+
+    def _show_registry(self) -> None:
+        """Return from model details to the unchanged registry selection."""
+        self.query_one("#specs").display = False
+        self.query_one("#landing").display = True
+        self._specs_key = None
+        self.query_one("#chooser", OptionList).focus()
+
+    def _render_specs(self) -> None:
+        """Render the selected model details at the current terminal width."""
+        row = self._rows.get(self._specs_key or "")
+        if isinstance(row, DiscoveryItem) and row.assistant is not None:
+            assistant = row.assistant
+            kind = "BASE" if assistant.run is None else "CONSTRUCT"
+            generation = self.generation
+            trace = None
+        elif isinstance(row, SavedChat):
+            assistant = row.assistant
+            kind = "TRACE"
+            generation = row.generation
+            trace = row
+        else:
+            return
+        self.query_one("#specs-identity", Static).update(assistant.name)
+        body = render_specs(
+            assistant,
+            generation,
+            kind,
+            max(24, self.size.width - 4),
+            trace,
+        )
+        self.query_one("#specs-body", Static).update(body)
+
     def _refresh_catalog_prompts(self, selected_key: str) -> None:
         self._selected_catalog_key = selected_key
         chooser = self.query_one("#chooser", OptionList)
@@ -990,13 +1071,25 @@ class ChatApp(App[None]):
                 else "←→ MOVE    ENTER SELECT    ESC RETAIN"
             )
             return
-        hints = "↑↓ MOVE    ENTER CONNECT"
-        if any(isinstance(row, SavedChat) for row in self._rows.values()):
-            hints += "    SPACE DETAILS"
-        if isinstance(self._rows.get(self._selected_catalog_key or ""), SavedChat):
-            hints += "    BACKSPACE MANAGE"
-        hints += "    CTRL+C QUIT"
-        self.query_one("#catalog-hints", Static).update(hints)
+        has_traces = any(isinstance(row, SavedChat) for row in self._rows.values())
+        selected_trace = isinstance(
+            self._rows.get(self._selected_catalog_key or ""),
+            SavedChat,
+        )
+        fields = ["↑↓ MOVE", "ENTER CONNECT", "S SPECS"]
+        if has_traces:
+            fields.append("SPACE DETAILS")
+        if selected_trace:
+            fields.append("BACKSPACE MANAGE")
+        fields.append("CTRL+C QUIT")
+        available = max(20, self.size.width - 4)
+        gap = "    " if available >= 60 else "  "
+        for removable in ("CTRL+C QUIT", "SPACE DETAILS", "↑↓ MOVE"):
+            if len(gap.join(fields)) <= available:
+                break
+            if removable in fields:
+                fields.remove(removable)
+        self.query_one("#catalog-hints", Static).update(gap.join(fields))
 
     def _session(self) -> ChatSession:
         if self.runtime.session is None:

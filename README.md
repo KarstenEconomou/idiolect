@@ -170,18 +170,25 @@ activation. Use the arrow keys to choose a row and Enter to connect. Registry
 rows show MODEL identity, TYPE, and ENTRY readiness;
 saved TRACE rows show their names below the canonical model identity and use the
 muted metadata selection style; press Space from any registry row to collapse or
-expand all trace names. When a TRACE is highlighted, press Backspace to manage
-it in the horizontal TRACE menu. The heading repeats the trace name, and the
-subject name blinks while the menu is open. The TRACE controls use the same
-outer inset as the chat composer. ERASE removes that lineage leaf, RENAME
-replaces it with a newly named immutable leaf, and RETAIN keeps it.
+expand all trace names. Press S on a READY row to open its scrollable SPECS page
+without loading the model, and press Escape to return to the same row. SPECS
+shows model, policy, and lineage metadata with compact labels and prompt-format
+values aligned to the transcript's one-cell inset. DIXIE BASE also shows a clearly
+labeled synthetic fidelity scorecard; adapters and traces remain NOT EVALUATED
+because chat does not inspect private evaluation artifacts. When a TRACE is
+highlighted, press Backspace to manage it in the horizontal TRACE menu. The
+heading repeats the trace name, and the subject name blinks while the menu is
+open. The TRACE controls use the same outer inset as the chat composer. ERASE
+removes that lineage leaf, RENAME replaces it with a newly named immutable leaf,
+and RETAIN keeps it.
 In chat, use the mouse wheel or Ctrl+Up and Ctrl+Down to scroll the transcript.
 Chat headers retain the full canonical
 assistant name; assistant turns use only the uppercase target name. Transcript
-turns format focused Markdown for emphasis, retained-prefix headings, subtly
-shaded code, compact nested lists, and indented quotes without changing saved
-text. Explicit HTTP and HTTPS Markdown links keep their complete destination
-visible and use clickable underlined labels. Type `/` to open the keyboard-driven
+turns format focused Markdown for emphasis, retained-prefix headings, code on
+an ANSI bright-black background, compact nested lists, and indented quotes
+without changing saved text. Explicit HTTP and HTTPS Markdown links keep their
+complete destination visible and use clickable underlined labels. Type `/` to
+open the keyboard-driven
 `/exit`, `/registry`, and `/save` menu, and use Tab to complete its selected
 command. `/save` requests an optional trace name and records a checkpoint without
 leaving chat. The empty naming field previews its generated default. The command

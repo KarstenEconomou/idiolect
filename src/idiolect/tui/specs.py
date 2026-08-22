@@ -1,0 +1,295 @@
+"""Render full model details for the terminal interface."""
+
+from __future__ import annotations
+
+import json
+from collections.abc import Mapping
+from dataclasses import asdict
+from typing import Any
+
+from rich.color import Color
+from rich.segment import Segment, Segments
+from rich.style import Style
+from rich.text import Text
+from textual.scrollbar import ScrollBarRender
+
+from idiolect.chat.discovery import Assistant
+from idiolect.chat.storage import SavedChat
+from idiolect.config import GenerationConfig
+from idiolect.types import Split
+
+_KEY_WIDTH = 22
+_ABBREVIATIONS = {
+    "CONTEXT": "CTX",
+    "EVALUATION": "EVAL",
+    "GENERATION": "GEN",
+    "REPETITION": "REP",
+    "TOKENS": "TOK",
+}
+_PROMPT_BLOCK_FIELDS = frozenset(
+    {
+        "system_prompt",
+        "prompt_prefix",
+        "prompt_suffix",
+        "completion_prefix",
+        "completion_suffix",
+    }
+)
+_DEFAULT_SCROLL_BACK = Color.parse("#555555")
+_DEFAULT_SCROLL_BAR = Color.parse("bright_magenta")
+_FIELD_NAME = Style(dim=True, bold=False)
+
+
+class HalfCellScrollBarRender(ScrollBarRender):
+    """Render a vertical scrollbar with one half-cell glyph."""
+
+    @classmethod
+    def render_bar(
+        cls,
+        size: int = 25,
+        virtual_size: float = 50,
+        window_size: float = 20,
+        position: float = 0,
+        thickness: int = 1,
+        vertical: bool = True,
+        back_color: Color = _DEFAULT_SCROLL_BACK,
+        bar_color: Color = _DEFAULT_SCROLL_BAR,
+    ) -> Segments:
+        """Return the standard bar with a half-cell vertical thumb."""
+        rendered = super().render_bar(
+            size,
+            virtual_size,
+            window_size,
+            position,
+            thickness,
+            vertical,
+            back_color,
+            bar_color,
+        )
+        if not vertical:
+            return rendered
+        segments = []
+        for segment in rendered.segments:
+            meta = None if segment.style is None else segment.style.meta
+            if meta is not None and meta.get("@mouse.down") == "grab":
+                segment = Segment(
+                    "▐" * thickness,
+                    Style(color=bar_color, bgcolor=back_color, meta=meta),
+                )
+            segments.append(segment)
+        return Segments(segments, new_lines=rendered.new_lines)
+
+
+def render_specs(
+    assistant: Assistant,
+    generation: GenerationConfig,
+    kind: str,
+    width: int,
+    trace: SavedChat | None = None,
+) -> Text:
+    """Return one responsive model specification document."""
+    document = Text()
+    _section(document, "IDENTITY")
+    _field(document, "TYPE", kind)
+    _field(document, "TARGET", assistant.target_name)
+    _field(document, "ENTRY", "READY")
+
+    _section(document, "MODEL")
+    _field(document, "NAME", assistant.model.name)
+    _field(document, "DISPLAY", assistant.model_basename)
+    _field(document, "SOURCE", assistant.model.source.upper())
+    _field(document, "REVISION", assistant.model.revision)
+    _field(document, "CACHE", assistant.model.cache)
+    _field(document, "MODEL DIGEST", assistant.model_digest)
+    _field(
+        document,
+        "TRUST REMOTE CODE",
+        "YES" if assistant.model.trust_remote_code else "NO",
+    )
+
+    if assistant.run is not None:
+        _section(document, "LINEAGE")
+        _field(document, "RUN ID", assistant.run_id)
+        _field(document, "RUN PATH", assistant.run.ref.path)
+        _field(document, "DATASET ID", assistant.dataset_id)
+        if assistant.dataset is not None:
+            _field(document, "DATASET PATH", assistant.dataset.dataset.path)
+        _field(document, "ADAPTER PATH", assistant.run.adapter_path)
+        _field(document, "ADAPTER DIGEST", assistant.adapter_digest)
+        _field(document, "TRAINING SEED", assistant.training_seed)
+        _field(document, "MAX SEQUENCE", assistant.run.max_seq_length)
+        _field(document, "DATASET SPLITS", _split_counts(assistant))
+
+        _section(document, "TRAINING POLICY")
+        for key, value in _flatten(assistant.run.policy):
+            _field(document, key, value)
+
+    if trace is not None:
+        _section(document, "TRACE")
+        _field(document, "NAME", trace.title)
+        _field(document, "TRACE ID", trace.id)
+        _field(document, "TRACE PATH", trace.path)
+        _field(document, "PARENT ID", trace.parent_id)
+        _field(document, "CREATED", trace.created_at.isoformat())
+        _field(document, "TURNS", len(trace.turns))
+
+    _section(document, "CONVERSATION POLICY")
+    _field(document, "CONTEXT MESSAGES", assistant.context_messages)
+    for key, value in asdict(assistant.data).items():
+        _field(document, key, value)
+
+    _section(document, "GENERATION POLICY")
+    for key, value in asdict(generation).items():
+        _field(document, key, value)
+
+    _section(document, "EVALUATION")
+    if kind == "BASE" and assistant.target_name.upper() == "DIXIE":
+        _synthetic_evaluation(document, width)
+    else:
+        _field(document, "STATUS", "NOT EVALUATED", value_style="bright_black")
+        _note(document, "No recorded evaluation was supplied to this registry.")
+    return document
+
+
+def _section(document: Text, name: str) -> None:
+    """Append one specification section heading."""
+    if document:
+        document.append("\n")
+    document.append(f"{_label(name)}\n", style="bold white")
+
+
+def _field(
+    document: Text,
+    name: str,
+    value: object,
+    *,
+    value_style: str = "white",
+) -> None:
+    """Append one aligned field and preserve multiline values."""
+    label = _label(name)
+    field_name = name.replace(" ", "_").casefold()
+    if field_name in _PROMPT_BLOCK_FIELDS:
+        _prompt_block_field(
+            document,
+            label,
+            value if isinstance(value, str) else _display(value),
+            value_style,
+            system_prompt=field_name == "system_prompt",
+        )
+        return
+    displayed = _display(value)
+    document.append(f"{label:<{_KEY_WIDTH}}", style=_FIELD_NAME)
+    document.append(displayed, style=value_style)
+    document.append("\n")
+
+
+def _prompt_block_field(
+    document: Text,
+    label: str,
+    value: str,
+    value_style: str,
+    *,
+    system_prompt: bool,
+) -> None:
+    """Append one prompt-format value at the fixed value offset."""
+    document.append(label, style=_FIELD_NAME)
+    document.append("\n")
+    normalized = value.replace("\r\n", "\n").replace("\r", "\n")
+    if system_prompt:
+        lines = normalized.split("\n") if normalized else ["—"]
+    else:
+        visible = json.dumps(normalized, ensure_ascii=False)[1:-1]
+        lines = [visible or "—"]
+    for content in lines:
+        document.append(" ", style=_FIELD_NAME)
+        document.append(content, style=value_style)
+        document.append("\n")
+
+
+def _label(value: str) -> str:
+    """Return one uppercase interface label with standard abbreviations."""
+    words = value.replace("_", " ").upper().split()
+    return " ".join(_ABBREVIATIONS.get(word, word) for word in words)
+
+
+def _note(document: Text, value: str) -> None:
+    """Append one metadata note."""
+    document.append(value, style="bright_black")
+    document.append("\n")
+
+
+def _display(value: object) -> str:
+    """Return a stable display value for one specification field."""
+    if value is None or value == "" or value == ():
+        return "—"
+    if isinstance(value, bool):
+        return "YES" if value else "NO"
+    if isinstance(value, float):
+        return f"{value:g}"
+    if isinstance(value, (tuple, list)):
+        return ", ".join(_display(item) for item in value)
+    if isinstance(value, Mapping):
+        return json.dumps(value, sort_keys=True, separators=(",", ":"))
+    return str(value)
+
+
+def _flatten(
+    values: Mapping[str, Any],
+    prefix: str = "",
+) -> tuple[tuple[str, object], ...]:
+    """Flatten a recorded policy into stable display fields."""
+    result: list[tuple[str, object]] = []
+    for key in sorted(values):
+        value = values[key]
+        name = f"{prefix} {key}".strip()
+        if isinstance(value, Mapping):
+            result.extend(_flatten(value, name))
+        else:
+            result.append((name, value))
+    return tuple(result)
+
+
+def _split_counts(assistant: Assistant) -> str:
+    """Return verified dataset counts in pipeline order."""
+    return "    ".join(
+        f"{split.value.upper()} {assistant.counts.get(split, 0):,}"
+        for split in (Split.TRAIN, Split.VALID, Split.TEST)
+    )
+
+
+def _synthetic_evaluation(document: Text, width: int) -> None:
+    """Append the deterministic DIXIE base-model scorecard."""
+    _field(document, "STATUS", "SYNTHETIC // UI FIXTURE")
+    _field(document, "SUITE", "FIDELITY")
+    _field(document, "SAMPLE", "128 VALID REPLIES    3 GEN SEEDS")
+    _field(document, "MACRO MEAN NLL", 2.10)
+    _field(document, "CORPUS PERPLEXITY", 8.21)
+    _field(document, "VOICE 3-GRAM JSD", 0.118)
+    document.append("\n")
+    bar_width = max(8, min(24, width - _KEY_WIDTH - 23))
+    for label, value, limit in (
+        ("EMPTY OUTPUT", 0.000, 0.020),
+        ("FORMAT VIOLATION", 0.004, 0.020),
+        ("TRUNCATION", 0.013, 0.030),
+        ("MEMORIZATION", 0.005, 0.020),
+    ):
+        _metric(document, label, value, limit, bar_width)
+    _note(document, "Fixture values demonstrate the scorecard layout only.")
+
+
+def _metric(
+    document: Text,
+    label: str,
+    value: float,
+    limit: float,
+    width: int,
+) -> None:
+    """Append one bounded evaluation metric bar."""
+    passed = value <= limit
+    filled = min(width, round(width * value / limit)) if limit else width
+    document.append(f"{label:<{_KEY_WIDTH}}", style=_FIELD_NAME)
+    document.append("█" * filled, style="white" if passed else "red")
+    document.append("░" * (width - filled), style="bright_black")
+    document.append(f"  {value:>5.1%} / {limit:.1%}  ", style="white")
+    document.append("PASS" if passed else "FAIL", style="white" if passed else "bold red")
+    document.append("\n")

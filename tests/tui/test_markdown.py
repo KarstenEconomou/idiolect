@@ -32,9 +32,11 @@ def test_formats_supported_inline_text_and_retains_heading_prefixes() -> None:
     assert _style(segments, "italic").italic
     assert _style(segments, "both").bold
     assert _style(segments, "both").italic
-    code_background = _style(segments, "code").bgcolor
-    assert code_background is not None
-    assert code_background.number == 237
+    code_style = _style(segments, "code")
+    assert code_style.color is None
+    assert code_style.bgcolor is not None
+    assert code_style.bgcolor.number == 8
+    assert not code_style.dim
     underline_style = _segment_containing(segments, "<u>underline</u>").style
     assert underline_style is None or underline_style.underline is not True
 
@@ -79,9 +81,6 @@ def test_indents_each_quote_level_and_aligns_wrapped_quote_text() -> None:
         "> escaped\n"
     )
     assert _style(segments, "bold").bold
-    inline_background = _style(segments, "> inline code").bgcolor
-    assert inline_background is not None
-    assert inline_background.number == 237
 
 
 def test_formats_safe_links_with_visible_muted_destinations() -> None:
@@ -117,7 +116,7 @@ def test_formats_safe_links_with_visible_muted_destinations() -> None:
     assert destination.link is None
 
 
-def test_shades_fenced_code_without_fences_or_highlighting() -> None:
+def test_styles_fenced_code_with_bright_black_background() -> None:
     """Check closed and streaming code fences with exact content lines."""
     closed = _segments("```python\nx = **literal**\n\nprint(x)\n```")
     streaming = _segments("~~~text\nstill arriving")
@@ -127,8 +126,10 @@ def test_shades_fenced_code_without_fences_or_highlighting() -> None:
     for segment in (*closed, *streaming):
         if segment.text.strip():
             assert segment.style is not None
+            assert segment.style.color is None
             assert segment.style.bgcolor is not None
-            assert segment.style.bgcolor.number == 237
+            assert segment.style.bgcolor.number == 8
+            assert not segment.style.dim
 
 
 def test_preserves_authored_blank_lines_without_block_spacing() -> None:

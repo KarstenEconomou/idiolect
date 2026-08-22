@@ -48,7 +48,22 @@ class KeyboardOptionList(OptionList):
             self.key = key
             super().__init__()
 
+    class SpecsRequested(Message):
+        """Request model details for one highlighted option."""
+
+        def __init__(self, key: str) -> None:
+            """Set the highlighted option key."""
+            self.key = key
+            super().__init__()
+
     async def _on_key(self, event: events.Key) -> None:
+        if event.key.lower() == "s" and self.highlighted is not None:
+            option = self.get_option_at_index(self.highlighted)
+            if option.id is not None and not option.disabled:
+                event.prevent_default()
+                event.stop()
+                self.post_message(self.SpecsRequested(option.id))
+                return
         if event.key == "backspace" and self.highlighted is not None:
             option = self.get_option_at_index(self.highlighted)
             if option.id is not None:
