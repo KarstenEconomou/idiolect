@@ -6,7 +6,6 @@ import time
 from collections.abc import Callable, Iterable
 from typing import ClassVar
 
-from rich.text import Text
 from textual import events, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -29,6 +28,7 @@ from idiolect.tui.widgets import (
     ConfirmModal,
     KeyboardOptionList,
     LoadingStatus,
+    Transcript,
 )
 
 WATERMARK = """     ╭─╮
@@ -177,7 +177,7 @@ class ChatApp(App[None]):
         with Container(id="chat"):
             yield Static("", markup=False, id="identity")
             with VerticalScroll(id="transcript-scroll"):
-                yield Static("", markup=False, id="transcript")
+                yield Transcript(id="transcript")
             yield CommandMenu(id="command-menu")
             yield LoadingStatus(id="status")
             with Horizontal(id="composer-bar"):
@@ -386,25 +386,17 @@ class ChatApp(App[None]):
         self.query_one(Composer).focus()
 
     def _render_transcript(self, partial: bool = False) -> None:
-        transcript = self.query_one("#transcript", Static)
+        transcript = self.query_one("#transcript", Transcript)
         scroller = self.query_one("#transcript-scroll", VerticalScroll)
         follow_latest = scroller.scroll_y >= scroller.max_scroll_y - 1
         session = self._session()
-        content = Text()
+        turns = []
         for turn in session.turns:
-            if content:
-                content.append("\n\n")
             name = "USER" if turn.role == "user" else self._chat_name(session)
-            content.append(f"{name}:", style="blue")
-            content.append("\n")
-            content.append(turn.content)
+            turns.append((name, turn.content))
         if partial and self._generating:
-            if content:
-                content.append("\n\n")
-            content.append(f"{self._chat_name(session)}:", style="blue")
-            content.append("\n")
-            content.append(self._streaming_text or "…")
-        transcript.update(content)
+            turns.append((self._chat_name(session), self._streaming_text or "…"))
+        transcript.set_turns(turns)
         if follow_latest:
             self.call_after_refresh(self._scroll_transcript_end)
 

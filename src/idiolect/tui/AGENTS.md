@@ -58,7 +58,9 @@ TUI tests.
   directly below the composer with no vertical padding.
 - Hide transcript and composer scrollbars. Keep the registry scrollbar in the
   metadata color. Separate turns with one blank line, put the speaker label on
-  its own line, and preserve content whitespace.
+  its own line, and inset every rendered message line by one cell. Use the same
+  one-cell offset between menu headings and actions. Preserve stored content and
+  its internal whitespace.
 - Follow the newest turn only when the transcript is already at the bottom.
   Opening or closing a menu is the exception: scroll the newest turn into view.
   Add bottom space for an overlaid confirmation and remove it when it closes.

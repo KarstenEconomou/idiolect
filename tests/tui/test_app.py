@@ -7,6 +7,7 @@ from collections.abc import Callable, Iterator
 from types import SimpleNamespace
 from typing import cast
 
+from rich.console import Console
 from rich.text import Text
 from textual import events
 from textual.containers import Horizontal, VerticalScroll
@@ -20,7 +21,13 @@ from idiolect.chat.storage import ChatStorageError, ChatStore
 from idiolect.chat.worker import WorkerState
 from idiolect.config import ChatConfig, GenerationConfig
 from idiolect.tui.app import ChatApp
-from idiolect.tui.widgets import CommandMenu, Composer, KeyboardButton, LoadingStatus
+from idiolect.tui.widgets import (
+    CommandMenu,
+    Composer,
+    KeyboardButton,
+    LoadingStatus,
+    Transcript,
+)
 
 
 def test_registry_opens_highlighted_assistant_from_keyboard(tmp_path) -> None:
@@ -93,12 +100,24 @@ def test_transcript_is_literal_and_scrollable(tmp_path) -> None:
             assert scroller.scroll_y == scroller.max_scroll_y
             assert scroller.styles.scrollbar_size_vertical == 0
 
-            transcript = app.query_one("#transcript", Static)
-            transcript_text = str(transcript.content)
+            transcript = app.query_one("#transcript", Transcript)
+            transcript_text = transcript.plain
             assert "USER:" in transcript_text
             assert "DIXIE:" in transcript_text
-            assert "[bold]literal[/bold]" in transcript_text
+            assert "USER:\n User message 0\n [bold]literal[/bold]" in transcript_text
             assert "IDIOLECT //" not in transcript_text
+            console = Console(width=20, color_system=None)
+            with console.capture() as capture:
+                console.print(transcript.content)
+            rendered_lines = capture.get().splitlines()
+            assert rendered_lines[0] == "USER:"
+            assert rendered_lines[1].startswith(" ")
+            assert rendered_lines[2].startswith(" ")
+            assert rendered_lines[3].startswith(" ")
+            assert runtime.session is not None
+            assert runtime.session.turns[0].content == (
+                "User message 0\n[bold]literal[/bold]"
+            )
             assert str(app.query_one("#identity", Static).content) == (
                 "IDIOLECT // DIXIE@BASE [M]"
             )
@@ -180,13 +199,11 @@ def test_composer_submits_and_inserts_line_breaks(tmp_path) -> None:
             await pilot.press("enter")
             for _ in range(20):
                 await pilot.pause()
-                if "Synthetic reply" in str(
-                    app.query_one("#transcript", Static).content
-                ):
+                if "Synthetic reply" in app.query_one(Transcript).plain:
                     break
-            transcript = str(app.query_one("#transcript", Static).content)
-            assert "USER:\nfirst\nsecond" in transcript
-            assert "DIXIE:\nSynthetic reply" in transcript
+            transcript = app.query_one(Transcript).plain
+            assert "USER:\n first\n second" in transcript
+            assert "DIXIE:\n Synthetic reply" in transcript
             assert composer.text == ""
 
     asyncio.run(verify())
@@ -227,9 +244,7 @@ def test_prefill_progress_appears_above_composer(tmp_path) -> None:
             assert await asyncio.to_thread(runtime.generation_finished.wait, 1)
             for _ in range(20):
                 await pilot.pause()
-                reply_visible = "Progress reply" in str(
-                    app.query_one("#transcript", Static).content
-                )
+                reply_visible = "Progress reply" in app.query_one(Transcript).plain
                 if reply_visible and not status.display:
                     break
             assert status.display is False
@@ -320,6 +335,11 @@ def test_failed_confirmation_save_keeps_memory_only_chat(tmp_path) -> None:
             assert app.screen.query_one(
                 "#confirm-message", Static
             ).styles.text_style.bold
+            assert (
+                app.screen.query_one("#discard", KeyboardButton).content_region.x
+                - app.screen.query_one("#confirm-message", Static).content_region.x
+                == 1
+            )
             assert [
                 str(button.label) for button in app.screen.query(KeyboardButton)
             ] == ["DISCONNECT", "RECORD", "RESUME"]
@@ -360,6 +380,11 @@ def test_command_menu_filters_navigates_and_returns_to_registry(tmp_path) -> Non
             assert str(menu.query_one("#command-message", Static).content) == "COMMAND"
             assert menu.query_one("#command-message", Static).styles.color.ansi == 7
             assert menu.query_one("#command-message", Static).styles.text_style.bold
+            assert (
+                exit_button.query_one(".command-name", Static).content_region.x
+                - menu.query_one("#command-message", Static).content_region.x
+                == 1
+            )
             assert str(
                 exit_button.query_one(".command-description", Static).content
             ) == "Exit IDIOLECT."

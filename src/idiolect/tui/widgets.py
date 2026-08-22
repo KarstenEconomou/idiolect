@@ -1,8 +1,11 @@
 """Define widgets for the local chat interface."""
 
 import time
+from collections.abc import Sequence
 from typing import ClassVar, cast
 
+from rich.console import Group
+from rich.padding import Padding
 from rich.spinner import Spinner
 from rich.text import Text
 from textual import events
@@ -146,6 +149,26 @@ class CommandMenu(Widget):
                 command == "/registry" and not registry_enabled,
                 "-disabled",
             )
+
+
+class Transcript(Static):
+    """Render transcript labels and consistently inset message blocks."""
+
+    plain = ""
+
+    def set_turns(self, turns: Sequence[tuple[str, str]]) -> None:
+        """Set labeled turns without changing their stored message text."""
+        renderables: list[Text | Padding] = []
+        plain_blocks = []
+        for index, (name, message) in enumerate(turns):
+            if index:
+                renderables.append(Text(""))
+            renderables.append(Text(f"{name}:", style="blue"))
+            renderables.append(Padding(Text(message), (0, 0, 0, 1)))
+            displayed = message.replace("\n", "\n ")
+            plain_blocks.append(f"{name}:\n {displayed}")
+        self.plain = "\n\n".join(plain_blocks)
+        self.update(Group(*renderables))
 
 
 class LoadingStatus(Widget):

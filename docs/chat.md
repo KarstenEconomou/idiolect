@@ -73,8 +73,10 @@ remains available during generation, but a second message is not queued. Use the
 mouse wheel, or Ctrl+Up and Ctrl+Down without leaving the composer, to scroll the
 transcript. Transcript turns use `USER` and the short uppercase assistant name.
 The chat header, registry, and snapshot use the full canonical assistant
-identity. Use arrow keys and Enter in an unsaved-change confirmation. After a
-generation failure, return to `REGISTRY` to start again.
+identity. Each displayed message line is inset one cell beneath its speaker
+label, matching the menu heading-to-action offset. Use arrow keys and Enter in an
+unsaved-change confirmation. After a generation failure, return to `REGISTRY` to
+start again.
 
 Type `/` to open the keyboard-driven command menu above the composer. The menu
 shows up to three command descriptions in vertical rows. Use arrow keys to move,
