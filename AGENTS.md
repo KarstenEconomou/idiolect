@@ -12,7 +12,7 @@ Keep stage boundaries explicit:
 - `store` defines storage ports and implements DuckDB storage.
 - `data` renders target-relative context and builds datasets.
 - `train` defines training contracts and implements MLX-LM training.
-- `infer` defines generation contracts and implements MLX-LM inference.
+- `inference` defines generation contracts and implements MLX-LM inference.
 - `chat` discovers verified assistants, owns transcript and context policy, supervises the MLX worker, and stores explicit immutable snapshots.
 - `tui` contains only Textual presentation and input handling. Do not put model loading, prompt policy, artifact verification, or snapshot identity logic in this package.
 - `eval` defines scoring contracts, runs immutable local policy evaluations, and collects and summarizes private familiar-panel judgments.
@@ -40,7 +40,7 @@ for Python environment and package operations.
 - `just data build <name>`: build a dataset for the linked Signal user.
 - `just config list`, `new`, or `train`: manage complete experiment configurations.
 - `just train <dataset>`: train the canonical configuration while the Mac stays awake.
-- `just infer base`, `base-of`, or `run`: generate one dataset split while the Mac stays awake.
+- `just inference base`, `base-of`, or `run`: generate one dataset split while the Mac stays awake.
 - `just eval policy <dataset> <runs...>`: compare one complete training policy with its recorded base.
 - `just idiolect eval rate`: complete one private blind familiar-rater session.
 - `just idiolect eval panel`: summarize familiar-rater judgments.

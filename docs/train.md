@@ -134,5 +134,5 @@ Use a small dataset only to verify the operation. Do not interpret style quality
 Do not publish a dataset, adapter, generated message, run log, or manifest. An adapter can retain private training information.
 
 Use the [evaluation procedure](eval.md) for policy selection. Use the
-[local inference procedure](infer.md) for manual prompts and fixed split
+[local inference procedure](inference.md) for manual prompts and fixed split
 generation.

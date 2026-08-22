@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from idiolect.config import GenerationConfig
-from idiolect.infer.base import BackendResult
+from idiolect.inference.base import BackendResult
 from idiolect.prompt import ModelInput, Turn
 
 
@@ -254,8 +254,8 @@ def worker_main(commands: Any, events: Any, cancel: Any) -> None:
                     if session is not None:
                         session.close()
                     events.put(StateEvent(WorkerState.RESOLVING))
-                    from idiolect.infer.local import recorded_target
-                    from idiolect.infer.mlx import MlxBackend
+                    from idiolect.inference.local import recorded_target
+                    from idiolect.inference.mlx import MlxBackend
 
                     target = recorded_target(Path(command.run_path), adapter=True)
                     events.put(StateEvent(WorkerState.VERIFYING))

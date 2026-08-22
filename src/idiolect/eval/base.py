@@ -4,8 +4,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
-from idiolect.config import EvalConfig, InferConfig
-from idiolect.infer.base import ModelTarget
+from idiolect.config import EvalConfig, InferenceConfig
+from idiolect.inference.base import ModelTarget
 from idiolect.prompt import ModelInput
 from idiolect.train.base import LoadedRun
 from idiolect.types import DatasetRef, EvaluationRef
@@ -53,7 +53,7 @@ class Evaluator(Protocol):
         runs: Sequence[LoadedRun],
         dataset: DatasetRef,
         config: EvalConfig,
-        infer: InferConfig,
+        inference: InferenceConfig,
     ) -> EvaluationRef:
         """Evaluate one policy and return its fixed artifact."""
         ...

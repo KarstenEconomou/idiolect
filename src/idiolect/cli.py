@@ -26,14 +26,14 @@ from idiolect.data.local import (
 from idiolect.eval.local import EvaluationError, LocalEvaluator
 from idiolect.eval.mlx import EvalBackendError, MlxScoreBackend
 from idiolect.eval.panel import collect_judgments, create_panel
-from idiolect.infer.base import ModelTarget
-from idiolect.infer.local import (
+from idiolect.inference.base import ModelTarget
+from idiolect.inference.local import (
     InferenceError,
     LocalInferencer,
     configured_target,
     recorded_target,
 )
-from idiolect.infer.mlx import MlxBackend
+from idiolect.inference.mlx import MlxBackend
 from idiolect.ingest import harvest
 from idiolect.ingest.harvest import reindex
 from idiolect.ingest.signal import (
@@ -55,7 +55,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         config = load_config(arguments.config)
         if arguments.command == "chat":
-            validate_chat_policy(config.chat, config.infer)
+            validate_chat_policy(config.chat, config.inference)
             if config.chat.output is None:
                 raise ChatError("Chat output is not configured")
             store = ChatStore(config.chat.output)
@@ -82,7 +82,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 initial_chat = store.load(arguments.saved_chat)
             run_chat_app(
                 config.chat,
-                config.infer.generation,
+                config.inference.generation,
                 assistants=rows,
                 store=store,
                 initial_assistant=initial_assistant,
@@ -123,13 +123,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             for run in result.runs:
                 print(f"run={run.id} dataset={run.dataset_id} path={run.path}")
             return 0
-        if arguments.command == "infer":
+        if arguments.command == "inference":
             inferencer = LocalInferencer(MlxBackend())
-            inferencer.validate(config.infer)
-            if arguments.infer_command == "text":
+            inferencer.validate(config.inference)
+            if arguments.inference_command == "text":
                 prompt = _read_prompt(arguments.input)
                 target = _inference_target(arguments, config.train)
-                for prediction in inferencer.text(target, prompt, config.infer):
+                for prediction in inferencer.text(target, prompt, config.inference):
                     print(
                         json.dumps(
                             asdict(prediction),
@@ -144,7 +144,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 target,
                 dataset,
                 arguments.split,
-                config.infer,
+                config.inference,
             )
             print(
                 f"inference={result.id} predictions={result.predictions} "
@@ -162,7 +162,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 result = LocalEvaluator(
                     MlxScoreBackend(),
                     LocalInferencer(MlxBackend()),
-                ).evaluate(runs, dataset, config.eval, config.infer)
+                ).evaluate(runs, dataset, config.eval, config.inference)
                 state = "eligible" if result.eligible else "ineligible"
                 print(f"evaluation={result.id} state={state} path={result.path}")
                 return 0
@@ -311,24 +311,24 @@ def _parser() -> argparse.ArgumentParser:
     )
     chat_resume = chat_commands.add_parser("resume", help="resume one saved chat")
     chat_resume.add_argument("saved_chat", help="saved chat ID")
-    infer = commands.add_parser("infer", help="generate local model text")
-    infer_commands = infer.add_subparsers(dest="infer_command", required=True)
-    infer_text = infer_commands.add_parser("text", help="generate one private prompt")
-    _inference_target_options(infer_text)
-    infer_text.add_argument(
+    inference = commands.add_parser("inference", help="generate local model text")
+    inference_commands = inference.add_subparsers(dest="inference_command", required=True)
+    inference_text = inference_commands.add_parser("text", help="generate one private prompt")
+    _inference_target_options(inference_text)
+    inference_text.add_argument(
         "input",
         type=Path,
         nargs="?",
         default=Path("-"),
         help="UTF-8 prompt file or - for standard input",
     )
-    infer_data = infer_commands.add_parser(
+    inference_data = inference_commands.add_parser(
         "data",
         help="generate one immutable dataset split",
     )
-    _inference_target_options(infer_data)
-    infer_data.add_argument("dataset", type=Path, help="immutable dataset directory")
-    infer_data.add_argument(
+    _inference_target_options(inference_data)
+    inference_data.add_argument("dataset", type=Path, help="immutable dataset directory")
+    inference_data.add_argument(
         "--split",
         type=Split,
         choices=tuple(Split),

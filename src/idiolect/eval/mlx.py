@@ -6,7 +6,7 @@ from importlib.metadata import PackageNotFoundError
 from typing import Any
 
 from idiolect.eval.base import CompletionScore, ScoreSession
-from idiolect.infer.base import ModelTarget
+from idiolect.inference.base import ModelTarget
 from idiolect.model import mlx_runtime_fingerprint
 from idiolect.prompt import ModelInput, Turn
 

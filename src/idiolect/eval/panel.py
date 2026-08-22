@@ -23,7 +23,7 @@ from idiolect.eval.local import (
     _select,
     load_evaluation,
 )
-from idiolect.infer.local import load_inference
+from idiolect.inference.local import load_inference
 from idiolect.types import (
     EvaluationId,
     EvaluationRef,

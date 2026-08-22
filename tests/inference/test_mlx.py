@@ -6,9 +6,9 @@ from types import ModuleType, SimpleNamespace
 
 import pytest
 
-from idiolect.config import InferConfig, TrainDataConfig
-from idiolect.infer.base import ModelTarget, TargetMode
-from idiolect.infer.mlx import MlxBackend
+from idiolect.config import InferenceConfig, TrainDataConfig
+from idiolect.inference.base import ModelTarget, TargetMode
+from idiolect.inference.mlx import MlxBackend
 from idiolect.prompt import format_prompt
 
 
@@ -92,7 +92,7 @@ def test_mlx_backend_applies_adapter_format_seed_and_sampling(
         trust_remote_code=True,
         adapter_path=adapter,
     )
-    config = InferConfig(
+    config = InferenceConfig(
         max_tokens=12,
         temperature=0.7,
         top_p=0.8,

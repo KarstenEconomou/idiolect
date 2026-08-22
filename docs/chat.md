@@ -19,7 +19,7 @@ history = "explicit-save"
 ```
 
 Chat validates this section only when a chat command runs. It also requires the
-generation fields in `[infer]`. `participant_name` is the synthetic name used
+generation fields in `[inference]`. `participant_name` is the synthetic name used
 inside model prompts. The interface always shows the local user as `You`.
 
 Install and launch:
@@ -77,7 +77,7 @@ synthetic participant labels user history.
 
 The runtime first applies the dataset's recorded context-message count. It then
 counts the complete tokenizer template and removes oldest whole messages until
-the prompt fits `infer.max_prompt_tokens`. It never splits a message or removes
+the prompt fits `inference.max_prompt_tokens`. It never splits a message or removes
 the newest user message. Input that cannot fit by itself is rejected.
 
 ## Worker and telemetry

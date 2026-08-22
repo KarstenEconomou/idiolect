@@ -3,7 +3,7 @@ set working-directory := ".."
 
 # List inference commands.
 default:
-    @just --justfile just/infer.just --list
+    @just --justfile just/inference.just --list
 
 # Generate one dataset split with a configured base model.
 [arg('config', pattern='[a-z0-9][a-z0-9-]*')]
@@ -16,7 +16,7 @@ base dataset split config="idiolect":
         printf 'error: configuration does not exist: %s\n' "$config_path" >&2
         exit 2
     fi
-    exec caffeinate -i uv run --env-file .env idiolect --config "$config_path" infer data --base "{{ dataset }}" --split "{{ split }}"
+    exec caffeinate -i uv run --env-file .env idiolect --config "$config_path" inference data --base "{{ dataset }}" --split "{{ split }}"
 
 # Generate one dataset split with the base model from a run.
 [arg('config', pattern='[a-z0-9][a-z0-9-]*')]
@@ -29,7 +29,7 @@ base-of run dataset split config="idiolect":
         printf 'error: configuration does not exist: %s\n' "$config_path" >&2
         exit 2
     fi
-    exec caffeinate -i uv run --env-file .env idiolect --config "$config_path" infer data --base-of "{{ run }}" "{{ dataset }}" --split "{{ split }}"
+    exec caffeinate -i uv run --env-file .env idiolect --config "$config_path" inference data --base-of "{{ run }}" "{{ dataset }}" --split "{{ split }}"
 
 # Generate one dataset split with a run adapter.
 [arg('config', pattern='[a-z0-9][a-z0-9-]*')]
@@ -42,4 +42,4 @@ run run dataset split config="idiolect":
         printf 'error: configuration does not exist: %s\n' "$config_path" >&2
         exit 2
     fi
-    exec caffeinate -i uv run --env-file .env idiolect --config "$config_path" infer data --run "{{ run }}" "{{ dataset }}" --split "{{ split }}"
+    exec caffeinate -i uv run --env-file .env idiolect --config "$config_path" inference data --run "{{ run }}" "{{ dataset }}" --split "{{ split }}"

@@ -12,7 +12,7 @@ just setup-train
 
 ## Configuration
 
-Each complete TOML configuration contains one `[infer]` table. The table selects the output path, backend, seeds, example limit, token limits, and sampling values.
+Each complete TOML configuration contains one `[inference]` table. The table selects the output path, backend, seeds, example limit, token limits, and sampling values.
 
 The canonical Qwen policy uses non-thinking generation. The training format adds `/no_think` to the prompt and uses an empty thinking block as the assistant prefill. Inference uses the same format.
 
@@ -20,7 +20,7 @@ The canonical Qwen policy uses non-thinking generation. The training format adds
 
 `max_prompt_tokens` is a strict input limit after the tokenizer applies the chat template. The operation stops if an input exceeds the limit. It does not remove context or reduce the output limit.
 
-The generation-only part of `[infer]` is also the chat generation policy. It
+The generation-only part of `[inference]` is also the chat generation policy. It
 contains the backend, prompt and output limits, temperature, probability
 filters, and repetition settings. Batch-only output, seed lists, and example
 selection stay specific to inference artifacts. Interactive chat applies its
@@ -44,13 +44,13 @@ Put private prompt text in an ignored file:
 ```console
 mkdir -p var/prompts
 $EDITOR var/prompts/check.txt
-just idiolect infer text --base var/prompts/check.txt
+just idiolect inference text --base var/prompts/check.txt
 ```
 
 Use standard input for text that must not enter a process argument:
 
 ```console
-just idiolect infer text --base
+just idiolect inference text --base
 ```
 
 Enter the prompt and send end-of-file. The command writes one JSON Lines record for each configured seed. It does not store the prompt or result.
@@ -58,8 +58,8 @@ Enter the prompt and send end-of-file. The command writes one JSON Lines record 
 Use a run target:
 
 ```console
-just idiolect infer text --base-of var/runs/RUN_ID var/prompts/check.txt
-just idiolect infer text --run var/runs/RUN_ID var/prompts/check.txt
+just idiolect inference text --base-of var/runs/RUN_ID var/prompts/check.txt
+just idiolect inference text --run var/runs/RUN_ID var/prompts/check.txt
 ```
 
 ## Dataset Batch
@@ -67,20 +67,20 @@ just idiolect infer text --run var/runs/RUN_ID var/prompts/check.txt
 Generate the same verified split with the canonical base and one adapter:
 
 ```console
-just infer base var/data/DATASET_ID test
-just infer run var/runs/RUN_ID var/data/DATASET_ID test
+just inference base var/data/DATASET_ID test
+just inference run var/runs/RUN_ID var/data/DATASET_ID test
 ```
 
 Generate the exact base recorded by the run:
 
 ```console
-just infer base-of var/runs/RUN_ID var/data/DATASET_ID test
+just inference base-of var/runs/RUN_ID var/data/DATASET_ID test
 ```
 
 Add an experiment configuration name as the final argument:
 
 ```console
-just infer run var/runs/RUN_ID var/data/DATASET_ID test qwen3-8b-smoke
+just inference run var/runs/RUN_ID var/data/DATASET_ID test qwen3-8b-smoke
 ```
 
 The recipes use `caffeinate -i`. Connect the Mac to power. Inference does not use `launchd`.
@@ -90,7 +90,7 @@ The recipes use `caffeinate -i`. Connect the Mac to power. Inference does not us
 Each batch has this private structure:
 
 ```text
-var/infer/<inference-id>/
+var/inference/<inference-id>/
 ├── manifest.json
 └── pred.jsonl
 ```

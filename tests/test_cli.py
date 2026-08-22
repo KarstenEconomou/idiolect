@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import idiolect.cli
 from idiolect.cli import main
-from idiolect.infer.base import Prediction
+from idiolect.inference.base import Prediction
 from idiolect.types import EvaluationId, EvaluationRef, RunId, RunRef, TrainResult
 
 
@@ -135,7 +135,7 @@ def test_train_command_uses_fixed_dataset_and_config(
     assert output.err == ""
 
 
-def test_infer_text_reads_stdin_and_writes_json_lines(
+def test_inference_text_reads_stdin_and_writes_json_lines(
     local_config: Path,
     monkeypatch,
     capsys,
@@ -164,7 +164,7 @@ def test_infer_text_reads_stdin_and_writes_json_lines(
     monkeypatch.setattr(idiolect.cli, "LocalInferencer", FakeInferencer)
     monkeypatch.setattr(idiolect.cli.sys, "stdin", io.StringIO("private prompt"))
 
-    code = main(("--config", str(local_config), "infer", "text", "--base"))
+    code = main(("--config", str(local_config), "inference", "text", "--base"))
 
     output = capsys.readouterr()
     assert code == 0
@@ -182,7 +182,7 @@ def test_infer_text_reads_stdin_and_writes_json_lines(
     assert output.err == ""
 
 
-def test_infer_text_reports_invalid_utf8_before_model_access(
+def test_inference_text_reports_invalid_utf8_before_model_access(
     local_config: Path,
     tmp_path: Path,
     monkeypatch,
@@ -212,7 +212,7 @@ def test_infer_text_reports_invalid_utf8_before_model_access(
     monkeypatch.setattr(idiolect.cli, "LocalInferencer", FakeInferencer)
 
     code = main(
-        ("--config", str(local_config), "infer", "text", "--base", str(prompt))
+        ("--config", str(local_config), "inference", "text", "--base", str(prompt))
     )
 
     output = capsys.readouterr()
@@ -241,9 +241,9 @@ def test_eval_policy_uses_every_supplied_run(
         def __init__(self, scorer, inferencer) -> None:
             """Accept local backend boundaries."""
 
-        def evaluate(self, runs, dataset, config, infer) -> EvaluationRef:
+        def evaluate(self, runs, dataset, config, inference) -> EvaluationRef:
             """Record the policy inputs and return one result."""
-            seen.append((runs, dataset, config, infer))
+            seen.append((runs, dataset, config, inference))
             return EvaluationRef(
                 EvaluationId("evaluation-id"),
                 evaluation_path,
@@ -301,7 +301,7 @@ output = "{(tmp_path / "data").as_posix()}"
 [train]
 output = "{(tmp_path / "runs").as_posix()}"
 
-[infer]
+[inference]
 backend = "mlx-lm"
 max_prompt_tokens = 1920
 max_tokens = 128

@@ -9,14 +9,14 @@ from pathlib import Path
 
 import pytest
 
-from idiolect.config import InferConfig, TrainConfig, TrainDataConfig
-from idiolect.infer.base import (
+from idiolect.config import InferenceConfig, TrainConfig, TrainDataConfig
+from idiolect.inference.base import (
     BackendResult,
     ModelInput,
     ModelTarget,
     TargetMode,
 )
-from idiolect.infer.local import (
+from idiolect.inference.local import (
     InferenceError,
     LocalInferencer,
     RecordedTargetResolver,
@@ -29,7 +29,7 @@ from idiolect.train.base import LoadedRun
 from idiolect.types import DatasetId, DatasetRef, PersonId, RunId, RunRef, Split
 
 _NOW = datetime(2026, 8, 20, tzinfo=UTC)
-_INFER_KEYS = frozenset(
+_INFERENCE_KEYS = frozenset(
     {
         "output",
         "backend",
@@ -64,7 +64,7 @@ class FakeSession:
         self,
         value: ModelInput,
         seed: int,
-        config: InferConfig,
+        config: InferenceConfig,
     ) -> BackendResult:
         """Return one synthetic generation result."""
         self.requests.append((value, seed))
@@ -106,7 +106,7 @@ class InvalidSession(FakeSession):
         self,
         value: ModelInput,
         seed: int,
-        config: InferConfig,
+        config: InferenceConfig,
     ) -> BackendResult:
         """Return one result with invalid finish and token values."""
         return BackendResult(
@@ -191,7 +191,7 @@ def test_prompt_overflow_closes_session_without_an_artifact(tmp_path: Path) -> N
         LocalInferencer(backend).text(_target(tmp_path), "long context", config)
 
     assert backend.sessions[0].closed is True
-    assert not (tmp_path / "infer").exists()
+    assert not (tmp_path / "inference").exists()
 
 
 def test_artifact_id_rejects_coordinated_prediction_change(tmp_path: Path) -> None:
@@ -270,7 +270,7 @@ def test_backend_result_validation_stops_invalid_artifact(tmp_path: Path) -> Non
         )
 
     assert backend.sessions[0].closed is True
-    assert not (tmp_path / "infer").exists()
+    assert not (tmp_path / "inference").exists()
 
 
 def test_configured_target_rejects_invalid_text_format_before_resolution() -> None:
@@ -350,7 +350,7 @@ def test_concurrent_artifact_publication_returns_verified_winner(
     original_rename = Path.rename
 
     def race(source: Path, destination: Path) -> Path:
-        if source.name.startswith(".infer-"):
+        if source.name.startswith(".inference-"):
             shutil.copytree(source, destination)
             raise FileExistsError
         return original_rename(source, destination)
@@ -371,9 +371,9 @@ def _config(
     tmp_path: Path,
     seeds: tuple[int, ...] = (101,),
     max_examples: int = 0,
-) -> InferConfig:
-    return InferConfig(
-        output=tmp_path / "infer",
+) -> InferenceConfig:
+    return InferenceConfig(
+        output=tmp_path / "inference",
         backend="mlx-lm",
         seeds=seeds,
         max_examples=max_examples,
@@ -386,7 +386,7 @@ def _config(
         min_tokens_to_keep=1,
         repetition_penalty=1.0,
         repetition_context_size=20,
-        specified=_INFER_KEYS,
+        specified=_INFERENCE_KEYS,
     )
 
 

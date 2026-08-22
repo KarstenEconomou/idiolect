@@ -19,7 +19,7 @@ from idiolect.chat.worker import (
     WorkerState,
     WorkerSupervisor,
 )
-from idiolect.config import ChatConfig, GenerationConfig, InferConfig
+from idiolect.config import ChatConfig, GenerationConfig, InferenceConfig
 
 _CHAT_KEYS = frozenset(
     {"output", "seed", "participant_name", "context_policy", "history"}
@@ -55,7 +55,7 @@ class RuntimeStats:
     weighted_generation_throughput: float | None
 
 
-def validate_chat_policy(chat: ChatConfig, infer: InferConfig) -> None:
+def validate_chat_policy(chat: ChatConfig, inference: InferenceConfig) -> None:
     """Verify complete chat and generation policy at the chat boundary."""
     if chat.unknown:
         raise ChatError(
@@ -63,7 +63,7 @@ def validate_chat_policy(chat: ChatConfig, infer: InferConfig) -> None:
         )
     missing = sorted(_CHAT_KEYS - chat.specified)
     missing.extend(
-        f"infer.{name}" for name in sorted(_GENERATION_KEYS - infer.specified)
+        f"inference.{name}" for name in sorted(_GENERATION_KEYS - inference.specified)
     )
     if missing:
         raise ChatError(f"Chat configuration is incomplete: {', '.join(missing)}")
@@ -79,9 +79,9 @@ def validate_chat_policy(chat: ChatConfig, infer: InferConfig) -> None:
         raise ChatError("Chat context_policy is not supported")
     if chat.history != "explicit-save":
         raise ChatError("Chat history policy is not supported")
-    if infer.backend != "mlx-lm":
+    if inference.backend != "mlx-lm":
         raise ChatError("Chat backend must be mlx-lm")
-    if infer.max_prompt_tokens < 1 or infer.max_tokens < 1:
+    if inference.max_prompt_tokens < 1 or inference.max_tokens < 1:
         raise ChatError("Chat token limits must be greater than zero")
 
 

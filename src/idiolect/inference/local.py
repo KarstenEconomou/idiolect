@@ -12,9 +12,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TypeGuard
 
-from idiolect.config import InferConfig, TrainConfig
+from idiolect.config import InferenceConfig, TrainConfig
 from idiolect.data.local import load_dataset
-from idiolect.infer.base import (
+from idiolect.inference.base import (
     Backend,
     ModelTarget,
     Prediction,
@@ -68,7 +68,7 @@ class LocalInferencer:
         self._backend = backend
         self._clock = _utc_now if clock is None else clock
 
-    def validate(self, config: InferConfig) -> None:
+    def validate(self, config: InferenceConfig) -> None:
         """Verify one complete inference policy."""
         _validate(config, self._backend.version)
 
@@ -76,7 +76,7 @@ class LocalInferencer:
         self,
         target: ModelTarget,
         prompt: str,
-        config: InferConfig,
+        config: InferenceConfig,
     ) -> tuple[Prediction, ...]:
         """Generate one private prompt without an artifact."""
         _validate(config, self._backend.version)
@@ -90,7 +90,7 @@ class LocalInferencer:
         target: ModelTarget,
         dataset: DatasetRef,
         split: Split,
-        config: InferConfig,
+        config: InferenceConfig,
     ) -> InferenceRef:
         """Generate one fixed dataset split and return its artifact."""
         _validate(config, self._backend.version)
@@ -115,7 +115,7 @@ class LocalInferencer:
         predictions = self._generate(target, selected, config)
         created_at = self._clock()
         output.mkdir(mode=0o700, parents=True, exist_ok=True)
-        temporary = Path(tempfile.mkdtemp(prefix=".infer-", dir=output))
+        temporary = Path(tempfile.mkdtemp(prefix=".inference-", dir=output))
         destination: Path | None = None
         try:
             rows_value = [_prediction_value(value) for value in predictions]
@@ -164,7 +164,7 @@ class LocalInferencer:
         self,
         target: ModelTarget,
         examples: Sequence[tuple[int, str, str]],
-        config: InferConfig,
+        config: InferenceConfig,
     ) -> tuple[Prediction, ...]:
         try:
             validate_prompt_config(target.data)
@@ -312,7 +312,7 @@ def load_inference(path: Path) -> InferenceRef:
     return _load_artifact(path, InferenceId(name))
 
 
-def _validate(config: InferConfig, backend_version: str) -> None:
+def _validate(config: InferenceConfig, backend_version: str) -> None:
     missing = sorted(_REQUIRED_TOML - config.specified)
     if missing:
         raise InferenceError(
@@ -414,7 +414,7 @@ def _recipe(
     dataset: DatasetRef,
     dataset_digest: str,
     split: Split,
-    config: InferConfig,
+    config: InferenceConfig,
     backend_version: str,
     rows: Sequence[tuple[int, str, str]],
 ) -> Mapping[str, Any]:
@@ -448,7 +448,7 @@ def _prediction_value(value: Prediction) -> Mapping[str, Any]:
     return asdict(value)
 
 
-def _required_output(config: InferConfig) -> Path:
+def _required_output(config: InferenceConfig) -> Path:
     if config.output is None:
         raise InferenceError("Inference output is not configured")
     return config.output.expanduser().resolve()
@@ -631,7 +631,7 @@ def _validate_artifact_predictions(
             raise InferenceError("Inference prediction does not match its recipe")
 
 
-def _validate_prediction(value: Prediction, config: InferConfig) -> None:
+def _validate_prediction(value: Prediction, config: InferenceConfig) -> None:
     _validate_prediction_values(
         value,
         config.max_prompt_tokens,

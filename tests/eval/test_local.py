@@ -10,12 +10,12 @@ from pathlib import Path
 
 import pytest
 
-from idiolect.config import EvalConfig, InferConfig, TrainDataConfig
+from idiolect.config import EvalConfig, InferenceConfig, TrainDataConfig
 from idiolect.eval.base import CompletionScore
 from idiolect.eval.local import EvaluationError, LocalEvaluator, load_evaluation
 from idiolect.eval.panel import collect_judgments, create_panel
 from idiolect.eval.text import TrainingMatchIndex
-from idiolect.infer.base import ModelTarget, Prediction, TargetMode
+from idiolect.inference.base import ModelTarget, Prediction, TargetMode
 from idiolect.model import ModelSpec
 from idiolect.train.base import LoadedRun
 from idiolect.types import (
@@ -135,7 +135,7 @@ class FakeInferencer:
         target: ModelTarget,
         dataset: DatasetRef,
         split: Split,
-        config: InferConfig,
+        config: InferenceConfig,
     ) -> InferenceRef:
         """Write fixed predictions for every selected row and seed."""
         rows = _dataset_rows(dataset)
@@ -210,19 +210,22 @@ def test_policy_evaluation_is_paired_private_and_content_addressed(
     scorer = FakeScoreBackend()
     evaluator = LocalEvaluator(
         scorer,
-        FakeInferencer(tmp_path / "infer"),
+        FakeInferencer(tmp_path / "inference"),
         target_loader=_target,
         clock=lambda: _NOW,
     )
 
-    first = evaluator.evaluate(runs, dataset, _eval_config(tmp_path), _infer_config(tmp_path))
-    second = evaluator.evaluate(runs, dataset, _eval_config(tmp_path), _infer_config(tmp_path))
+    first = evaluator.evaluate(runs, dataset, _eval_config(tmp_path), _inference_config(tmp_path))
+    second = evaluator.evaluate(runs, dataset, _eval_config(tmp_path), _inference_config(tmp_path))
 
     assert first == second
     assert first.eligible is True
     assert len(scorer.sessions) == 3
     assert all(session.closed for session in scorer.sessions)
     report = json.loads((first.path / "metrics.json").read_text(encoding="utf-8"))
+    manifest = json.loads((first.path / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["recipe"]["version"] == 2
+    assert manifest["recipe"]["inference_config"]["backend"] == "mlx-lm"
     assert (
         report["likelihood"]["policy"]["delta_macro_mean_nll"]["value"]
         == -1.0
@@ -247,18 +250,18 @@ def test_policy_requires_complete_seed_set_and_gates_new_memorization(
     runs = _runs(tmp_path, dataset)
     evaluator = LocalEvaluator(
         FakeScoreBackend(),
-        FakeInferencer(tmp_path / "infer", leaked=True),
+        FakeInferencer(tmp_path / "inference", leaked=True),
         target_loader=_target,
         clock=lambda: _NOW,
     )
 
     with pytest.raises(EvaluationError, match="every configured training seed"):
         evaluator.evaluate(
-            runs[:1], dataset, _eval_config(tmp_path), _infer_config(tmp_path)
+            runs[:1], dataset, _eval_config(tmp_path), _inference_config(tmp_path)
         )
 
     result = evaluator.evaluate(
-        runs, dataset, _eval_config(tmp_path), _infer_config(tmp_path)
+        runs, dataset, _eval_config(tmp_path), _inference_config(tmp_path)
     )
     assert result.eligible is False
     report = json.loads((result.path / "metrics.json").read_text(encoding="utf-8"))
@@ -270,14 +273,14 @@ def test_perplexity_uses_all_completion_tokens(tmp_path: Path) -> None:
     dataset = _dataset(tmp_path)
     result = LocalEvaluator(
         VariableScoreBackend(),
-        FakeInferencer(tmp_path / "infer"),
+        FakeInferencer(tmp_path / "inference"),
         target_loader=_target,
         clock=lambda: _NOW,
     ).evaluate(
         _runs(tmp_path, dataset),
         dataset,
         _eval_config(tmp_path),
-        _infer_config(tmp_path),
+        _inference_config(tmp_path),
     )
 
     report = json.loads((result.path / "metrics.json").read_text(encoding="utf-8"))
@@ -306,10 +309,10 @@ def test_familiar_panel_keeps_separate_immutable_rater_artifacts(
     config = _eval_config(tmp_path)
     evaluation = LocalEvaluator(
         FakeScoreBackend(),
-        FakeInferencer(tmp_path / "infer"),
+        FakeInferencer(tmp_path / "inference"),
         target_loader=_target,
         clock=lambda: _NOW,
-    ).evaluate(_runs(tmp_path, dataset), dataset, config, _infer_config(tmp_path))
+    ).evaluate(_runs(tmp_path, dataset), dataset, config, _inference_config(tmp_path))
 
     answers = ["a", "a", "a", "b", "b", "b"]
     first = collect_judgments(
@@ -364,10 +367,10 @@ def test_panel_rejects_a_self_consistent_judgment_off_schedule(
     config = _eval_config(tmp_path)
     evaluation = LocalEvaluator(
         FakeScoreBackend(),
-        FakeInferencer(tmp_path / "infer"),
+        FakeInferencer(tmp_path / "inference"),
         target_loader=_target,
         clock=lambda: _NOW,
-    ).evaluate(_runs(tmp_path, dataset), dataset, config, _infer_config(tmp_path))
+    ).evaluate(_runs(tmp_path, dataset), dataset, config, _inference_config(tmp_path))
     answers = ["a", "a", "a", "b", "b", "b"]
     judgment = collect_judgments(
         evaluation.path,
@@ -491,9 +494,9 @@ def _eval_config(tmp_path: Path) -> EvalConfig:
     )
 
 
-def _infer_config(tmp_path: Path) -> InferConfig:
-    return InferConfig(
-        output=tmp_path / "infer",
+def _inference_config(tmp_path: Path) -> InferenceConfig:
+    return InferenceConfig(
+        output=tmp_path / "inference",
         backend="mlx-lm",
         seeds=(101, 202),
         max_examples=2,

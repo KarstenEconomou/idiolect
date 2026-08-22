@@ -8,7 +8,7 @@ import pytest
 
 from idiolect.config import TrainDataConfig
 from idiolect.eval.mlx import EvalBackendError, MlxScoreBackend
-from idiolect.infer.base import ModelTarget, TargetMode
+from idiolect.inference.base import ModelTarget, TargetMode
 from idiolect.prompt import ModelInput, Turn
 
 

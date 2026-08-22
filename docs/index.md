@@ -7,7 +7,7 @@ This directory contains the replication record for the current system.
 - [Conversation context](context.md): Preserve names, mentions, and replies for training.
 - [Dataset build](dataset.md): Build immutable target-specific MLX-LM files.
 - [Adapter training](train.md): Configure and run local QLoRA adapters.
-- [Local inference](infer.md): Generate fixed base and adapter predictions.
+- [Local inference](inference.md): Generate fixed base and adapter predictions.
 - [Local chat](chat.md): Stream multi-turn replies and save private snapshots.
 - [Model evaluation](eval.md): Compare policy fidelity and run private blind ratings.
 - [Security](security.md): Separate public settings from private data.

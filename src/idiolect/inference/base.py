@@ -6,7 +6,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Protocol
 
-from idiolect.config import GenerationConfig, InferConfig, TrainDataConfig
+from idiolect.config import GenerationConfig, InferenceConfig, TrainDataConfig
 from idiolect.prompt import ModelInput
 
 
@@ -87,7 +87,7 @@ class Session(Protocol):
         self,
         value: ModelInput,
         seed: int,
-        config: InferConfig,
+        config: InferenceConfig,
     ) -> BackendResult:
         """Generate one result from one formatted input."""
         ...

@@ -6,15 +6,15 @@ from collections.abc import Iterator
 from importlib.metadata import PackageNotFoundError
 from typing import Any
 
-from idiolect.config import GenerationConfig, InferConfig
-from idiolect.infer.base import (
+from idiolect.config import GenerationConfig, InferenceConfig
+from idiolect.inference.base import (
     BackendResult,
     Cancellation,
     GenerationEvent,
     ModelTarget,
     StreamingSession,
 )
-from idiolect.infer.local import InferenceError
+from idiolect.inference.local import InferenceError
 from idiolect.model import mlx_runtime_fingerprint
 from idiolect.prompt import ModelInput
 
@@ -75,7 +75,7 @@ class _MlxSession:
         self,
         value: ModelInput,
         seed: int,
-        config: InferConfig,
+        config: InferenceConfig,
     ) -> BackendResult:
         """Generate one result with MLX-LM."""
         text = []

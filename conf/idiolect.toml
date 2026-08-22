@@ -89,8 +89,8 @@ control_fraction = 0.2
 min_panel_raters = 3
 min_primary_comparisons = 60
 
-[infer]
-output = "var/infer"
+[inference]
+output = "var/inference"
 backend = "mlx-lm"
 seeds = [101, 202, 303]
 max_examples = 100

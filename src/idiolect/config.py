@@ -162,7 +162,7 @@ class GenerationConfig:
 
 
 @dataclass(frozen=True, slots=True)
-class InferConfig(GenerationConfig):
+class InferenceConfig(GenerationConfig):
     """Set batch inference and generation options."""
 
     output: Path | None = None
@@ -209,7 +209,7 @@ class AppConfig:
     data: DataConfig = field(default_factory=DataConfig)
     train: TrainConfig = field(default_factory=TrainConfig)
     eval: EvalConfig = field(default_factory=EvalConfig)
-    infer: InferConfig = field(default_factory=InferConfig)
+    inference: InferenceConfig = field(default_factory=InferenceConfig)
     chat: ChatConfig = field(default_factory=ChatConfig)
 
 
@@ -232,11 +232,11 @@ def load_config(
     data_values = _section(values, "data")
     train_values = _section(values, "train")
     eval_values = _section(values, "eval")
-    infer_values = _section(values, "infer")
+    inference_values = _section(values, "inference")
     chat_values = _section(values, "chat")
     _check_keys(
         values,
-        {"signal", "store", "data", "train", "eval", "infer", "chat"},
+        {"signal", "store", "data", "train", "eval", "inference", "chat"},
         "root",
     )
     _check_keys(
@@ -328,7 +328,7 @@ def load_config(
         "eval",
     )
     _check_keys(
-        infer_values,
+        inference_values,
         {
             "output",
             "backend",
@@ -344,7 +344,7 @@ def load_config(
             "repetition_penalty",
             "repetition_context_size",
         },
-        "infer",
+        "inference",
     )
 
     signal = SignalConfig(
@@ -441,21 +441,21 @@ def load_config(
         min_primary_comparisons=_int(eval_values, "min_primary_comparisons", 0),
         specified=frozenset(eval_values),
     )
-    infer = InferConfig(
-        output=_optional_path(infer_values.get("output")),
-        backend=_str(infer_values, "backend", ""),
-        seeds=tuple(_int_list(infer_values, "seeds")),
-        max_examples=_int(infer_values, "max_examples", 0),
-        max_prompt_tokens=_int(infer_values, "max_prompt_tokens", 0),
-        max_tokens=_int(infer_values, "max_tokens", 128),
-        temperature=_float(infer_values, "temperature", 0.7),
-        top_p=_float(infer_values, "top_p", 0.8),
-        top_k=_int(infer_values, "top_k", 20),
-        min_p=_float(infer_values, "min_p", 0.0),
-        min_tokens_to_keep=_int(infer_values, "min_tokens_to_keep", 1),
-        repetition_penalty=_float(infer_values, "repetition_penalty", 1.0),
-        repetition_context_size=_int(infer_values, "repetition_context_size", 20),
-        specified=frozenset(infer_values),
+    inference = InferenceConfig(
+        output=_optional_path(inference_values.get("output")),
+        backend=_str(inference_values, "backend", ""),
+        seeds=tuple(_int_list(inference_values, "seeds")),
+        max_examples=_int(inference_values, "max_examples", 0),
+        max_prompt_tokens=_int(inference_values, "max_prompt_tokens", 0),
+        max_tokens=_int(inference_values, "max_tokens", 128),
+        temperature=_float(inference_values, "temperature", 0.7),
+        top_p=_float(inference_values, "top_p", 0.8),
+        top_k=_int(inference_values, "top_k", 20),
+        min_p=_float(inference_values, "min_p", 0.0),
+        min_tokens_to_keep=_int(inference_values, "min_tokens_to_keep", 1),
+        repetition_penalty=_float(inference_values, "repetition_penalty", 1.0),
+        repetition_context_size=_int(inference_values, "repetition_context_size", 20),
+        specified=frozenset(inference_values),
     )
     chat = ChatConfig(
         output=_optional_path(chat_values.get("output")),
@@ -472,8 +472,8 @@ def load_config(
     _validate_signal(signal)
     _validate_train(train)
     _validate_eval(eval_config)
-    _validate_infer(infer)
-    return AppConfig(signal, store, data, train, eval_config, infer, chat)
+    _validate_inference(inference)
+    return AppConfig(signal, store, data, train, eval_config, inference, chat)
 
 
 def _section(values: Mapping[str, Any], name: str) -> Mapping[str, Any]:
@@ -623,7 +623,7 @@ def _validate_train(config: TrainConfig) -> None:
         raise ConfigError("LoRA dropout must be at least zero and less than one")
 
 
-def _validate_infer(config: InferConfig) -> None:
+def _validate_inference(config: InferenceConfig) -> None:
     if config.seeds and len(set(config.seeds)) != len(config.seeds):
         raise ConfigError("Inference seeds must be unique")
     if config.max_examples < 0:

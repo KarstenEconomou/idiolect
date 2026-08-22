@@ -8,7 +8,7 @@
 - `config.py` loads strict TOML settings and environment overrides.
 - `data` builds fixed training examples.
 - `train` defines the training port and implements the MLX-LM backend.
-- `infer` defines generation ports and implements verified local MLX-LM inference.
+- `inference` defines generation ports and implements verified local MLX-LM inference.
 - `eval` defines scoring ports and implements immutable policy and panel evaluation.
 
 Keep external behavior behind typed ports. Keep adapter code out of contract modules.

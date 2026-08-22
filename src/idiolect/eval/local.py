@@ -16,12 +16,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
 
-from idiolect.config import EvalConfig, InferConfig
+from idiolect.config import EvalConfig, InferenceConfig
 from idiolect.data.local import load_dataset
 from idiolect.eval.base import CompletionScore, ScoreBackend
 from idiolect.eval.text import TrainingMatchIndex, normalize_text
-from idiolect.infer.base import ModelTarget, Prediction
-from idiolect.infer.local import RecordedTargetResolver, load_inference
+from idiolect.inference.base import ModelTarget, Prediction
+from idiolect.inference.local import RecordedTargetResolver, load_inference
 from idiolect.model import directory_digest
 from idiolect.prompt import format_prompt
 from idiolect.train.base import LoadedRun
@@ -36,7 +36,7 @@ from idiolect.types import (
     Split,
 )
 
-_ARTIFACT_VERSION = 1
+_ARTIFACT_VERSION = 2
 _SUITE = "fidelity"
 _REQUIRED_TOML = frozenset(
     {
@@ -102,7 +102,7 @@ class DatasetInferencer(Protocol):
         target: ModelTarget,
         dataset: DatasetRef,
         split: Split,
-        config: InferConfig,
+        config: InferenceConfig,
     ) -> InferenceRef:
         """Generate one split and return its artifact."""
         ...
@@ -129,17 +129,17 @@ class LocalEvaluator:
         runs: Sequence[LoadedRun],
         dataset: DatasetRef,
         config: EvalConfig,
-        infer: InferConfig,
+        inference: InferenceConfig,
     ) -> EvaluationRef:
         """Evaluate one policy and return its fixed artifact."""
-        _validate_config(config, infer, self._scorer.version)
+        _validate_config(config, inference, self._scorer.version)
         ordered = _validate_policy(runs, dataset)
         verified = load_dataset(dataset.path).dataset
         rows = _select(_load_rows(verified, Split.VALID), config.max_examples)
         train_completions = tuple(
             row.completion for row in _load_rows(verified, Split.TRAIN)
         )
-        effective_infer = replace(infer, max_examples=config.max_examples)
+        effective_inference = replace(inference, max_examples=config.max_examples)
 
         target_loader = self._target_loader
         if target_loader is None:
@@ -149,17 +149,17 @@ class LocalEvaluator:
             target_loader(run, True) for run in ordered
         )
         base_inference = self._inferencer.dataset(
-            base_target, verified, Split.VALID, effective_infer
+            base_target, verified, Split.VALID, effective_inference
         )
         adapter_inferences = tuple(
-            self._inferencer.dataset(target, verified, Split.VALID, effective_infer)
+            self._inferencer.dataset(target, verified, Split.VALID, effective_inference)
             for target in adapter_targets
         )
         base_predictions = _load_predictions(base_inference.path)
         run_predictions = tuple(
             _load_predictions(reference.path) for reference in adapter_inferences
         )
-        _check_alignment(rows, base_predictions, run_predictions, infer.seeds)
+        _check_alignment(rows, base_predictions, run_predictions, inference.seeds)
 
         dataset_digest = directory_digest(verified.path)
         recipe = {
@@ -180,7 +180,7 @@ class LocalEvaluator:
             "backend": config.backend,
             "backend_version": self._scorer.version,
             "eval_config": _config_value(config),
-            "infer_config": _infer_value(effective_infer),
+            "inference_config": _inference_value(effective_inference),
         }
         evaluation_id = EvaluationId(hashlib.sha256(_json_bytes(recipe)).hexdigest())
         output = _required_output(config)
@@ -324,7 +324,7 @@ def load_evaluation(path: Path) -> EvaluationRef:
 
 def _validate_config(
     config: EvalConfig,
-    infer: InferConfig,
+    inference: InferenceConfig,
     backend_version: str,
 ) -> None:
     missing = sorted(_REQUIRED_TOML - config.specified) if config.specified else []
@@ -334,7 +334,7 @@ def _validate_config(
         )
     if config.output is None:
         raise EvaluationError("Evaluation output is not configured")
-    if config.backend != "mlx-lm" or infer.backend != config.backend:
+    if config.backend != "mlx-lm" or inference.backend != config.backend:
         raise EvaluationError("Evaluation and inference backends must be mlx-lm")
     if config.suite != _SUITE:
         raise EvaluationError(f"Evaluation suite must be {_SUITE}")
@@ -350,7 +350,7 @@ def _validate_config(
         raise EvaluationError("Evaluation ballots_per_rater must be greater than zero")
     if config.min_panel_raters < 1 or config.min_primary_comparisons < 1:
         raise EvaluationError("Evaluation panel minimums must be greater than zero")
-    if not infer.seeds:
+    if not inference.seeds:
         raise EvaluationError("Inference seeds are not configured")
     if not backend_version:
         raise EvaluationError("Evaluation backend version is not available")
@@ -904,7 +904,7 @@ def _config_value(config: EvalConfig) -> Mapping[str, Any]:
     return value
 
 
-def _infer_value(config: InferConfig) -> Mapping[str, Any]:
+def _inference_value(config: InferenceConfig) -> Mapping[str, Any]:
     value = asdict(config)
     value.pop("specified")
     value["output"] = str(config.output) if config.output else None

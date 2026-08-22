@@ -1,7 +1,7 @@
 """Define local inference contracts."""
 
-from idiolect.infer.base import Backend, ModelTarget, Prediction, TargetMode
-from idiolect.infer.local import (
+from idiolect.inference.base import Backend, ModelTarget, Prediction, TargetMode
+from idiolect.inference.local import (
     InferenceError,
     LocalInferencer,
     RecordedTargetResolver,

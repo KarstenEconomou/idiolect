@@ -142,8 +142,8 @@ Generate paired predictions from the exact base model and adapter recorded by
 the run:
 
 ```console
-just infer base-of var/runs/RUN_ID var/data/DATASET_ID test qwen3-8b-smoke
-just infer run var/runs/RUN_ID var/data/DATASET_ID test qwen3-8b-smoke
+just inference base-of var/runs/RUN_ID var/data/DATASET_ID test qwen3-8b-smoke
+just inference run var/runs/RUN_ID var/data/DATASET_ID test qwen3-8b-smoke
 ```
 
 Evaluate every configured training seed together on the fixed validation split:

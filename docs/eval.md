@@ -28,7 +28,7 @@ Each complete TOML file contains a required `[eval]` table. It selects:
 - the blind-ballot seed, ballot count, control fraction, and panel minimums.
 
 `max_examples = 0` selects all validation examples. A positive value selects
-examples by stable hash. The existing `[infer]` table supplies generation seeds,
+examples by stable hash. The existing `[inference]` table supplies generation seeds,
 token limits, and sampling behavior. Evaluation records the effective values in
 its recipe.
 

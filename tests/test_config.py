@@ -145,8 +145,8 @@ control_fraction = 0.2
 min_panel_raters = 3
 min_primary_comparisons = 60
 
-[infer]
-output = "var/infer"
+[inference]
+output = "var/inference"
 backend = "mlx-lm"
 seeds = [101, 202]
 max_examples = 100
@@ -174,8 +174,9 @@ repetition_context_size = 20
     assert config.eval.split == "valid"
     assert config.eval.bootstrap_samples == 1000
     assert config.eval.ballots_per_rater == 40
-    assert config.infer.seeds == (101, 202)
-    assert config.infer.max_prompt_tokens == 1920
+    assert config.inference.output == Path("var/inference")
+    assert config.inference.seeds == (101, 202)
+    assert config.inference.max_prompt_tokens == 1920
 
     policy = training_policy(config.train)
     assert policy == json.loads(json.dumps(policy))
@@ -193,7 +194,7 @@ def test_training_rejects_two_run_limits(tmp_path: Path) -> None:
 def test_inference_rejects_duplicate_seeds(tmp_path: Path) -> None:
     """Check that one generation seed cannot occur twice."""
     path = tmp_path / "invalid.toml"
-    path.write_text("[infer]\nseeds = [101, 101]\n", encoding="utf-8")
+    path.write_text("[inference]\nseeds = [101, 101]\n", encoding="utf-8")
 
     with pytest.raises(ConfigError, match="Inference seeds must be unique"):
         load_config(path, {})
@@ -207,7 +208,7 @@ def test_unknown_chat_value_is_rejected_only_at_chat_boundary(tmp_path: Path) ->
     config = load_config(path, {})
 
     with pytest.raises(ChatError, match="unknown values: future_value"):
-        validate_chat_policy(config.chat, config.infer)
+        validate_chat_policy(config.chat, config.inference)
 
 
 @pytest.mark.parametrize(
@@ -226,7 +227,7 @@ def test_inference_rejects_non_finite_sampling_values(
 ) -> None:
     """Check that non-finite sampling values stop configuration."""
     path = tmp_path / "invalid.toml"
-    path.write_text(f"[infer]\n{name} = {value}\n", encoding="utf-8")
+    path.write_text(f"[inference]\n{name} = {value}\n", encoding="utf-8")
 
     with pytest.raises(ConfigError, match="must be finite"):
         load_config(path, {})

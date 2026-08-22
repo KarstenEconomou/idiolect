@@ -11,7 +11,7 @@ mod data 'just/data.just'
 mod config 'just/config.just'
 
 # Generate text with local models and adapters.
-mod infer 'just/infer.just'
+mod inference 'just/inference.just'
 
 # Chat with verified local adapters.
 mod chat 'just/chat.just'
