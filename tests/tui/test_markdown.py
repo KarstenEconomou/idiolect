@@ -32,7 +32,7 @@ def test_formats_supported_inline_text_and_retains_heading_prefixes() -> None:
     assert _style(segments, "both").italic
     code_background = _style(segments, "code").bgcolor
     assert code_background is not None
-    assert code_background.number == 8
+    assert code_background.number == 237
     underline_style = _segment_containing(segments, "<u>underline</u>").style
     assert underline_style is None or underline_style.underline is not True
 
@@ -56,6 +56,32 @@ def test_indents_each_list_level_and_aligns_wrapped_item_text() -> None:
     )
 
 
+def test_indents_each_quote_level_and_aligns_wrapped_quote_text() -> None:
+    """Check retained quote markers, nesting, emphasis, and hanging wraps."""
+    source = (
+        "> alpha beta gamma delta\n"
+        "> > nested\n"
+        "> **bold**\n"
+        "`> inline code`\n"
+        "\\> escaped"
+    )
+
+    segments = _segments(source, width=16)
+
+    assert _plain(segments) == (
+        " > alpha beta \n"
+        "   gamma delta\n"
+        "  >> nested\n"
+        " > bold\n"
+        "> inline code\n"
+        "> escaped\n"
+    )
+    assert _style(segments, "bold").bold
+    inline_background = _style(segments, "> inline code").bgcolor
+    assert inline_background is not None
+    assert inline_background.number == 237
+
+
 def test_shades_fenced_code_without_fences_or_highlighting() -> None:
     """Check closed and streaming code fences with exact content lines."""
     closed = _segments("```python\nx = **literal**\n\nprint(x)\n```")
@@ -67,7 +93,7 @@ def test_shades_fenced_code_without_fences_or_highlighting() -> None:
         if segment.text.strip():
             assert segment.style is not None
             assert segment.style.bgcolor is not None
-            assert segment.style.bgcolor.number == 8
+            assert segment.style.bgcolor.number == 237
 
 
 def test_preserves_authored_blank_lines_without_block_spacing() -> None:
@@ -77,8 +103,8 @@ def test_preserves_authored_blank_lines_without_block_spacing() -> None:
     assert _capture(source) == "before\n\n\n# Heading\n\nafter\n\n"
 
 
-def _segments(source: str) -> tuple[Segment, ...]:
-    console = Console(width=80, color_system="standard")
+def _segments(source: str, *, width: int = 80) -> tuple[Segment, ...]:
+    console = Console(width=width, color_system="standard")
     return tuple(console.render(ChatMarkdown(source)))
 
 

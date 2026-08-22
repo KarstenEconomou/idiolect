@@ -170,10 +170,10 @@ activation. Use the arrow keys and Enter to select a row. In chat, use the mouse
 wheel or Ctrl+Up and Ctrl+Down to scroll the transcript. Chat headers retain the
 full canonical assistant name; assistant turns use only the uppercase target
 name. Transcript turns format focused Markdown for emphasis, retained-prefix
-headings, subtly shaded code, and compact nested lists without changing saved
-text. Type `/` to open the keyboard-driven `/exit` and `/registry` menu, and use
-Tab to complete its selected command. Unsaved changes open the horizontal
-DISCONNECT, RECORD, and RESUME confirmation before navigation.
+headings, subtly shaded code, compact nested lists, and indented quotes without
+changing saved text. Type `/` to open the keyboard-driven `/exit` and `/registry`
+menu, and use Tab to complete its selected command. Unsaved changes open the
+horizontal DISCONNECT, RECORD, and RESUME confirmation before navigation.
 
 ```console
 just chat run RUN_ID DATASET_ID

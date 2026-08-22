@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from markdown_it import MarkdownIt
@@ -24,12 +25,12 @@ _PARSER = MarkdownIt("zero").enable(
 )
 _BOLD = Style(bold=True)
 _ITALIC = Style(italic=True)
-_CODE = Style(bgcolor="bright_black")
+_CODE = Style(bgcolor="grey23")
 
 
 @dataclass(frozen=True)
 class _HangingText:
-    """Render wrapped text below its text instead of its list marker."""
+    """Render wrapped text below its text instead of its block marker."""
 
     prefix: str
     body: Text
@@ -89,7 +90,7 @@ def _render_block(
     list_depth: int,
 ) -> list[RenderableType]:
     if node.type == "paragraph":
-        return [_inline_child(node)]
+        return _render_paragraph(node, source_lines)
     if node.type == "heading":
         body = _inline_child(node, _BOLD)
         prefix = f"{node.markup} " if body.plain else node.markup
@@ -104,6 +105,42 @@ def _render_block(
     if node.type in {"bullet_list", "ordered_list"}:
         return _render_list(node, source_lines, list_depth=list_depth + 1)
     return [Text("\n".join(source_lines[slice(*_node_map(node))]))]
+
+
+def _render_paragraph(
+    node: SyntaxTreeNode,
+    source_lines: list[str],
+) -> list[RenderableType]:
+    renderables: list[RenderableType] = []
+    start, end = _node_map(node)
+    paragraph_lines = source_lines[start:end]
+    rendered_lines = _inline_child(node).split("\n", allow_blank=True)
+    for index, line in enumerate(rendered_lines):
+        source_line = paragraph_lines[index] if index < len(paragraph_lines) else ""
+        marker_count = _quote_depth(source_line)
+        if marker_count == 0:
+            renderables.append(line)
+            continue
+        content_start = _quote_content_start(line.plain, marker_count)
+        prefix = f"{' ' * marker_count}{'>' * marker_count} "
+        renderables.append(_HangingText(prefix, line[content_start:]))
+    return renderables
+
+
+def _quote_depth(source_line: str) -> int:
+    match = re.match(r"^[ ]{0,3}((?:>[ \t]?)+)", source_line)
+    return 0 if match is None else match.group(1).count(">")
+
+
+def _quote_content_start(line: str, depth: int) -> int:
+    position = 0
+    for _ in range(depth):
+        if line[position : position + 1] != ">":
+            break
+        position += 1
+        if line[position : position + 1] in {" ", "\t"}:
+            position += 1
+    return position
 
 
 def _render_list(

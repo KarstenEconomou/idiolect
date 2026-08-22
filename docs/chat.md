@@ -97,17 +97,20 @@ to the bottom when the menu closes.
 The TUI formats a focused Markdown subset in user and assistant turns, including
 saved history and replies while they stream. Bold and italic emphasis behave as
 standard Markdown. ATX headings keep their `#` through `######` prefix and bold
-the complete heading line. Inline code and backtick or tilde fenced code use the
-metadata-gray background without syntax highlighting. Fences and language tags
-are hidden. Lists keep their authored bullets, numbers, and delimiters. Each
-list level adds one indentation cell, and wrapped lines align below item text.
+the complete heading line. Inline code and backtick or tilde fenced code use a
+dark muted-gray background without syntax highlighting. Fences and language
+tags are hidden. Lists keep their authored bullets, numbers, and delimiters.
+Each list level adds one indentation cell, and wrapped lines align below item
+text.
+Blockquotes keep their `>` markers and add one indentation cell per quote level.
+Wrapped quote lines align below quote text.
 
 The renderer preserves authored line breaks and blank lines. It keeps links,
-blockquotes, tables, rules, strikethrough, HTML, Setext headings, unmatched
-delimiters, and Rich markup literal. Markdown has no configured underline
-syntax. Formatting changes presentation only; prompts and saved turns retain
-the exact source text. A stopped partial reply remains an assistant turn with
-finish reason `cancelled`.
+tables, rules, strikethrough, HTML, Setext headings, unmatched delimiters, and
+Rich markup literal. Markdown has no configured underline syntax. Formatting
+changes presentation only; prompts and saved turns retain the exact source
+text. A stopped partial reply remains an assistant turn with finish reason
+`cancelled`.
 
 ## Prompt and context policy
 
