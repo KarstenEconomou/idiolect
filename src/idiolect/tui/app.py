@@ -64,7 +64,7 @@ class ChatApp(App[None]):
     OptionList > .option-list--option-highlighted, OptionList:focus > .option-list--option-highlighted { color: $accent; background: $terminal; text-style: bold; }
     OptionList > .option-list--option-disabled { color: $failure; text-style: dim; }
     OptionList > .option-list--option-hover { color: $accent; background: $terminal; text-style: bold; }
-    #catalog-hints { height: 1; padding: 0 2; color: $metadata; }
+    #catalog-hints, #footer { height: 1; color: $metadata; background: $terminal; padding: 0 2; }
     #chat { display: none; }
     #identity { height: 2; padding: 0 2; color: $accent; background: $terminal; border-bottom: solid $metadata; text-style: bold; }
     #transcript-scroll { height: 1fr; padding: 1 2; background: $terminal; scrollbar-size: 0 0; }
@@ -76,7 +76,6 @@ class ChatApp(App[None]):
     #composer .text-area--gutter, #composer .text-area--suggestion, #composer .text-area--placeholder { color: $metadata; background: $terminal; }
     #completion { height: auto; max-height: 5; color: $accent; background: $terminal; padding: 0 2; }
     #status { display: none; height: 1; color: $accent; background: $terminal; padding: 0 1; text-style: bold; }
-    #footer { height: 1; color: $metadata; background: $terminal; padding: 0 2; }
     #info-dialog { width: 80%; max-width: 90; height: auto; padding: 1 2; background: $terminal; border: solid $metadata; }
     #info-title { color: $accent; text-style: bold; border-bottom: solid $metadata; }
     #info-body { max-height: 70vh; overflow-y: auto; }
@@ -161,7 +160,7 @@ class ChatApp(App[None]):
             yield LoadingStatus(id="load-status")
             yield KeyboardOptionList(id="chooser")
             yield Static(
-                "↑↓ move · Enter select · Esc stop · Ctrl+C quit",
+                "↑↓ MOVE    ENTER SELECT    ESC STOP    CTRL+C QUIT",
                 markup=False,
                 id="catalog-hints",
             )

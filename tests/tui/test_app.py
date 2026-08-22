@@ -51,6 +51,9 @@ def test_registry_opens_highlighted_assistant_from_keyboard(tmp_path) -> None:
             prompt = chooser.get_option_at_index(1).prompt
             assert isinstance(prompt, Text)
             assert "AVAILABLE" in prompt.plain
+            assert str(app.query_one("#catalog-hints", Static).content) == (
+                "↑↓ MOVE    ENTER SELECT    ESC STOP    CTRL+C QUIT"
+            )
 
             await pilot.click(chooser, offset=(2, 1))
             await pilot.pause()
