@@ -129,11 +129,11 @@ class ConfirmModal(ModalScreen[str]):
     def compose(self) -> ComposeResult:
         """Create the confirmation dialog."""
         with Vertical(id="confirm-dialog"):
-            yield Static("unsaved changes", markup=False, id="confirm-message")
+            yield Static("CONNECTION", markup=False, id="confirm-message")
             with Horizontal(id="confirm-actions"):
-                yield KeyboardButton("save", id="save")
-                yield KeyboardButton("discard", id="discard")
-                yield KeyboardButton("cancel", id="cancel")
+                yield KeyboardButton("RECORD", id="save")
+                yield KeyboardButton("DISCONNECT", id="discard")
+                yield KeyboardButton("RESUME", id="cancel")
 
     def on_mount(self) -> None:
         """Focus the save action."""

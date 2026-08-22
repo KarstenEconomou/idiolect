@@ -58,7 +58,7 @@ class ChatApp(App[None]):
     #catalog-summary { width: auto; }
     #catalog-rule { height: 1; margin: 0; padding: 0 2; color: $metadata; }
     #catalog-columns { height: 1; padding: 0 2; color: $metadata; text-style: bold; }
-    #load-status { display: none; height: 1; padding: 0 2; color: $accent; text-style: bold; }
+    #load-status { display: none; height: 1; padding: 0 2; color: $metadata; }
     #chooser { height: 1fr; padding: 0 2; border: none; color: $terminal; background: $terminal; background-tint: transparent; scrollbar-color: $metadata; scrollbar-background: $terminal; }
     OptionList > .option-list--option { padding: 0; color: $terminal; background: $terminal; }
     OptionList > .option-list--option-highlighted, OptionList:focus > .option-list--option-highlighted { color: $accent; background: $terminal; text-style: bold; }
@@ -75,7 +75,7 @@ class ChatApp(App[None]):
     #composer .text-area--cursor-line, #composer .text-area--matching-bracket { background: $terminal; }
     #composer .text-area--gutter, #composer .text-area--suggestion, #composer .text-area--placeholder { color: $metadata; background: $terminal; }
     #completion { height: auto; max-height: 5; color: $accent; background: $terminal; padding: 0 2; }
-    #status { display: none; height: 1; color: $accent; background: $terminal; padding: 0 1; text-style: bold; }
+    #status { display: none; height: 1; color: $metadata; background: $terminal; padding: 0 2; }
     #info-dialog { width: 80%; max-width: 90; height: auto; padding: 1 2; background: $terminal; border: solid $metadata; }
     #info-title { color: $accent; text-style: bold; border-bottom: solid $metadata; }
     #info-body { max-height: 70vh; overflow-y: auto; }
@@ -631,24 +631,20 @@ class ChatApp(App[None]):
         saved_chats = () if self.store is None else self.store.leaves()
         layout = CatalogLayout.for_terminal(self.size.width)
         self.query_one("#catalog-columns", Static).update(
-            layout.line("MODEL", "DATA", "WINDOW", "STATUS")
+            layout.line("MODEL", "DATA", "WINDOW", "ENTRY")
         )
         for index, row in enumerate(self.assistants):
             if row.available and row.assistant is not None:
                 assistant = row.assistant
                 if assistant.run is None:
-                    data = "PERSONA"
+                    data = "BASE"
                 else:
-                    counts = assistant.counts
-                    data = (
-                        f"{counts.get('train', 0)}/"
-                        f"{counts.get('valid', 0)}/{counts.get('test', 0)}"
-                    )
+                    data = "CONSTRUCT"
                 text = layout.text(
                     row.label,
                     data,
                     str(assistant.context_messages),
-                    "AVAILABLE",
+                    "READY",
                 )
                 available += 1
             else:
@@ -656,7 +652,7 @@ class ChatApp(App[None]):
                     row.label,
                     "—",
                     "—",
-                    "UNAVAILABLE",
+                    "FAULT",
                     failed=True,
                 )
             key = f"assistant-{index}"
@@ -665,9 +661,9 @@ class ChatApp(App[None]):
         for saved in saved_chats:
             text = layout.text(
                 f"{saved.title} · {saved.assistant.name}",
-                "SNAPSHOT",
+                "TRACE",
                 "—",
-                "SAVED",
+                "READY",
             )
             key = f"saved-{saved.id}"
             self._rows[key] = saved

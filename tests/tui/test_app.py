@@ -20,7 +20,7 @@ from idiolect.chat.storage import ChatStorageError, ChatStore
 from idiolect.chat.worker import WorkerError, WorkerState
 from idiolect.config import ChatConfig, GenerationConfig
 from idiolect.tui.app import ChatApp
-from idiolect.tui.widgets import Composer, LoadingStatus
+from idiolect.tui.widgets import Composer, KeyboardButton, LoadingStatus
 
 
 def test_registry_opens_highlighted_assistant_from_keyboard(tmp_path) -> None:
@@ -50,8 +50,7 @@ def test_registry_opens_highlighted_assistant_from_keyboard(tmp_path) -> None:
             assert str(summary.content) == "1 available"
             prompt = chooser.get_option_at_index(1).prompt
             assert isinstance(prompt, Text)
-            assert "AVAILABLE" in prompt.plain
-            assert prompt.plain.endswith("AVAILABLE")
+            assert "READY" in prompt.plain
             assert str(app.query_one("#catalog-hints", Static).content) == (
                 "↑↓ MOVE    ENTER SELECT    ESC STOP    CTRL+C QUIT"
             )
@@ -193,11 +192,14 @@ def test_prefill_progress_appears_above_composer(tmp_path) -> None:
             await pilot.pause()
 
             status = app.query_one("#status", LoadingStatus)
+            scroller = app.query_one("#transcript-scroll", VerticalScroll)
             rendered = status.render()
             assert status.state == "PREFILL 0/4"
             assert isinstance(rendered, Text)
             assert rendered.plain.endswith(" PREFILL 0/4")
             assert status.display is True
+            assert status.content_region.x == scroller.content_region.x
+            assert status.styles.color == app.query_one("#catalog-subtitle").styles.color
 
             runtime.release_prefill.set()
             assert await asyncio.to_thread(runtime.generation_finished.wait, 1)
@@ -254,6 +256,7 @@ def test_model_load_keeps_event_processing_active(tmp_path) -> None:
             assert isinstance(rendered, Text)
             assert rendered.plain.endswith(" LOADING")
             assert "// MODEL SESSION" not in rendered.plain
+            assert status.styles.color == app.query_one("#catalog-subtitle").styles.color
             assert app.query_one("#chooser", OptionList).disabled is True
             runtime.release.set()
             await _wait_for_chat(app, pilot)
@@ -288,6 +291,12 @@ def test_failed_confirmation_save_keeps_memory_only_chat(tmp_path) -> None:
             await pilot.pause()
             assert app.focused is not None
             assert app.focused.id == "save"
+            assert str(app.screen.query_one("#confirm-message", Static).content) == (
+                "CONNECTION"
+            )
+            assert [
+                str(button.label) for button in app.screen.query(KeyboardButton)
+            ] == ["RECORD", "DISCONNECT", "RESUME"]
             await pilot.press("enter")
             await pilot.pause()
 

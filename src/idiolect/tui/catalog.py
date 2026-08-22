@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-from rich.cells import cell_len, set_cell_size
+from rich.cells import set_cell_size
 from rich.text import Text
 
 
@@ -19,7 +19,7 @@ class CatalogLayout:
     def for_terminal(cls, terminal_width: int) -> CatalogLayout:
         """Return the registry layout for one terminal width."""
         content_width = max(24, min(116, terminal_width - 8))
-        status_width = 13
+        status_width = 5
         data_width = (16 if content_width >= 100 else 10) if content_width >= 70 else 0
         window_width = 9 if content_width >= 54 else 0
         visible_separators = sum(
@@ -42,7 +42,7 @@ class CatalogLayout:
             values.append(set_cell_size(data, self.data))
         if self.window:
             values.append(set_cell_size(window, self.window))
-        values.append(_right_cell(status, self.status))
+        values.append(set_cell_size(status, self.status))
         return " ".join(values)
 
     def text(
@@ -64,12 +64,5 @@ class CatalogLayout:
             value.append(set_cell_size(window, self.window), style="dim")
         value.append(" ", style="dim")
         status_style = "red" if failed else "bold"
-        value.append(_right_cell(status, self.status), style=status_style)
+        value.append(set_cell_size(status, self.status), style=status_style)
         return value
-
-
-def _right_cell(value: str, width: int) -> str:
-    """Place one registry value against the right edge of its cell."""
-    if cell_len(value) >= width:
-        return set_cell_size(value, width)
-    return " " * (width - cell_len(value)) + value
