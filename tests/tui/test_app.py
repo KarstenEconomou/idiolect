@@ -53,9 +53,11 @@ def test_registry_opens_highlighted_assistant_from_keyboard(tmp_path) -> None:
             chooser = app.query_one("#chooser", OptionList)
             assert str(app.query_one("#catalog-title", Static).content) == "REGISTRY"
             assert str(app.query_one("#catalog-description", Static).content) == (
-                "Choose a BASE, CONSTRUCT, or TRACE."
+                "Connect to a BASE, CONSTRUCT, or TRACE."
             )
             assert app.query_one("#catalog-columns", Static).styles.color.ansi == 7
+            assert "TYPE" in str(app.query_one("#catalog-columns", Static).content)
+            assert len(app.query("#catalog-summary")) == 0
             assert len(app.query("#search")) == 0
             assert app.query_one("#landing").region.x == 0
             assert app.query_one("#landing-box").region.width == 80
@@ -64,13 +66,11 @@ def test_registry_opens_highlighted_assistant_from_keyboard(tmp_path) -> None:
             assert app.query_one("#catalog-hints", Static).content_region.x == 2
             assert chooser.highlighted == 1
             assert chooser.has_focus
-            summary = app.query_one("#catalog-summary", Static)
-            assert str(summary.content) == "1 available"
             prompt = chooser.get_option_at_index(1).prompt
             assert isinstance(prompt, Text)
             assert "READY" in prompt.plain
             assert str(app.query_one("#catalog-hints", Static).content) == (
-                "↑↓ MOVE    ENTER SELECT    CTRL+C QUIT"
+                "↑↓ MOVE    ENTER CONNECT    CTRL+C QUIT"
             )
 
             await pilot.click(chooser, offset=(2, 1))
@@ -102,12 +102,18 @@ def test_registry_expands_and_collapses_trace_names(tmp_path) -> None:
         generation,
         (),
     )
+    second = replace(
+        saved,
+        id="b" * 64,
+        path=tmp_path / ("b" * 64),
+        title="Morning session",
+    )
     runtime = ImmediateRuntime(chat, generation)
     app = ChatApp(
         chat,
         generation,
         assistants=(DiscoveryItem(assistant.name, "BASE", None, assistant),),
-        store=cast(ChatStore, RegistryStore(saved)),
+        store=cast(ChatStore, RegistryStore(saved, second)),
         runtime_factory=cast(Callable[..., ChatRuntime], lambda *_args: runtime),
     )
 
@@ -120,7 +126,10 @@ def test_registry_expands_and_collapses_trace_names(tmp_path) -> None:
             assert model_line.startswith(assistant.name)
             assert "Night session" not in model_line
             assert trace_line.startswith(" Night session")
-            assert "SPACE DETAILS" not in str(
+            second_trace = chooser.get_option_at_index(2).prompt
+            assert isinstance(second_trace, Text)
+            assert "Morning session" in second_trace.plain
+            assert "SPACE DETAILS" in str(
                 app.query_one("#catalog-hints", Static).content
             )
             assert "BACKSPACE MANAGE" not in str(
@@ -130,6 +139,27 @@ def test_registry_expands_and_collapses_trace_names(tmp_path) -> None:
                 Console(), trace.plain.index("READY")
             )
             assert unselected_entry.dim
+
+            await pilot.press("space")
+            await pilot.pause()
+            collapsed_first = chooser.get_option_at_index(1).prompt
+            collapsed_second = chooser.get_option_at_index(2).prompt
+            assert isinstance(collapsed_first, Text)
+            assert isinstance(collapsed_second, Text)
+            assert "session" not in collapsed_first.plain
+            assert "session" not in collapsed_second.plain
+            assert "\n" not in collapsed_first.plain
+            assert "\n" not in collapsed_second.plain
+            assert runtime.session is None
+
+            await pilot.press("space")
+            await pilot.pause()
+            expanded_first = chooser.get_option_at_index(1).prompt
+            expanded_second = chooser.get_option_at_index(2).prompt
+            assert isinstance(expanded_first, Text)
+            assert isinstance(expanded_second, Text)
+            assert "Night session" in expanded_first.plain
+            assert "Morning session" in expanded_second.plain
 
             await pilot.press("down")
             await pilot.pause()
@@ -150,20 +180,6 @@ def test_registry_expands_and_collapses_trace_names(tmp_path) -> None:
             assert "BACKSPACE MANAGE" in str(
                 app.query_one("#catalog-hints", Static).content
             )
-
-            await pilot.press("space")
-            await pilot.pause()
-            collapsed = chooser.get_option_at_index(1).prompt
-            assert isinstance(collapsed, Text)
-            assert "Night session" not in collapsed.plain
-            assert "\n" not in collapsed.plain
-            assert runtime.session is None
-
-            await pilot.press("space")
-            await pilot.pause()
-            expanded = chooser.get_option_at_index(1).prompt
-            assert isinstance(expanded, Text)
-            assert "\n Night session" in expanded.plain
 
     asyncio.run(verify())
 
@@ -212,6 +228,15 @@ def test_registry_confirms_trace_erasure(tmp_path) -> None:
             ] == ["ERASE", "RENAME", "RETAIN"]
             assert app.focused is not None
             assert app.focused.id == "retain"
+            trace_message = app.screen.query_one("#trace-message", Static)
+            assert trace_message.content_region.x == app.query_one(
+                "#catalog-hints", Static
+            ).content_region.x
+            assert (
+                app.screen.query_one("#erase", KeyboardButton).content_region.x
+                - trace_message.content_region.x
+                == 1
+            )
             assert str(app.query_one("#catalog-hints", Static).content) == (
                 "←→ MOVE    ENTER SELECT    ESC RETAIN"
             )
@@ -272,6 +297,13 @@ def test_registry_renames_trace_with_current_name_as_default(tmp_path) -> None:
             name = app.screen.query_one("#trace-name", Input)
             assert name.has_focus
             assert name.placeholder == "Night session"
+            trace_name_message = app.screen.query_one(
+                "#trace-name-message", Static
+            )
+            assert trace_name_message.content_region.x == app.query_one(
+                "#catalog-hints", Static
+            ).content_region.x
+            assert name.content_region.x - trace_name_message.content_region.x == 1
             assert str(app.query_one("#catalog-hints", Static).content) == (
                 "ENTER NAME    ESC RETAIN"
             )
@@ -353,9 +385,11 @@ def test_transcript_formats_markdown_and_remains_scrollable(tmp_path) -> None:
                 "IDIOLECT // DIXIE@BASE [M]"
             )
             assert str(app.query_one("#footer", Static).content) == (
-                "CONTEXT 500/1000 (50%)    GENERATED 64"
+                "CTX 500/1,000 (50%)    GEN 64 TOK @ 12.3 TOK/S"
             )
             footer = app.query_one("#footer", Static)
+            assert footer.styles.color.ansi == 8
+            assert not footer.styles.text_style.bold
             composer_bar = app.query_one("#composer-bar", Horizontal)
             assert footer.region.y == composer_bar.region.bottom
             assert footer.content_region.x == scroller.content_region.x
@@ -398,6 +432,46 @@ def test_transcript_formats_markdown_and_remains_scrollable(tmp_path) -> None:
             await pilot.pause()
             await pilot.pause()
             assert scroller.scroll_y == scroller.max_scroll_y
+
+    asyncio.run(verify())
+
+
+def test_footer_discloses_secondary_telemetry_when_space_allows(tmp_path) -> None:
+    """Check telemetry priority and responsive disclosure."""
+    chat = ChatConfig(output=tmp_path)
+    generation = GenerationConfig(max_prompt_tokens=1000)
+    runtime = TranscriptRuntime(chat, generation)
+    app = ChatApp(
+        chat,
+        generation,
+        runtime_factory=cast(Callable[..., ChatRuntime], lambda *_args: runtime),
+        initial_assistant=_assistant(),
+    )
+
+    async def verify() -> None:
+        async with app.run_test(size=(50, 18)) as pilot:
+            await _wait_for_chat(app, pilot)
+            footer = app.query_one("#footer", Static)
+            assert str(footer.content) == (
+                "CTX 500/1,000 (50%)    GEN 64 TOK @ 12.3 TOK/S"
+            )
+
+            await pilot.resize_terminal(20, 18)
+            await pilot.pause()
+            assert str(footer.content) == "CTX 50%"
+
+            await pilot.resize_terminal(65, 18)
+            await pilot.pause()
+            assert str(footer.content) == (
+                "CTX 500/1,000 (50%)    GEN 64 TOK @ 12.3 TOK/S    TTFT 0.42 S"
+            )
+
+            await pilot.resize_terminal(80, 18)
+            await pilot.pause()
+            assert str(footer.content) == (
+                "CTX 500/1,000 (50%)    GEN 64 TOK @ 12.3 TOK/S"
+                "    TTFT 0.42 S    MEM 3.25 GB"
+            )
 
     asyncio.run(verify())
 
@@ -829,7 +903,7 @@ def test_chat_errors_align_right_above_composer(tmp_path) -> None:
             await pilot.pause()
 
             failure = app.query_one("#chat-error", LoadingStatus)
-            assert failure.state == "Wait for the assistant to finish loading."
+            assert failure.state == "CONNECTION is not ready."
             assert failure.display
 
             app._loading = False
@@ -1040,6 +1114,7 @@ class TranscriptRuntime(ImmediateRuntime):
                         prompt_tokens=500,
                         generated_tokens=64,
                         generation_throughput=12.3,
+                        time_to_first_token=0.42,
                         peak_memory=3.25,
                     ),
                 ),

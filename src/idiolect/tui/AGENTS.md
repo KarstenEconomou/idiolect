@@ -45,15 +45,14 @@ TUI tests.
 - Present assistants and saved snapshots in `REGISTRY`, a vertical,
   keyboard-only table without search or pointer activation. Start on the first
   available row, skip unavailable rows, and select with arrows and Enter. Keep
-  row identity primary, data, window, and entry metadata dim, and
-  unavailable rows red and dim.
-- Keep entry status dim like data and window metadata. Remove dim styling only
+  row identity primary and type metadata dim. Keep unavailable rows red and dim.
+- Keep entry status dim like type metadata. Remove dim styling only
   from the selected `READY` entry. For a `TRACE`, keep the canonical model
   identity on the primary line and show its trace name one cell inward on a
   second metadata-colored line. Expand trace names by default. Let Space toggle
-  the highlighted trace name without opening the trace. Treat an expanded trace
-  name like DATA and WINDOW metadata while its TRACE is highlighted: use the
-  selection accent with dim styling.
+  all trace names whenever the registry contains a TRACE. Treat an expanded
+  trace name like TYPE metadata while its TRACE is highlighted: use
+  the selection accent with dim styling.
 - Keep slash commands in a vertical menu above the composer. Show at most three
   rows, with command names in a fixed-width column and descriptions in the
   remaining width. Keep composer focus. Wrap enabled commands with arrow keys;

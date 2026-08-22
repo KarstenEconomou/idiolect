@@ -33,7 +33,7 @@ class KeyboardOptionList(OptionList):
     ]
 
     class DetailsToggled(Message):
-        """Request a details toggle for one highlighted option."""
+        """Request a registry-wide details toggle."""
 
         def __init__(self, key: str) -> None:
             """Set the highlighted option key."""
@@ -351,9 +351,10 @@ class TraceNameModal(ModalScreen[str | None]):
             "#catalog-hints" if self.registry else "#composer-bar"
         )
         dialog = self.query_one("#trace-name-dialog", Vertical)
-        dialog.styles.width = anchor.region.width
+        inset = 1 if self.registry else 0
+        dialog.styles.width = anchor.region.width - (2 * inset)
         dialog.styles.offset = (
-            anchor.region.x,
+            anchor.region.x + inset,
             anchor.region.y - dialog.region.height,
         )
 
@@ -400,9 +401,9 @@ class TraceMenuModal(ModalScreen[str]):
     def _place_dialog(self) -> None:
         hints = self.app.query_one("#catalog-hints", Static)
         dialog = self.query_one("#trace-dialog", Vertical)
-        dialog.styles.width = hints.region.width
+        dialog.styles.width = hints.region.width - 2
         dialog.styles.offset = (
-            hints.region.x,
+            hints.region.x + 1,
             hints.region.y - dialog.region.height,
         )
 

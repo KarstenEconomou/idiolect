@@ -17,8 +17,7 @@ class CatalogLayout:
     """Keep the visible registry column widths."""
 
     model: int
-    data: int
-    window: int
+    kind: int
     status: int
 
     @classmethod
@@ -26,36 +25,29 @@ class CatalogLayout:
         """Return the registry layout for one terminal width."""
         content_width = max(24, terminal_width - 4)
         status_width = 5
-        data_width = (16 if content_width >= 100 else 10) if content_width >= 70 else 0
-        window_width = 7 if content_width >= 54 else 0
-        visible_separators = sum(
-            width > 0 for width in (data_width, window_width, status_width)
-        )
+        kind_width = (16 if content_width >= 100 else 10) if content_width >= 70 else 0
+        visible_separators = sum(width > 0 for width in (kind_width, status_width))
         model_width = max(
             8,
             content_width
-            - data_width
-            - window_width
+            - kind_width
             - status_width
             - visible_separators,
         )
-        return cls(model_width, data_width, window_width, status_width)
+        return cls(model_width, kind_width, status_width)
 
-    def line(self, model: str, data: str, window: str, status: str) -> str:
+    def line(self, model: str, kind: str, status: str) -> str:
         """Return one plain registry line."""
         values = [set_cell_size(model, self.model)]
-        if self.data:
-            values.append(set_cell_size(data, self.data))
-        if self.window:
-            values.append(set_cell_size(window, self.window))
+        if self.kind:
+            values.append(set_cell_size(kind, self.kind))
         values.append(set_cell_size(status, self.status))
         return " ".join(values)
 
     def text(
         self,
         model: str,
-        data: str,
-        window: str,
+        kind: str,
         status: str,
         *,
         failed: bool = False,
@@ -66,12 +58,9 @@ class CatalogLayout:
     ) -> Text:
         """Return one styled registry entry and optional trace name."""
         value = Text(set_cell_size(model, self.model))
-        if self.data:
+        if self.kind:
             value.append(" ", style=_METADATA)
-            value.append(set_cell_size(data, self.data), style=_METADATA)
-        if self.window:
-            value.append(" ", style=_METADATA)
-            value.append(set_cell_size(window, self.window), style=_METADATA)
+            value.append(set_cell_size(kind, self.kind), style=_METADATA)
         value.append(" ", style=_METADATA)
         status_style = (
             _FAILED if failed else _READY_SELECTED if selected else _METADATA

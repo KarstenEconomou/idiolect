@@ -47,17 +47,19 @@ does not download a model.
 
 The landing screen displays the base persona, verified adapters, and saved
 snapshots in `REGISTRY`. It has no search field or pointer activation.
-Use the arrow keys and Enter to select a row. DATA, WINDOW, and ENTRY values are
-muted metadata. The selected `READY` entry becomes bright; unavailable entries
-remain failures. A saved `TRACE` keeps the canonical model identity on its first
-line and shows the trace name indented below it in metadata gray. Trace names
-are expanded by default and use the muted selection color with their highlighted
-TRACE, matching DATA and WINDOW. Highlight a trace and press Space to collapse
-or expand its name without opening it. Press Backspace while a TRACE is highlighted
-to open the horizontal `TRACE` management menu. `RETAIN` is selected by default
-and Escape also keeps the trace. Its heading shows the current trace name directly
-after `TRACE` in metadata gray,
-and the subject trace name blinks until the menu closes. Select `RENAME` to open
+Use the arrow keys to choose a row and Enter to connect. TYPE identifies a BASE,
+CONSTRUCT, or TRACE. TYPE and ENTRY values are muted metadata. The selected
+`READY` entry becomes bright;
+unavailable entries remain failures. A saved `TRACE` keeps the canonical model
+identity on its first line and shows the trace name indented below it in metadata
+gray. Trace names are expanded by default and use the muted selection color with
+their highlighted TRACE, matching TYPE. Press Space from any registry
+row to collapse or expand all trace names together. Press Backspace while a
+TRACE is highlighted to open the horizontal `TRACE` management menu. `RETAIN` is
+selected by default and Escape also keeps the trace. Its heading shows the
+current trace name directly after `TRACE` in metadata gray,
+and the subject trace name blinks until the menu closes. The menu and rename
+field use the same outer inset as the chat composer. Select `RENAME` to open
 the standard name field with the current name as its default. Renaming creates
 an immutable replacement with the same lineage parent. Select `ERASE` to
 permanently remove that verified lineage leaf. A trace with a child cannot be
@@ -168,11 +170,16 @@ new chat.
 
 Model resolution, verification, and loading run outside the Textual event loop.
 The interface stays responsive and reports active worker states above the
-composer. It hides the ready state. During prompt processing, it reports the
-measured prefill token count and total from MLX-LM.
+composer. It reports `CONNECTION is not ready.` if input is submitted before the
+load completes. It hides the ready state. During prompt processing, it reports
+the measured prefill token count and total from MLX-LM.
 
-The footer reports the last measured context and generation values when no
-action menu is open. It does not report estimated performance.
+The footer reports the last measured turn when no action menu is open. It puts
+context use first, then groups output tokens and generation rate under `GEN`.
+With more terminal width, it adds first-token latency and peak memory. It removes
+fields from the right when space is limited. All values come from the model
+backend; the footer does not report estimated performance. Peak memory uses
+decimal GB, which matches the MLX-LM measurement.
 
 Failures appear as transient right-aligned lines immediately above the active
 control bar. They use the same spacing as loading status and the failure color.

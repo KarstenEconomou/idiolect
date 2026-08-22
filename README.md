@@ -166,13 +166,15 @@ or dataset. Verified adapters follow it with identities such as
 `IDIOLECT // DIXIE@7f3a91c2 [Qwen3-14B-4bit]`. Direct adapter launch and resume
 are also available. The visible target-name segment is always uppercase. The
 landing table is the `REGISTRY`. It has no search field or pointer
-activation. Use the arrow keys and Enter to select a row. Saved TRACE rows show
-their names below the canonical model identity and use the muted metadata
-selection style; press Space to collapse or expand the highlighted trace name.
-When a TRACE is highlighted, press Backspace to manage it in the horizontal
-TRACE menu. The heading repeats the trace name, and the subject name blinks while the menu
-is open. ERASE removes that lineage leaf, RENAME replaces it with a newly named
-immutable leaf, and RETAIN keeps it.
+activation. Use the arrow keys to choose a row and Enter to connect. Registry
+rows show MODEL identity, TYPE, and ENTRY readiness;
+saved TRACE rows show their names below the canonical model identity and use the
+muted metadata selection style; press Space from any registry row to collapse or
+expand all trace names. When a TRACE is highlighted, press Backspace to manage
+it in the horizontal TRACE menu. The heading repeats the trace name, and the
+subject name blinks while the menu is open. The TRACE controls use the same
+outer inset as the chat composer. ERASE removes that lineage leaf, RENAME
+replaces it with a newly named immutable leaf, and RETAIN keeps it.
 In chat, use the mouse wheel or Ctrl+Up and Ctrl+Down to scroll the transcript.
 Chat headers retain the full canonical
 assistant name; assistant turns use only the uppercase target name. Transcript
@@ -183,9 +185,13 @@ visible and use clickable underlined labels. Type `/` to open the keyboard-drive
 `/exit`, `/registry`, and `/save` menu, and use Tab to complete its selected
 command. `/save` requests an optional trace name and records a checkpoint without
 leaving chat. The empty naming field previews its generated default. The command
-is available only while the transcript has new unsaved data.
+is available only while the transcript has new unsaved data. Input submitted
+before model loading completes reports that the `CONNECTION` is not ready.
 Unsaved changes open the horizontal DISCONNECT, SAVE, and RESUME confirmation;
 SAVE then requests an optional trace name before navigation.
+The chat footer prioritizes measured context use, then groups output size and
+generation rate. Wider terminals progressively add first-token latency and peak
+memory.
 
 ```console
 just chat run RUN_ID DATASET_ID

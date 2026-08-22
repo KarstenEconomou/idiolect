@@ -16,7 +16,7 @@ from textual.widgets.option_list import Option
 
 from idiolect.chat.discovery import Assistant, DiscoveryItem
 from idiolect.chat.runtime import ChatError, ChatRuntime
-from idiolect.chat.state import ChatSession
+from idiolect.chat.state import ChatSession, TurnTelemetry
 from idiolect.chat.storage import (
     ChatStorageError,
     ChatStore,
@@ -45,6 +45,41 @@ WATERMARK = """     ╭─╮
   ╰──╮ ╭──╯    someone, reconstructed.
      ╰─╯"""
 
+_FOOTER_GAP = "    "
+
+
+def _telemetry_footer(
+    telemetry: TurnTelemetry,
+    max_prompt_tokens: int,
+    available_width: int,
+) -> str:
+    """Format the measured values that fit in the footer."""
+    pressure = 100 * telemetry.prompt_tokens / max_prompt_tokens
+    context = (
+        "CTX "
+        f"{telemetry.prompt_tokens:,}/{max_prompt_tokens:,} "
+        f"({pressure:.0f}%)"
+    )
+    if len(context) > available_width:
+        compact_context = f"CTX {pressure:.0f}%"
+        return compact_context if len(compact_context) <= available_width else ""
+    generation = f"GEN {telemetry.generated_tokens:,} TOK"
+    if telemetry.generation_throughput is not None:
+        generation += f" @ {telemetry.generation_throughput:.1f} TOK/S"
+    fields = [context, generation]
+    if telemetry.time_to_first_token is not None:
+        fields.append(f"TTFT {telemetry.time_to_first_token:.2f} S")
+    if telemetry.peak_memory is not None:
+        fields.append(f"MEM {telemetry.peak_memory:.2f} GB")
+
+    visible = [fields[0]]
+    for field in fields[1:]:
+        candidate = _FOOTER_GAP.join((*visible, field))
+        if len(candidate) > available_width:
+            break
+        visible.append(field)
+    return _FOOTER_GAP.join(visible)
+
 
 class ChatApp(App[None]):
     """Run the assistant registry and local chat screen."""
@@ -62,7 +97,6 @@ class ChatApp(App[None]):
     #catalog-title { text-style: bold; }
     #catalog-subtitle { height: 1; padding: 0 2; color: $metadata; }
     #catalog-description { width: 1fr; }
-    #catalog-summary { width: auto; }
     #catalog-rule { height: 1; margin: 0; padding: 0 2; color: $metadata; }
     #catalog-columns { height: 1; padding: 0 2; color: ansi_white; text-style: bold; }
     #load-status { display: none; height: 1; padding: 0 2; color: $metadata; }
@@ -162,7 +196,7 @@ class ChatApp(App[None]):
         self.initial_assistant = initial_assistant
         self.initial_chat = initial_chat
         self._rows: dict[str, DiscoveryItem | SavedChat] = {}
-        self._collapsed_traces: set[str] = set()
+        self._trace_details_expanded = True
         self._generating = False
         self._loading = False
         self._streaming_text = ""
@@ -191,18 +225,17 @@ class ChatApp(App[None]):
                 yield Static("REGISTRY", markup=False, id="catalog-title")
             with Horizontal(id="catalog-subtitle"):
                 yield Static(
-                    "Choose a BASE, CONSTRUCT, or TRACE.",
+                    "Connect to a BASE, CONSTRUCT, or TRACE.",
                     markup=False,
                     id="catalog-description",
                 )
-                yield Static("", markup=False, id="catalog-summary")
             yield Rule(line_style="solid", id="catalog-rule")
             yield Static("", markup=False, id="catalog-columns")
             yield LoadingStatus(id="load-status")
             yield KeyboardOptionList(id="chooser")
             yield LoadingStatus(id="catalog-error")
             yield Static(
-                "↑↓ MOVE    ENTER SELECT    CTRL+C QUIT",
+                "↑↓ MOVE    ENTER CONNECT    CTRL+C QUIT",
                 markup=False,
                 id="catalog-hints",
             )
@@ -260,14 +293,10 @@ class ChatApp(App[None]):
         self,
         event: KeyboardOptionList.DetailsToggled,
     ) -> None:
-        """Expand or collapse the highlighted trace name."""
-        row = self._rows.get(event.key)
-        if not isinstance(row, SavedChat):
+        """Expand or collapse all trace names in the registry."""
+        if not any(isinstance(row, SavedChat) for row in self._rows.values()):
             return
-        if row.id in self._collapsed_traces:
-            self._collapsed_traces.remove(row.id)
-        else:
-            self._collapsed_traces.add(row.id)
+        self._trace_details_expanded = not self._trace_details_expanded
         self._refresh_catalog_prompts(event.key)
 
     def on_keyboard_option_list_erase_requested(
@@ -306,7 +335,6 @@ class ChatApp(App[None]):
         except ChatStorageError as error:
             self._show_error(str(error))
             return
-        self._collapsed_traces.discard(trace.id)
         self._fill_chooser()
 
     def _after_trace_rename(self, trace: SavedChat, title: str | None) -> None:
@@ -317,16 +345,13 @@ class ChatApp(App[None]):
             self._show_error("Chat output is not configured")
             return
         try:
-            renamed = self.store.rename(
+            self.store.rename(
                 trace.id,
                 title if title.strip() else trace.title,
             )
         except ChatStorageError as error:
             self._show_error(str(error))
             return
-        if trace.id in self._collapsed_traces:
-            self._collapsed_traces.remove(trace.id)
-            self._collapsed_traces.add(renamed.id)
         self._fill_chooser()
 
     def _close_trace_menu(self) -> None:
@@ -420,7 +445,7 @@ class ChatApp(App[None]):
         if not value.strip():
             return
         if self._loading:
-            self._show_error("Wait for the assistant to finish loading")
+            self._show_error("CONNECTION is not ready")
             return
         composer = self.query_one(Composer)
         try:
@@ -571,20 +596,11 @@ class ChatApp(App[None]):
             value = ""
         else:
             telemetry = last.telemetry
-            pressure = 100 * telemetry.prompt_tokens / self.generation.max_prompt_tokens
-            fields = [
-                (
-                    "context "
-                    f"{telemetry.prompt_tokens}/{self.generation.max_prompt_tokens} "
-                    f"({pressure:.0f}%)"
-                ),
-                f"generated {telemetry.generated_tokens}",
-            ]
-            if self.size.width >= 80 and telemetry.generation_throughput is not None:
-                fields.append(f"{telemetry.generation_throughput:.1f} tok/s")
-            if self.size.width >= 105 and telemetry.peak_memory is not None:
-                fields.append(f"peak {telemetry.peak_memory:.2f} GB")
-            value = "    ".join(fields)
+            value = _telemetry_footer(
+                telemetry,
+                self.generation.max_prompt_tokens,
+                max(0, self.size.width - 4),
+            )
         self._set_footer(value)
 
     def _set_footer(self, value: str) -> None:
@@ -874,32 +890,26 @@ class ChatApp(App[None]):
         chooser.clear_options()
         self._rows.clear()
         options = []
-        available = 0
         saved_chats = () if self.store is None else self.store.leaves()
-        saved_ids = {saved.id for saved in saved_chats}
-        self._collapsed_traces.intersection_update(saved_ids)
         layout = CatalogLayout.for_terminal(self.size.width)
         self.query_one("#catalog-columns", Static).update(
-            layout.line("MODEL", "DATA", "WINDOW", "ENTRY")
+            layout.line("MODEL", "TYPE", "ENTRY")
         )
         for index, row in enumerate(self.assistants):
             if row.available and row.assistant is not None:
                 assistant = row.assistant
                 if assistant.run is None:
-                    data = "BASE"
+                    kind = "BASE"
                 else:
-                    data = "CONSTRUCT"
+                    kind = "CONSTRUCT"
                 text = layout.text(
                     row.label,
-                    data,
-                    str(assistant.context_messages),
+                    kind,
                     "READY",
                 )
-                available += 1
             else:
                 text = layout.text(
                     row.label,
-                    "—",
                     "—",
                     "FAULT",
                     failed=True,
@@ -911,20 +921,15 @@ class ChatApp(App[None]):
             text = layout.text(
                 saved.assistant.name,
                 "TRACE",
-                "—",
                 "READY",
                 trace_name=(
-                    None if saved.id in self._collapsed_traces else saved.title
+                    saved.title if self._trace_details_expanded else None
                 ),
             )
             key = f"saved-{saved.id}"
             self._rows[key] = saved
             options.append(Option(text, id=key))
         chooser.add_options(options)
-        summary = f"{available} available"
-        if saved_chats:
-            summary += f" · {len(saved_chats)} saved"
-        self.query_one("#catalog-summary", Static).update(summary)
         for option_index, option in enumerate(chooser.options):
             if not option.disabled:
                 chooser.highlighted = option_index
@@ -943,26 +948,24 @@ class ChatApp(App[None]):
             if isinstance(row, DiscoveryItem):
                 if row.available and row.assistant is not None:
                     assistant = row.assistant
-                    data = "BASE" if assistant.run is None else "CONSTRUCT"
+                    kind = "BASE" if assistant.run is None else "CONSTRUCT"
                     prompt = layout.text(
                         row.label,
-                        data,
-                        str(assistant.context_messages),
+                        kind,
                         "READY",
                         selected=option.id == selected_key,
                     )
                 else:
-                    prompt = layout.text(row.label, "—", "—", "FAULT", failed=True)
+                    prompt = layout.text(row.label, "—", "FAULT", failed=True)
             elif isinstance(row, SavedChat):
                 prompt = layout.text(
                     row.assistant.name,
                     "TRACE",
-                    "—",
                     "READY",
                     selected=option.id == selected_key,
                     trace_name=(
                         None
-                        if row.id in self._collapsed_traces
+                        if not self._trace_details_expanded
                         and row.id != self._trace_menu_id
                         else row.title
                     ),
@@ -987,9 +990,11 @@ class ChatApp(App[None]):
                 else "←→ MOVE    ENTER SELECT    ESC RETAIN"
             )
             return
-        hints = "↑↓ MOVE    ENTER SELECT"
+        hints = "↑↓ MOVE    ENTER CONNECT"
+        if any(isinstance(row, SavedChat) for row in self._rows.values()):
+            hints += "    SPACE DETAILS"
         if isinstance(self._rows.get(self._selected_catalog_key or ""), SavedChat):
-            hints += "    SPACE DETAILS    BACKSPACE MANAGE"
+            hints += "    BACKSPACE MANAGE"
         hints += "    CTRL+C QUIT"
         self.query_one("#catalog-hints", Static).update(hints)
 
