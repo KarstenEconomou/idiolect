@@ -1146,6 +1146,7 @@ def test_command_menu_filters_navigates_and_returns_to_registry(tmp_path) -> Non
             exit_button = menu.query_one("#command-exit", Horizontal)
             registry_button = menu.query_one("#command-registry", Horizontal)
             save_button = menu.query_one("#command-save", Horizontal)
+            specs_button = menu.query_one("#command-specs", Horizontal)
             assert menu.display is True
             assert str(menu.query_one("#command-message", Static).content) == "COMMAND"
             assert menu.query_one("#command-message", Static).styles.color.ansi == 7
@@ -1164,6 +1165,10 @@ def test_command_menu_filters_navigates_and_returns_to_registry(tmp_path) -> Non
             assert str(
                 save_button.query_one(".command-description", Static).content
             ) == "Save TRACE."
+            assert str(
+                specs_button.query_one(".command-description", Static).content
+            ) == "View model SPECS."
+            assert specs_button.display is False
             assert save_button.has_class("-disabled")
             assert save_button.has_class("-selected") is False
             assert save_button.query_one(".command-name", Static).styles.color == (
@@ -1187,7 +1192,13 @@ def test_command_menu_filters_navigates_and_returns_to_registry(tmp_path) -> Non
             await pilot.press("down")
             assert registry_button.has_class("-selected")
             await pilot.press("down")
+            assert specs_button.has_class("-selected")
+            assert specs_button.display
+            assert exit_button.display is False
+            await pilot.press("down")
             assert exit_button.has_class("-selected")
+            await pilot.press("up")
+            assert specs_button.has_class("-selected")
             await pilot.press("up")
             assert registry_button.has_class("-selected")
 
@@ -1212,6 +1223,83 @@ def test_command_menu_filters_navigates_and_returns_to_registry(tmp_path) -> Non
             await pilot.pause()
             assert app.query_one("#landing").display
             assert composer.text == ""
+
+    asyncio.run(verify())
+
+
+def test_specs_command_restores_the_unchanged_trace_chat(tmp_path) -> None:
+    """Check temporary TRACE details preserve the live chat state."""
+    chat = ChatConfig(output=tmp_path)
+    generation = GenerationConfig(temperature=0.3, max_prompt_tokens=100)
+    assistant = _assistant()
+    trace = SavedChat(
+        "c" * 64,
+        tmp_path / ("c" * 64),
+        datetime(2026, 8, 22, tzinfo=UTC),
+        "Night session",
+        None,
+        assistant,
+        chat,
+        generation,
+        (),
+    )
+    runtime = ImmediateRuntime(chat, generation)
+    app = ChatApp(
+        chat,
+        GenerationConfig(temperature=0.9),
+        initial_chat=trace,
+        runtime_factory=cast(Callable[..., ChatRuntime], lambda *_args: runtime),
+    )
+
+    async def verify() -> None:
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_chat(app, pilot)
+            composer = app.query_one(Composer)
+            composer.insert("Keep this turn")
+            await pilot.press("enter")
+            for _ in range(20):
+                await pilot.pause()
+                if "Synthetic reply" in app.query_one(Transcript).plain:
+                    break
+
+            session = runtime.session
+            assert session is not None
+            assert session.dirty
+            turns = tuple(session.turns)
+            fingerprint = session.fingerprint
+            transcript = app.query_one(Transcript)
+            transcript_text = transcript.plain
+
+            composer.insert("/specs")
+            await pilot.press("enter")
+            await pilot.pause()
+
+            assert app.query_one("#chat").display is False
+            assert app.query_one("#specs").display
+            assert str(app.query_one("#specs-hints", Static).content) == (
+                "↑↓ SCROLL    ESC CHAT    CTRL+C QUIT"
+            )
+            content = app.query_one("#specs-body", Static).content
+            assert isinstance(content, SpecsDocument)
+            assert "TYPE\n TRACE\n" in content.plain
+            assert f"TRACE ID\n {trace.id}\n" in content.plain
+            assert "TEMPERATURE\n 0.3\n" in content.plain
+
+            await pilot.press("right")
+            await pilot.pause()
+            assert f"TRACE ID\n {trace.id}\n" in content.plain
+            await pilot.press("escape")
+            await pilot.pause()
+
+            assert app.query_one("#chat").display
+            assert app.query_one("#specs").display is False
+            assert composer.has_focus
+            assert composer.text == ""
+            assert runtime.session is session
+            assert tuple(session.turns) == turns
+            assert session.fingerprint == fingerprint
+            assert session.dirty
+            assert transcript.plain == transcript_text
 
     asyncio.run(verify())
 
@@ -1452,6 +1540,15 @@ class BlockingRuntime:
             raise RuntimeError("Synthetic model load timed out")
         self.state = WorkerState.READY
         return self.session
+
+    def attach(self, session: ChatSession) -> None:
+        """Wait before attaching one existing fake session."""
+        self.session = session
+        self.state = WorkerState.LOADING
+        self.started.set()
+        if not self.release.wait(2):
+            raise RuntimeError("Synthetic model attach timed out")
+        self.state = WorkerState.READY
 
     def close(self) -> None:
         """Release a pending fake load."""

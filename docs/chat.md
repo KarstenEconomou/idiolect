@@ -129,7 +129,13 @@ Escape to close the menu without clearing the composer. Commands are:
 
 - `/exit`: stop an active reply or exit when idle;
 - `/registry`: return to `REGISTRY` when no reply is active;
-- `/save`: save a TRACE checkpoint and keep the chat open.
+- `/save`: save a TRACE checkpoint and keep the chat open;
+- `/specs`: temporarily view the active model's SPECS.
+
+`/specs` uses the active session's recorded generation policy and includes full
+TRACE lineage for a resumed or newly saved snapshot. It does not change turns,
+unsaved state, or transcript content. Escape restores the same chat directly;
+Left and Right do not cycle registry models in this temporary view.
 
 `/save` is available only when the transcript contains new unsaved data and no
 reply is active. Otherwise it is shown as unavailable and cannot be selected;

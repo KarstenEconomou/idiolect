@@ -6,12 +6,14 @@ COMMANDS = (
     "/exit",
     "/registry",
     "/save",
+    "/specs",
 )
 
 COMMAND_DESCRIPTIONS = {
     "/exit": "Exit IDIOLECT.",
     "/registry": "Return to REGISTRY.",
     "/save": "Save TRACE.",
+    "/specs": "View model SPECS.",
 }
 
 

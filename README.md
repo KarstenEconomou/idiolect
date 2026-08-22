@@ -198,8 +198,9 @@ an ANSI bright-black background, compact nested lists, and indented quotes
 without changing saved text. Explicit HTTP and HTTPS Markdown links keep their
 complete destination visible and use clickable underlined labels. Type `/` to
 open the keyboard-driven
-`/exit`, `/registry`, and `/save` menu, and use Tab to complete its selected
-command. `/save` requests an optional trace name and records a checkpoint without
+`/exit`, `/registry`, `/save`, and `/specs` menu, and use Tab to complete its
+selected command. `/specs` temporarily shows the active model and returns to the
+unchanged chat on Escape. `/save` requests an optional trace name and records a checkpoint without
 leaving chat. Transient alerts share the right-aligned error-message slot;
 successful saves use metadata gray, while errors use red. The empty naming field
 previews its generated default. The command

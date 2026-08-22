@@ -286,6 +286,8 @@ class ChatApp(App[None]):
         self._alert_timer: Timer | None = None
         self._selected_catalog_key: str | None = None
         self._specs_key: str | None = None
+        self._specs_from_chat = False
+        self._active_trace: SavedChat | None = None
         self._accent_theme_index = 0
 
     def compose(self) -> ComposeResult:
@@ -344,7 +346,10 @@ class ChatApp(App[None]):
         self._fill_chooser()
         self._loading_timer = self.set_interval(0.1, self._refresh_loading_state)
         if self.initial_chat is not None:
-            self._begin_attach(self._saved_session(self.initial_chat))
+            self._begin_attach(
+                self._saved_session(self.initial_chat),
+                trace=self.initial_chat,
+            )
         elif self.initial_assistant is not None:
             self._begin_select(self.initial_assistant)
 
@@ -516,7 +521,7 @@ class ChatApp(App[None]):
         if isinstance(row, DiscoveryItem) and row.assistant is not None:
             self._begin_select(row.assistant)
         elif isinstance(row, SavedChat):
-            self._begin_attach(self._saved_session(row))
+            self._begin_attach(self._saved_session(row), trace=row)
 
     @staticmethod
     def _saved_session(saved: SavedChat) -> ChatSession:
@@ -602,7 +607,10 @@ class ChatApp(App[None]):
     def action_stop(self) -> None:
         """Stop active generation at a token boundary."""
         if self.query_one("#specs").display:
-            self._show_registry()
+            if self._specs_from_chat:
+                self._restore_chat_from_specs()
+            else:
+                self._show_registry()
         elif self._generating:
             self.runtime.cancel()
 
@@ -762,6 +770,8 @@ class ChatApp(App[None]):
                 self._show_error("Stop the active reply before returning to REGISTRY")
             else:
                 self._return_to_landing()
+        elif name == "specs":
+            self._show_chat_specs()
         elif name == "save":
             session = self._session()
             if not session.dirty:
@@ -912,21 +922,26 @@ class ChatApp(App[None]):
         except ChatStorageError as error:
             self._show_error(str(error))
             return False
+        self._active_trace = saved
         self._show_alert(f"Saved {saved.id[:8]} — {saved.title}")
         return True
 
     def _begin_select(self, assistant: Assistant) -> None:
         if not self._prepare_load():
             return
+        self._active_trace = None
         self._set_loading(True)
         self._select_thread(assistant)
 
     def _begin_attach(
         self,
         session: ChatSession,
+        *,
+        trace: SavedChat | None = None,
     ) -> None:
         if not self._prepare_load():
             return
+        self._active_trace = trace
         self.runtime.session = session
         self._set_loading(True)
         self._show_chat()
@@ -1077,17 +1092,44 @@ class ChatApp(App[None]):
 
     def _show_specs(self, key: str) -> None:
         """Show details for one registry entry without loading its model."""
+        self._specs_from_chat = False
         self._specs_key = key
         self.query_one("#landing").display = False
         self.query_one("#chat").display = False
         self.query_one("#specs").display = True
+        self.query_one("#specs-hints", Static).update(
+            "↑↓ SCROLL    ←→ MODEL    ESC REGISTRY    CTRL+C QUIT"
+        )
         self._render_specs()
         self.query_one("#specs-scroll", VerticalScroll).focus()
+
+    def _show_chat_specs(self) -> None:
+        """Show model details as a temporary view over the active chat."""
+        self._specs_from_chat = True
+        self._specs_key = None
+        self.query_one("#landing").display = False
+        self.query_one("#chat").display = False
+        self.query_one("#specs").display = True
+        self.query_one("#specs-hints", Static).update(
+            "↑↓ SCROLL    ESC CHAT    CTRL+C QUIT"
+        )
+        self._render_specs()
+        specs_scroll = self.query_one("#specs-scroll", SpecsScroll)
+        specs_scroll.scroll_to(y=0, animate=False)
+        specs_scroll.focus()
+
+    def _restore_chat_from_specs(self) -> None:
+        """Return from temporary model details without changing chat state."""
+        self.query_one("#specs").display = False
+        self.query_one("#chat").display = True
+        self._specs_from_chat = False
+        self.query_one(Composer).focus()
 
     def _show_registry(self) -> None:
         """Return from model details to the unchanged registry selection."""
         self.query_one("#specs").display = False
         self.query_one("#landing").display = True
+        self._specs_from_chat = False
         self._specs_key = None
         self.query_one("#chooser", OptionList).focus()
 
@@ -1111,19 +1153,32 @@ class ChatApp(App[None]):
 
     def _render_specs(self) -> None:
         """Render the selected model details at the current terminal width."""
-        row = self._rows.get(self._specs_key or "")
-        if isinstance(row, DiscoveryItem) and row.assistant is not None:
-            assistant = row.assistant
-            kind = "BASE" if assistant.run is None else "CONSTRUCT"
-            generation = self.generation
-            trace = None
-        elif isinstance(row, SavedChat):
-            assistant = row.assistant
-            kind = "TRACE"
-            generation = row.generation
-            trace = row
+        if self._specs_from_chat:
+            session = self._session()
+            assistant = session.assistant
+            generation = session.generation
+            trace = self._active_trace
+            kind = (
+                "TRACE"
+                if trace is not None
+                else "BASE"
+                if assistant.run is None
+                else "CONSTRUCT"
+            )
         else:
-            return
+            row = self._rows.get(self._specs_key or "")
+            if isinstance(row, DiscoveryItem) and row.assistant is not None:
+                assistant = row.assistant
+                kind = "BASE" if assistant.run is None else "CONSTRUCT"
+                generation = self.generation
+                trace = None
+            elif isinstance(row, SavedChat):
+                assistant = row.assistant
+                kind = "TRACE"
+                generation = row.generation
+                trace = row
+            else:
+                return
         self.query_one("#specs-identity", Static).update(assistant.name)
         body = render_specs(
             assistant,

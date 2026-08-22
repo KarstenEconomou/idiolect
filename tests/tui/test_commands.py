@@ -5,7 +5,10 @@ import pytest
 from idiolect.tui.commands import CommandError, completions, parse_command
 
 
-@pytest.mark.parametrize("value", ["/exit", "/registry", "/save", "/exit   "])
+@pytest.mark.parametrize(
+    "value",
+    ["/exit", "/registry", "/save", "/specs", "/exit   "],
+)
 def test_known_command_is_parsed_without_arguments(value: str) -> None:
     """Check that each command returns its lowercase name."""
     command = parse_command(value)
@@ -34,9 +37,10 @@ def test_unknown_commands_and_arguments_are_rejected(
 
 def test_command_completion_requires_one_command_prefix() -> None:
     """Check command matching for composer prefixes."""
-    assert completions("/") == ("/exit", "/registry", "/save")
+    assert completions("/") == ("/exit", "/registry", "/save", "/specs")
     assert completions("/re") == ("/registry",)
     assert completions("/sa") == ("/save",)
+    assert completions("/sp") == ("/specs",)
     assert completions("message") == ()
     assert completions("/exit now") == ()
 
