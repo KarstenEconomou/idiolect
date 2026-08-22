@@ -50,7 +50,7 @@ def test_registry_opens_highlighted_assistant_from_keyboard(tmp_path) -> None:
             assert str(summary.content) == "1 available"
             prompt = chooser.get_option_at_index(1).prompt
             assert isinstance(prompt, Text)
-            assert "READY" in prompt.plain
+            assert "AVAILABLE" in prompt.plain
 
             await pilot.click(chooser, offset=(2, 1))
             await pilot.pause()
@@ -98,6 +98,8 @@ def test_transcript_is_literal_and_scrollable(tmp_path) -> None:
             assert str(app.query_one("#footer", Static).content) == (
                 "CONTEXT 500/1000 (50%)    GENERATED 64"
             )
+            footer = app.query_one("#footer", Static)
+            assert footer.content_region.x == scroller.content_region.x
             assert app.query_one("#status", LoadingStatus).display is False
 
             bottom = scroller.scroll_y

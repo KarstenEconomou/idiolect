@@ -22,9 +22,18 @@ def test_catalog_row_has_a_stable_cell_width_for_unicode_names() -> None:
     """Check terminal-cell alignment for a non-ASCII assistant name."""
     layout = CatalogLayout.for_terminal(80)
 
-    row = layout.text("IDIOLECT // 模型@BASE [LOCAL]", "PERSONA", "32", "READY")
+    row = layout.text(
+        "IDIOLECT // 模型@BASE [LOCAL]", "PERSONA", "32", "AVAILABLE"
+    )
 
     assert cell_len(row.plain) == sum(
         (layout.model, layout.data, layout.window, layout.status)
     ) + 3
-    assert row.plain.endswith("READY".ljust(layout.status))
+    assert row.plain.endswith("AVAILABLE".ljust(layout.status))
+
+
+def test_catalog_metadata_columns_leave_room_for_values() -> None:
+    """Check registry metadata columns have deliberate breathing room."""
+    layout = CatalogLayout.for_terminal(80)
+
+    assert (layout.data, layout.window, layout.status) == (10, 9, 13)

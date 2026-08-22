@@ -76,7 +76,7 @@ class ChatApp(App[None]):
     #composer .text-area--gutter, #composer .text-area--suggestion, #composer .text-area--placeholder { color: $metadata; background: $terminal; }
     #completion { height: auto; max-height: 5; color: $accent; background: $terminal; padding: 0 2; }
     #status { display: none; height: 1; color: $accent; background: $terminal; padding: 0 1; text-style: bold; }
-    #footer { height: 1; color: $metadata; background: $terminal; padding: 0 1; }
+    #footer { height: 1; color: $metadata; background: $terminal; padding: 0 2; }
     #info-dialog { width: 80%; max-width: 90; height: auto; padding: 1 2; background: $terminal; border: solid $metadata; }
     #info-title { color: $accent; text-style: bold; border-bottom: solid $metadata; }
     #info-body { max-height: 70vh; overflow-y: auto; }
@@ -649,7 +649,7 @@ class ChatApp(App[None]):
                     row.label,
                     data,
                     str(assistant.context_messages),
-                    "READY",
+                    "AVAILABLE",
                 )
                 available += 1
             else:
