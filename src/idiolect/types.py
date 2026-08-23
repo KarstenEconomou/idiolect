@@ -209,8 +209,9 @@ class EvaluationReport:
     generation_seeds: int
     gates: Mapping[str, GateResult]
     likelihood: Mapping[str, Any]
-    voice_profiles: Mapping[str, Any]
-    behavior: Mapping[str, Any]
+    voice: Mapping[str, Any]
+    validity: Mapping[str, Any]
+    memorization: Mapping[str, Any]
 
 
 @dataclass(frozen=True, slots=True)

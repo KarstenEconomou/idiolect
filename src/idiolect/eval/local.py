@@ -49,7 +49,7 @@ from idiolect.types import (
     Split,
 )
 
-_ARTIFACT_VERSION = 2
+_ARTIFACT_VERSION = 3
 _SUITE = "fidelity"
 _REQUIRED_TOML = frozenset(
     {
@@ -90,6 +90,18 @@ _FEATURES = (
     "terminal_punctuation_rate",
     "starts_lowercase_rate",
     "repeated_character_rate",
+)
+_VALIDITY_RATES = (
+    "empty_rate",
+    "format_violation_rate",
+    "unknown_mention_rate",
+    "truncation_rate",
+    "cross_prompt_duplicate_rate",
+    "within_prompt_duplicate_rate",
+)
+_MEMORIZATION_RATES = (
+    "long_training_match_rate",
+    "exact_training_match_rate",
 )
 
 
@@ -479,7 +491,7 @@ def _report(
         rows, runs, base_scores, run_scores, config
     )
     reference_profile = _profile(reference)
-    profiles: dict[str, Any] = {
+    voice: dict[str, Any] = {
         "reference": reference_profile,
         "base": _profile_comparison(base_text, reference_profile, reference),
         "policy": _profile_comparison(policy_text, reference_profile, reference),
@@ -488,39 +500,55 @@ def _report(
             for run, text in zip(runs, run_text, strict=True)
         },
     }
-    base_behavior = _behavior(
-        base_predictions, rows, match_index, config
-    )
-    run_behavior = {
-        str(run.ref.id): _behavior(
-            values, rows, match_index, config
-        )
+    base_rates = _generation_rates(base_predictions, rows, match_index, config)
+    run_rates = {
+        str(run.ref.id): _generation_rates(values, rows, match_index, config)
         for run, values in zip(runs, run_predictions, strict=True)
     }
     policy_predictions = tuple(
         value for predictions in run_predictions for value in predictions
     )
-    policy_behavior = _behavior(
-        policy_predictions, rows, match_index, config
-    )
-    reference_memorization = _memorization_rate(
-        reference, match_index
-    )
+    policy_rates = _generation_rates(policy_predictions, rows, match_index, config)
+
+    def _pillar(
+        rates: Mapping[str, float], names: tuple[str, ...]
+    ) -> Mapping[str, float]:
+        return {name: rates[name] for name in names}
+
+    validity = {
+        "base": _pillar(base_rates, _VALIDITY_RATES),
+        "policy": _pillar(policy_rates, _VALIDITY_RATES),
+        "runs": {
+            key: _pillar(value, _VALIDITY_RATES) for key, value in run_rates.items()
+        },
+    }
+    reference_memorization = _memorization_rate(reference, match_index)
     incremental = max(
         0.0,
-        policy_behavior["long_training_match_rate"]
-        - max(base_behavior["long_training_match_rate"], reference_memorization),
+        policy_rates["long_training_match_rate"]
+        - max(base_rates["long_training_match_rate"], reference_memorization),
     )
     # Every run must clear the behavior limits on its own, because any one
     # adapter is deployable on its own.
-    floor = max(base_behavior["long_training_match_rate"], reference_memorization)
+    floor = max(base_rates["long_training_match_rate"], reference_memorization)
     worst_incremental = max(
         max(0.0, value["long_training_match_rate"] - floor)
-        for value in run_behavior.values()
+        for value in run_rates.values()
     )
+    memorization = {
+        "reference": reference_memorization,
+        "incremental": incremental,
+        "worst_run_incremental": worst_incremental,
+        "base": _pillar(base_rates, _MEMORIZATION_RATES),
+        "policy": _pillar(policy_rates, _MEMORIZATION_RATES),
+        "runs": {
+            key: _pillar(value, _MEMORIZATION_RATES)
+            for key, value in run_rates.items()
+        },
+    }
 
     def _worst(name: str) -> float:
-        return max(value[name] for value in run_behavior.values())
+        return max(value[name] for value in run_rates.values())
 
     gates = {
         "empty_output": _gate(_worst("empty_rate"), config.max_empty_rate),
@@ -542,15 +570,9 @@ def _report(
             generation_seeds=len({value.seed for value in base_predictions}),
             gates=gates,
             likelihood=likelihood,
-            voice_profiles=profiles,
-            behavior={
-            "reference_long_training_match_rate": reference_memorization,
-            "incremental_memorization_rate": incremental,
-            "worst_run_incremental_memorization_rate": worst_incremental,
-            "base": base_behavior,
-            "policy": policy_behavior,
-            "runs": run_behavior,
-            },
+            voice=voice,
+            validity=validity,
+            memorization=memorization,
         )
     )
     examples = []
@@ -689,7 +711,7 @@ def _text_features(text: str) -> Mapping[str, float]:
     }
 
 
-def _behavior(
+def _generation_rates(
     predictions: Sequence[Prediction],
     rows: Sequence[EvalRow],
     match_index: TrainingMatchIndex,
@@ -864,6 +886,8 @@ def _markdown_report(
 ) -> str:
     policy = report["likelihood"]["policy"]
     delta = policy["delta_macro_mean_nll"]
+    voice = report["voice"]
+    memorization = report["memorization"]
     lines = [
         "# Idiolect Evaluation",
         "",
@@ -871,7 +895,7 @@ def _markdown_report(
         f"Validation examples: {report['examples']}",
         f"Training runs: {len(runs)}",
         "",
-        "## Predictive fidelity",
+        "## Likelihood",
         "",
         (
             "Base macro mean NLL: "
@@ -888,10 +912,22 @@ def _markdown_report(
             f"{delta['value']:.6f} [{delta['lower']:.6f}, {delta['upper']:.6f}]"
         ),
         "",
-        "## Gates",
+        "## Voice",
+        "",
+        (
+            "Base character 3-gram JS divergence vs reference: "
+            f"{voice['base']['character_3gram_js_divergence']:.6f}"
+        ),
+        (
+            "Policy character 3-gram JS divergence vs reference: "
+            f"{voice['policy']['character_3gram_js_divergence']:.6f}"
+        ),
+        "",
+        "## Validity",
         "",
     ]
-    for name, gate in report["gates"].items():
+    for name in ("empty_output", "format_violation", "truncation"):
+        gate = report["gates"][name]
         state = "pass" if gate["passed"] else "fail"
         lines.append(
             f"- {name}: {state} ({gate['value']:.6f} <= {gate['limit']:.6f})"
@@ -899,10 +935,36 @@ def _markdown_report(
     lines.extend(
         (
             "",
+            "## Memorization",
+            "",
             (
-                "The JSON report contains per-run likelihood, voice-profile, behavior, "
-                "diversity, and memorization evidence. It does not combine these values "
-                "into one fidelity score."
+                "Reference long training-match rate: "
+                f"{memorization['reference']:.6f}"
+            ),
+            (
+                "Policy long training-match rate: "
+                f"{memorization['policy']['long_training_match_rate']:.6f}"
+            ),
+            (
+                "Incremental memorization: "
+                f"{memorization['incremental']:.6f}"
+            ),
+        )
+    )
+    gate = report["gates"]["incremental_memorization"]
+    state = "pass" if gate["passed"] else "fail"
+    lines.append(
+        f"- incremental_memorization: {state} "
+        f"({gate['value']:.6f} <= {gate['limit']:.6f})"
+    )
+    lines.extend(
+        (
+            "",
+            (
+                "The JSON report contains per-run likelihood, voice, validity, and "
+                "memorization evidence. The separate familiar panel adds recognition "
+                "evidence from human raters. No value is combined into one fidelity "
+                "score."
             ),
             "",
         )

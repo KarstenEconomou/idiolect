@@ -59,9 +59,9 @@ predictions, chat snapshots, evaluations, judgments, and panel reports under
 the ignored `var/` directory. The repository tracks public settings in
 `conf/idiolect.toml` and complete experiment settings in `conf/exp/`.
 The evaluation runner compares a complete adapter policy with its exact recorded
-base. It reports token-weighted corpus perplexity, paired example-level
-likelihood, verified training-text matches, and private blind familiar-panel
-judgments with example-and-rater uncertainty.
+base. It reports likelihood, voice, validity, and memorization evidence, and
+collects private blind familiar-panel recognition judgments with
+example-and-rater uncertainty.
 
 ## Requirements
 

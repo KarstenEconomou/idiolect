@@ -239,13 +239,19 @@ def test_policy_evaluation_is_paired_private_and_content_addressed(
     assert all(session.closed for session in scorer.sessions)
     report = json.loads((first.path / "metrics.json").read_text(encoding="utf-8"))
     manifest = json.loads((first.path / "manifest.json").read_text(encoding="utf-8"))
-    assert manifest["recipe"]["version"] == 2
+    assert manifest["recipe"]["version"] == 3
     assert manifest["recipe"]["inference_config"]["backend"] == "mlx-lm"
     assert (
         report["likelihood"]["policy"]["delta_macro_mean_nll"]["value"]
         == -1.0
     )
-    assert report["behavior"]["policy"]["empty_rate"] == 0.0
+    assert report["validity"]["policy"]["empty_rate"] == 0.0
+    assert set(report) >= {
+        "likelihood",
+        "voice",
+        "validity",
+        "memorization",
+    }
     artifact_text = "".join(
         path.read_text(encoding="utf-8") for path in first.path.iterdir()
     )
@@ -275,7 +281,7 @@ def test_behavior_gates_apply_to_each_run_separately(tmp_path: Path) -> None:
     report = json.loads((result.path / "metrics.json").read_text(encoding="utf-8"))
     assert report["gates"]["empty_output"]["passed"] is False
     # The pooled policy rate alone would have passed the configured limit.
-    assert report["behavior"]["policy"]["empty_rate"] <= 0.6
+    assert report["validity"]["policy"]["empty_rate"] <= 0.6
 
 
 def test_policy_requires_complete_seed_set_and_gates_new_memorization(

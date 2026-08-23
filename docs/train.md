@@ -8,6 +8,14 @@ LoRA receives loss only on the formatted target completion. `mask_prompt` must
 be `true`. This prevents the adapter from learning to reproduce the dataset
 instruction, other participants, and context scaffolding as output behavior.
 
+The training objective is completion negative log-likelihood. This is the same
+quantity that the Likelihood pillar measures at evaluation time: training
+minimizes completion NLL on the training split, and evaluation scores held-out
+completion NLL on the validation split. Lower held-out NLL than the recorded
+base is the first convergence signal. Read it with the other pillars, because a
+model can lower NLL by copying the one observed reply. See the
+[evaluation procedure](eval.md).
+
 Each tracked TOML configuration contains one complete experiment policy. Python code does not select a model, seed, data format, optimizer value, adapter target, path, or external report service.
 
 ## Install
@@ -128,8 +136,8 @@ Use a small dataset only to verify the operation. Do not interpret style quality
 2. Run a short 8B smoke experiment with a separate TOML policy.
 3. Run the configured 14B experiment when the corpus is sufficient.
 4. Evaluate the complete training-seed set against its exact base on validation data.
-5. Compare conditional likelihood, blind familiar-panel preference, voice
-   statistics, behavior, seed stability, and training-text overlap.
+5. Compare the five evaluation pillars: likelihood, voice, validity,
+   memorization, and recognition, with run-to-run seed stability.
 
 Do not publish a dataset, adapter, generated message, run log, or manifest. An adapter can retain private training information.
 

@@ -13,7 +13,17 @@ inference artifacts.
 
 Evaluation does not produce one fidelity score. Open conversation has many valid
 replies, and one recorded reply is not a complete reference distribution. Read
-the likelihood, voice, behavior, privacy, diversity, and human results together.
+the five pillars together:
+
+1. Likelihood: completion probability against the held-out human reply.
+2. Voice: observable style and surface-distribution fidelity.
+3. Validity: malformed, degenerate, or unstable generation diagnostics.
+4. Memorization: training-text reproduction and leakage regression.
+5. Recognition: familiar-rater preference for target likeness.
+
+Likelihood, voice, validity, and memorization come from one automatic report.
+Recognition comes from the separate familiar panel. No value is combined into
+one score.
 
 ## Configuration
 
@@ -67,32 +77,60 @@ commands because it also contains the fixed ballot policy.
 The runner rejects a partial seed set. It also rejects runs with different
 datasets, models, text formats, training policies, or sequence limits.
 
-The operation performs these tests:
+The report contains four pillar sections. Each section compares the base model,
+each adapter run, and the pooled policy with the held-out evidence.
+
+### Likelihood
 
 1. Score the real held-out reply with the base and every adapter. Only reply and
    reply-termination tokens contribute to negative log-likelihood. Static model
-   prefill text does not contribute. Report macro mean NLL across examples and
-   token-weighted corpus perplexity as separate values.
-2. Generate the same examples with identical derived random streams.
-3. Compare message length, line structure, punctuation, capitalization, emoji,
-   mentions, URLs, repeated characters, and character three-grams.
-4. Detect empty text, unknown mentions, template leakage, multi-role output,
-   truncation, duplicates, and seed instability.
-5. Compare normalized generated text with training completions. Report exact
+   prefill text does not contribute.
+2. Report macro mean NLL across examples and token-weighted corpus perplexity
+   as separate values.
+3. Report paired macro-NLL policy deltas with bootstrap confidence intervals
+   and the rate of examples that improve.
+
+### Voice
+
+1. Generate the same examples with identical derived random streams.
+2. Compare message length, line structure, punctuation, capitalization, emoji,
+   mentions, URLs, repeated characters, and character three-grams with the
+   held-out human replies.
+3. Report absolute feature differences and character three-gram JS divergence.
+
+Character n-grams can measure topic as well as style. Read voice results with
+the other pillars.
+
+### Validity
+
+1. Detect empty text, unknown mentions, template leakage, multi-role output,
+   truncation, cross-prompt duplicates, and within-prompt duplicates.
+2. Apply the configured empty-output, format-violation, and truncation gates.
+
+Duplicates measure diversity. A policy that repeats one reply is not valid open
+conversation, even when each copy is well formed.
+
+### Memorization
+
+1. Compare normalized generated text with training completions. Report exact
    duplicates and long contiguous matches. A sparse rolling-hash index finds
    candidates, and exact string matching verifies each reported match.
-6. Apply configured validity and privacy-regression gates.
+2. Measure the incremental memorization rate above the larger of the base rate
+   and the held-out reference rate. Apply the configured delta gate.
 
-The automatic bootstrap resamples conversation examples. Tokens, generated
-samples, and training seeds are not independent observations. Reports show each
-run, an equally weighted policy estimate, paired macro-NLL confidence intervals,
-token-weighted corpus perplexity, and run spread.
+## Eligibility
 
-A policy is `eligible` only when all automatic gates pass. Each behavior gate
-applies to every training run on its own, not only to the pooled policy, so one
-degenerate seed cannot hide behind the other runs. Eligibility is not a
-claim that the model has the target's voice and is not a complete privacy audit.
-Use the familiar-panel result as separate evidence.
+A policy is `eligible` only when all automatic gates pass. The bootstrap
+resamples conversation examples. Tokens, generated samples, and training seeds
+are not independent observations. Reports show each run, an equally weighted
+policy estimate, paired macro-NLL confidence intervals, token-weighted corpus
+perplexity, and run spread.
+
+Each validity and memorization gate applies to every training run on its own,
+not only to the pooled policy, so one degenerate seed cannot hide behind the
+other runs. Eligibility is not a claim that the model has the target's voice
+and is not a complete privacy audit. Use the recognition result as separate
+evidence.
 
 ## Output
 
@@ -110,11 +148,13 @@ The evaluation ID includes the dataset and run digests, selected examples,
 inference policy, evaluation policy, metric suite, and backend versions. An equal
 request returns the existing verified directory.
 
-`examples.jsonl` contains identifiers, scores, numeric diagnostics, and failure
-flags. It does not copy prompts, human replies, or generated replies. The
-manifest points to the private source artifacts used by the blind workflow.
+`report.md` has one section per automatic pillar. `metrics.json` keeps the full
+pillar values for the base, each run, and the pooled policy. `examples.jsonl`
+contains identifiers, scores, numeric diagnostics, and failure flags. It does
+not copy prompts, human replies, or generated replies. The manifest points to
+the private source artifacts used by the blind workflow.
 
-## Familiar-panel evaluation
+## Recognition: familiar-panel evaluation
 
 Use raters who know the target's writing. Every rater must consent and must
 already have permission to view the sampled conversation contexts. Do not show a
@@ -167,19 +207,20 @@ and must be rated again.
 
 ## Interpretation
 
-Prefer evidence that converges:
+Prefer evidence that converges across the five pillars:
 
-- lower adapter completion NLL than the base across training seeds;
-- panel preference for the policy on target likelihood and voice without a
-  contextual-fit regression;
-- voice features closer to held-out human messages;
-- no format, truncation, repetition, or memorization gate failure;
-- limited run-to-run variation.
+- Likelihood: lower adapter completion NLL than the base across training seeds.
+- Recognition: panel preference for the policy on target likelihood and voice
+  without a contextual-fit regression.
+- Voice: features closer to held-out human messages.
+- Validity and memorization: no format, truncation, repetition, or memorization
+  gate failure.
+- Limited run-to-run variation.
 
 Do not select a model from one metric. Character n-grams can measure topic as
 well as style. Low likelihood can reward the one observed reply even when other
 replies are valid. Familiar raters can prefer polished text that does not match
-the target. The separate dimensions expose these failure modes.
+the target. The separate pillars expose these failure modes.
 
 All evaluation, judgment, and panel files are private. Do not publish a report,
 manifest, prompt, completion, prediction, or rater artifact.
