@@ -89,7 +89,7 @@ class ChatSession:
     def fingerprint(self) -> str:
         """Return one digest for the current transcript."""
         value = [asdict(turn) for turn in self.turns]
-        return hashlib.sha256(_json_bytes(value)).hexdigest()
+        return hashlib.sha256(canonical_json_bytes(value)).hexdigest()
 
     def add_user(self, content: str) -> None:
         """Append one user message when no generation is active."""
@@ -219,7 +219,7 @@ def _model_input_digest(value: ModelInput) -> str:
         "has_prefill": value.has_prefill,
         "completion_role": value.completion_role,
     }
-    return hashlib.sha256(_json_bytes(payload)).hexdigest()
+    return hashlib.sha256(canonical_json_bytes(payload)).hexdigest()
 
 
 def _validate_turn_order(turns: tuple[ChatTurn, ...]) -> None:
