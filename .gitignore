@@ -231,3 +231,6 @@ mlruns/
 conf/*.toml
 !conf/idiolect.toml
 *.env
+
+# Local assistant tool state
+.opencode/
