@@ -14,7 +14,7 @@ TUI tests.
 
 - Keep the interface sparse. Use the terminal default for the screen, surfaces,
   primary text, and inactive row names. Use the selected ANSI green, yellow,
-  blue, magenta-purple, or cyan only for accents and active primary labels;
+  blue, magenta, or cyan only for accents and active primary labels;
   bright black for metadata, help text, telemetry, inactive actions, dividers,
   and idle borders; ANSI white for table and menu headings; and ANSI red for
   failures and unavailable actions. Use terminal `grey23` as the character-width
@@ -54,10 +54,11 @@ TUI tests.
   slash-command descriptions: use metadata gray while idle and the dimmed
   selection accent while selected.
   Treat unavailable rows like unavailable `/save`: metadata gray and dimmed.
-- Let `T` in REGISTRY cycle the interface accent through ANSI green, yellow,
-  blue, magenta-purple, and cyan. Use green by default, advance to yellow on the
-  first press, wrap to green after cyan, and do not advertise this branding
-  control in the navigation hints.
+- Let `C` in REGISTRY open the `CHROMA` menu. Present ANSI red LOOKOUT, yellow
+  PICKPOCKET, green HACKER, blue LOCKSMITH, magenta MOLE, and cyan GENTLEMAN in
+  that order. Use green by default. Preview themes with the arrow keys, select
+  with Enter, cancel with Escape, and advertise `C CHROMA` in the navigation
+  hints.
 - For a `TRACE`, keep its `TARGET::RUN` identity first and show its trace name
   to the right in the remaining primary-column width. Ellipsize only the trace
   name when it does not fit. Expand trace names by default. Let Space toggle
@@ -76,6 +77,8 @@ TUI tests.
   when available. In this temporary view, hide model-cycling hints, make
   Escape restore chat directly, and make Ctrl+C restore chat before opening
   the normal exit confirmation.
+- Let `/chroma` open the same live-preview CHROMA menu in chat. Place it above
+  the composer and restore the chat footer when it closes.
 - Offer `/save` only when the current transcript has new unsaved data. Request
   its optional trace name with the existing field, record the checkpoint, and
   keep the chat open. Disable the command after the record succeeds. An explicit
@@ -100,6 +103,7 @@ TUI tests.
 - In SPECS, let Left and Right cycle with wrapping through available registry
   rows, skip FAULT rows, reset the details scroll position, and keep the cycled
   row selected when the user returns to REGISTRY.
+- In registry-launched SPECS, let Enter CONNECT the selected registry row.
 - In SPECS, treat field names like command names and values like command
   descriptions: use terminal-default field names and metadata-gray values. Keep
   section headings white and bold. Put every field value, including evaluation

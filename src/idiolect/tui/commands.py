@@ -3,19 +3,21 @@
 from dataclasses import dataclass
 
 COMMANDS = (
-    "/exit",
+    "/terminate",
     "/echo",
-    "/registry",
+    "/disconnect",
     "/save",
     "/specs",
+    "/chroma",
 )
 
 COMMAND_DESCRIPTIONS = {
-    "/exit": "Exit IDIOLECT.",
+    "/terminate": "TERMINATE IDIOLECT.",
     "/echo": "ENV echo.",
-    "/registry": "Return to REGISTRY.",
+    "/disconnect": "DISCONNECT from CONSTRUCT.",
     "/save": "Save TRACE.",
-    "/specs": "View MODEL SPECS.",
+    "/specs": "View SPECS.",
+    "/chroma": "Select CHROMA.",
 }
 
 COMMAND_ARGUMENTS = frozenset({"/echo"})

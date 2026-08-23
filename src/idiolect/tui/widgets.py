@@ -60,14 +60,14 @@ class KeyboardOptionList(OptionList):
             self.key = key
             super().__init__()
 
-    class ThemeRequested(Message):
-        """Request the next interface accent theme."""
+    class ChromaRequested(Message):
+        """Request the interface accent theme menu."""
 
     async def _on_key(self, event: events.Key) -> None:
-        if event.key.lower() == "t":
+        if event.key.lower() == "c":
             event.prevent_default()
             event.stop()
-            self.post_message(self.ThemeRequested())
+            self.post_message(self.ChromaRequested())
             return
         if event.key.lower() == "s" and self.highlighted is not None:
             option = self.get_option_at_index(self.highlighted)
@@ -113,7 +113,7 @@ class KeyboardOptionList(OptionList):
 
 
 class SpecsScroll(VerticalScroll):
-    """Scroll specifications and request adjacent registry entries."""
+    """Scroll specifications and request registry navigation."""
 
     class CycleRequested(Message):
         """Request the next or previous specification sheet."""
@@ -123,7 +123,15 @@ class SpecsScroll(VerticalScroll):
             self.offset = offset
             super().__init__()
 
+    class ConnectRequested(Message):
+        """Request connection to the selected registry entry."""
+
     async def _on_key(self, event: events.Key) -> None:
+        if event.key == "enter":
+            event.prevent_default()
+            event.stop()
+            self.post_message(self.ConnectRequested())
+            return
         if event.key in {"left", "right"}:
             event.prevent_default()
             event.stop()
@@ -313,7 +321,7 @@ class CommandMenu(Widget):
             action = self.query_one(f"#command-{command[1:]}", Horizontal)
             action.display = command in preview
             disabled = (
-                (command == "/registry" and not registry_enabled)
+                (command == "/disconnect" and not registry_enabled)
                 or (command == "/save" and not save_enabled)
             )
             action.set_class(command == selected and not disabled, "-selected")
@@ -639,7 +647,11 @@ class ConfirmModal(ModalScreen[str]):
             event.prevent_default()
             event.stop()
             return
-        if event.key not in {"left", "right", "up", "down"}:
+        if event.key in {"up", "down"}:
+            event.prevent_default()
+            event.stop()
+            return
+        if event.key not in {"left", "right"}:
             return
         buttons = list(self.query(KeyboardButton))
         focused = self.focused
@@ -756,7 +768,11 @@ class TraceMenuModal(ModalScreen[str]):
             event.prevent_default()
             event.stop()
             return
-        if event.key not in {"left", "right", "up", "down"}:
+        if event.key in {"up", "down"}:
+            event.prevent_default()
+            event.stop()
+            return
+        if event.key not in {"left", "right"}:
             return
         buttons = list(self.query(KeyboardButton))
         focused = self.focused
@@ -769,3 +785,96 @@ class TraceMenuModal(ModalScreen[str]):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Return the selected trace action."""
         self.dismiss(event.button.id or "retain")
+
+
+class ChromaMenuModal(ModalScreen[str | None]):
+    """Preview and select one interface accent theme."""
+
+    def __init__(
+        self,
+        themes: Sequence[tuple[str, str]],
+        current: str,
+        on_change: Callable[[str], None],
+    ) -> None:
+        """Set the theme names and the live preview callback."""
+        super().__init__()
+        self.themes = tuple(themes)
+        self.current = current
+        self.on_change = on_change
+
+    def compose(self) -> ComposeResult:
+        """Create the CHROMA heading and theme actions."""
+        with Vertical(id="chroma-dialog", classes="-unplaced"):
+            yield Static("CHROMA", markup=False, id="chroma-message")
+            with Horizontal(id="chroma-actions"):
+                for name, label in self.themes:
+                    yield KeyboardButton(
+                        label,
+                        id=f"chroma-{name}",
+                    )
+
+    def on_mount(self) -> None:
+        """Focus the current theme and reveal the positioned menu."""
+        self.call_after_refresh(self._show_dialog)
+
+    def _show_dialog(self) -> None:
+        """Place the menu before its first visible render."""
+        dialog = self.query_one("#chroma-dialog", Vertical)
+        self._place_dialog()
+        dialog.remove_class("-unplaced")
+        self.query_one(f"#chroma-{self.current}", KeyboardButton).focus()
+
+    def on_resize(self) -> None:
+        """Place the menu above the registry hints."""
+        self.call_after_refresh(self._place_dialog)
+
+    def _place_dialog(self) -> None:
+        """Place the menu above the active screen's bottom controls."""
+        dialog = self.query_one("#chroma-dialog", Vertical)
+        height = dialog.region.height or 2
+        if self.app.query_one("#landing").display:
+            hints = self.app.query_one("#catalog-hints", Static)
+            dialog.styles.width = hints.region.width - 2
+            dialog.styles.offset = (
+                hints.region.x + 1,
+                hints.region.y - height,
+            )
+            return
+        composer_bar = self.app.query_one("#composer-bar", Horizontal)
+        command_bar = self.app.query_one("#command-bar", CommandBar)
+        reference_bar = self.app.query_one("#reference-bar", ReferenceBar)
+        anchor = command_bar if command_bar.display else reference_bar
+        dialog.styles.width = composer_bar.region.width
+        dialog.styles.offset = (
+            composer_bar.region.x,
+            (anchor.region.y if anchor.display else composer_bar.region.y)
+            - height,
+        )
+
+    def on_key(self, event: events.Key) -> None:
+        """Preview the adjacent theme or cancel the menu."""
+        if event.key == "escape":
+            self.dismiss(None)
+            event.prevent_default()
+            event.stop()
+            return
+        if event.key in {"up", "down"}:
+            event.prevent_default()
+            event.stop()
+            return
+        if event.key not in {"left", "right"}:
+            return
+        buttons = list(self.query(KeyboardButton))
+        focused = self.focused
+        index = buttons.index(focused) if isinstance(focused, KeyboardButton) else 0
+        step = -1 if event.key in {"left", "up"} else 1
+        next_button = buttons[(index + step) % len(buttons)]
+        next_button.focus()
+        name = next_button.id.removeprefix("chroma-")
+        self.on_change(name)
+        event.prevent_default()
+        event.stop()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Commit the focused theme."""
+        self.dismiss((event.button.id or "").removeprefix("chroma-"))

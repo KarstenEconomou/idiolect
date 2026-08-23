@@ -170,10 +170,15 @@ after `@` to filter the list; `/ ` and `@ ` also open their menus before existin
 prompt text. Enter activates a selected slash command; Tab does not autocomplete.
 `/echo <text>` shows a dimmed ENV turn without adding it to model context.
 Commands with arguments use a command bar above the composer, and a command
-replaces any selected reference. A selected reference is shown above the
-composer and is encoded as Signal-style reply metadata for adapter-backed
-assistants. See
+replaces any selected reference. Use `/chroma` in chat or press `C` in
+`REGISTRY` to open `CHROMA` and
+preview the red LOOKOUT, yellow PICKPOCKET, green HACKER, blue LOCKSMITH,
+magenta MOLE, and cyan GENTLEMAN themes with the arrow keys; Enter selects one.
+A selected reference is shown above the composer and is encoded as Signal-style
+reply metadata for adapter-backed assistants. See
 [docs/chat.md](docs/chat.md) for the keyboard controls.
+From `REGISTRY`, SPECS uses Left and Right to cycle CONSTRUCT entries and Enter
+to CONNECT the highlighted entry.
 
 Then collect private familiar-rater judgments and build a panel report. See
 [docs/eval.md](docs/eval.md) for the consent, interpretation, and command rules.

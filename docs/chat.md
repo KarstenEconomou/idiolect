@@ -72,10 +72,13 @@ an immutable replacement with the same lineage parent. Select `ERASE` to
 permanently remove that verified lineage leaf. A trace with a child cannot be
 renamed or erased.
 
-Press T in REGISTRY to cycle the interface accent through ANSI green, yellow,
-blue, purple, and cyan. Green is the default; the first press selects yellow,
-and the cycle wraps to green after cyan. This branding control is intentionally
-omitted from the navigation hints.
+Press C in REGISTRY to open the `CHROMA` menu. It presents the ANSI themes in
+this order: `RED - LOOKOUT`, `YELLOW - PICKPOCKET`, `GREEN - HACKER`,
+`BLUE - LOCKSMITH`, `MAGENTA - MOLE`, and `CYAN - GENTLEMAN`. Green is the
+default. Use Left and Right to preview every theme with wrapping; the interface
+changes as the highlight moves. Enter selects the highlighted theme. Escape
+cancels the preview and restores the theme that was active when the menu opened.
+The registry navigation hints include `C CHROMA`.
 
 Press S on any `READY` row to open `SPECS` without resolving or loading the
 model. The scrollable page shows the complete verified model identity in
@@ -93,7 +96,8 @@ are omitted. Prefixes and suffixes show control whitespace with escapes such as
 `\n`. Press Escape to return to the same highlighted registry row.
 Use Left and Right to cycle with wrapping through every `READY` registry entry;
 `FAULT` entries are skipped. Each change resets SPECS to the top, and Escape
-returns to the newly selected registry row.
+returns to the newly selected registry row. In registry-launched SPECS, Enter
+connects to the highlighted entry.
 The DIXIE BASE page includes a deterministic fidelity scorecard labeled
 `SYNTHETIC // UI FIXTURE`; its values demonstrate the terminal graphics and are
 not measurements. CONSTRUCT and TRACE pages show `NOT EVALUATED` because chat
@@ -142,11 +146,12 @@ Escape to close the menu without clearing the composer. There is no Tab
 completion. The menu is visible only while the cursor is inside a slash token
 that starts at the beginning of a word. Commands are:
 
-- `/exit`: stop an active reply or exit when idle;
+- `/terminate`: stop an active reply or terminate when idle;
 - `/echo <text>`: show `<text>` as a dimmed `ENV` turn without adding it to model context;
-- `/registry`: return to `REGISTRY` when no reply is active;
+- `/disconnect`: return to `REGISTRY` when no reply is active;
 - `/save`: save a TRACE checkpoint and keep the chat open;
 - `/specs`: temporarily view the active model's SPECS.
+- `/chroma`: open the CHROMA theme menu.
 
 Commands with arguments remove their slash token from the composer and show a
 dimmed command bar above it. The command description follows the command in the
@@ -262,9 +267,10 @@ new chat.
 
 Model resolution, verification, and loading run outside the Textual event loop.
 The interface stays responsive and reports active worker states above the
-composer. It reports `CONNECTION is not ready.` if input is submitted before the
-load completes. It hides the ready state. During prompt processing, it reports
-the measured prefill token count and total from MLX-LM.
+composer. It reports `CONNECTING` while a model connection starts and
+`CONNECTION is not ready.` if input is submitted before the connection
+completes. It hides the ready state. During prompt processing, it reports the
+measured prefill token count and total from MLX-LM.
 
 The footer reports the last measured turn when no action menu is open. It puts
 context use first, then groups output tokens and generation rate under `GEN`.

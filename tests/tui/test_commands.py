@@ -7,7 +7,14 @@ from idiolect.tui.commands import CommandError, completions, parse_command
 
 @pytest.mark.parametrize(
     "value",
-    ["/exit", "/registry", "/save", "/specs", "/exit   "],
+    [
+        "/terminate",
+        "/disconnect",
+        "/save",
+        "/specs",
+        "/chroma",
+        "/terminate   ",
+    ],
 )
 def test_known_command_is_parsed_without_arguments(value: str) -> None:
     """Check that each command returns its lowercase name."""
@@ -32,8 +39,8 @@ def test_echo_command_keeps_its_argument_text() -> None:
     [
         ("/quit", "Unknown chat command"),
         ("/retry", "Unknown chat command"),
-        ("/exit now", "/exit does not accept an argument"),
-        ("/REGISTRY", "Unknown chat command"),
+        ("/terminate now", "/terminate does not accept an argument"),
+        ("/registry", "Unknown chat command"),
     ],
 )
 def test_unknown_commands_and_arguments_are_rejected(
@@ -47,13 +54,21 @@ def test_unknown_commands_and_arguments_are_rejected(
 
 def test_command_completion_requires_one_command_prefix() -> None:
     """Check command matching for composer prefixes."""
-    assert completions("/") == ("/exit", "/echo", "/registry", "/save", "/specs")
-    assert completions("/re") == ("/registry",)
+    assert completions("/") == (
+        "/terminate",
+        "/echo",
+        "/disconnect",
+        "/save",
+        "/specs",
+        "/chroma",
+    )
+    assert completions("/di") == ("/disconnect",)
     assert completions("/sa") == ("/save",)
     assert completions("/sp") == ("/specs",)
+    assert completions("/ch") == ("/chroma",)
     assert completions("/ec") == ("/echo",)
     assert completions("message") == ()
-    assert completions("/exit now") == ()
+    assert completions("/terminate now") == ()
 
 
 def test_regular_message_is_not_a_command() -> None:

@@ -12,7 +12,7 @@ from typing import ClassVar, cast
 from rich.console import Console, RenderableType
 from rich.text import Text
 from textual import events
-from textual.containers import Horizontal, VerticalScroll
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.pilot import Pilot
 from textual.widgets import Input, OptionList, Rule, Static
 
@@ -72,7 +72,7 @@ def test_registry_opens_highlighted_assistant_from_keyboard(tmp_path) -> None:
             assert tagline_style.dim
             assert str(app.query_one("#catalog-title", Static).content) == "REGISTRY"
             assert str(app.query_one("#catalog-description", Static).content) == (
-                "Connect to a BASE, CONSTRUCT, or TRACE."
+                "CONNECT to a BASE, CONSTRUCT, or TRACE."
             )
             assert app.query_one("#catalog-columns", Static).styles.color.ansi == 7
             columns = str(app.query_one("#catalog-columns", Static).content)
@@ -94,7 +94,7 @@ def test_registry_opens_highlighted_assistant_from_keyboard(tmp_path) -> None:
             assert "M" in prompt.plain
             assert "READY" in prompt.plain
             assert str(app.query_one("#catalog-hints", Static).content) == (
-                "↑↓ MOVE    ENTER CONNECT    S SPECS    CTRL+C QUIT"
+                "↑↓ MOVE    ENTER CONNECT    S SPECS    C CHROMA    CTRL+C TERMINATE"
             )
 
             await pilot.click(chooser, offset=(2, 1))
@@ -110,8 +110,8 @@ def test_registry_opens_highlighted_assistant_from_keyboard(tmp_path) -> None:
     asyncio.run(verify())
 
 
-def test_registry_theme_cycles_and_persists_across_pages(tmp_path) -> None:
-    """Check the hidden theme key changes every page without entering input."""
+def test_registry_chroma_menu_previews_all_themes_and_persists(tmp_path) -> None:
+    """Check CHROMA navigation, live preview, selection, and persistence."""
     chat = ChatConfig(output=tmp_path)
     generation = GenerationConfig()
     assistant = _assistant()
@@ -126,14 +126,52 @@ def test_registry_theme_cycles_and_persists_across_pages(tmp_path) -> None:
     async def verify() -> None:
         async with app.run_test(size=(80, 24)) as pilot:
             chooser = app.query_one("#chooser", OptionList)
+            assert app.has_class("-accent-green")
+            await pilot.press("c")
+            await pilot.pause()
+            dialog = app.screen.query_one("#chroma-dialog", Vertical)
+            assert not dialog.has_class("-unplaced")
+            assert dialog.region.bottom == app.query_one(
+                "#catalog-hints", Static
+            ).region.y
+            assert str(app.screen.query_one("#chroma-message", Static).content) == (
+                "CHROMA"
+            )
+            assert [
+                str(button.label) for button in app.screen.query(KeyboardButton)
+            ] == [
+                "LOOKOUT",
+                "PICKPOCKET",
+                "HACKER",
+                "LOCKSMITH",
+                "MOLE",
+                "GENTLEMAN",
+            ]
+            assert app.focused is not None
+            assert app.focused.id == "chroma-green"
+            assert (
+                app.screen.query_one("#chroma-red", KeyboardButton).content_region.x
+                - app.screen.query_one("#chroma-message", Static).content_region.x
+                == 0
+            )
+            assert str(app.query_one("#catalog-hints", Static).content) == (
+                "←→ MOVE    ENTER SELECT    ESC CANCEL"
+            )
+
+            await pilot.press("up", "down")
+            assert app.focused is not None
+            assert app.focused.id == "chroma-green"
+            assert app.has_class("-accent-green")
+
             for name, ansi in (
-                ("yellow", 3),
                 ("blue", 4),
-                ("purple", 5),
+                ("magenta", 5),
                 ("cyan", 6),
+                ("red", 1),
+                ("yellow", 3),
                 ("green", 2),
             ):
-                await pilot.press("t")
+                await pilot.press("right")
                 await pilot.pause()
                 assert app.has_class(f"-accent-{name}")
                 selected = chooser.get_component_rich_style(
@@ -146,14 +184,17 @@ def test_registry_theme_cycles_and_persists_across_pages(tmp_path) -> None:
                 assert style.color is not None and style.color.number == ansi
 
             hints = str(app.query_one("#catalog-hints", Static).content)
-            assert "THEME" not in hints
+            assert hints == "←→ MOVE    ENTER SELECT    ESC CANCEL"
+            await pilot.press("enter")
+            await pilot.pause()
+            assert str(app.query_one("#catalog-hints", Static).content) == (
+                "↑↓ MOVE    ENTER CONNECT    S SPECS    C CHROMA    CTRL+C TERMINATE"
+            )
             await pilot.press("s")
             await pilot.pause()
             assert app.query_one("#specs-identity", Static).styles.color.ansi == 2
             assert app.query_one("#specs-eyes", Static).styles.color.ansi == 2
 
-            await pilot.press("t")
-            await pilot.pause()
             assert app.has_class("-accent-green")
             await pilot.press("escape", "enter")
             await _wait_for_chat(app, pilot)
@@ -168,6 +209,50 @@ def test_registry_theme_cycles_and_persists_across_pages(tmp_path) -> None:
             label = next(segment for segment in segments if segment.text == "USER:")
             assert label.style is not None
             assert label.style.color is not None and label.style.color.number == 2
+
+    asyncio.run(verify())
+
+
+def test_chroma_command_opens_menu_in_chat(tmp_path) -> None:
+    """Check that /chroma opens and restores the chat theme menu."""
+    chat = ChatConfig(output=tmp_path)
+    generation = GenerationConfig()
+    runtime = ImmediateRuntime(chat, generation)
+    app = ChatApp(
+        chat,
+        generation,
+        runtime_factory=cast(Callable[..., ChatRuntime], lambda *_args: runtime),
+        initial_assistant=_assistant(),
+    )
+
+    async def verify() -> None:
+        async with app.run_test() as pilot:
+            await _wait_for_chat(app, pilot)
+            composer = app.query_one(Composer)
+            composer.insert("/chroma")
+            await pilot.press("enter")
+            await pilot.pause()
+
+            dialog = app.screen.query_one("#chroma-dialog", Vertical)
+            assert app.query_one("#chat").display
+            assert dialog.region.bottom == app.query_one(
+                "#composer-bar", Horizontal
+            ).region.y
+            assert app.focused is not None
+            assert app.focused.id == "chroma-green"
+            assert str(app.query_one("#footer", Static).content) == (
+                "←→ MOVE    ENTER SELECT    ESC CANCEL"
+            )
+
+            await pilot.press("right")
+            await pilot.pause()
+            assert app.has_class("-accent-blue")
+
+            await pilot.press("escape")
+            await pilot.pause()
+            assert app.query_one("#chat").display
+            assert app.has_class("-accent-green")
+            assert str(app.query_one("#footer", Static).content) == ""
 
     asyncio.run(verify())
 
@@ -217,6 +302,34 @@ def test_registry_opens_specs_and_returns_to_the_same_row(tmp_path) -> None:
             assert chooser.highlighted == 0
             assert chooser.has_focus
             assert runtime.session is None
+
+    asyncio.run(verify())
+
+
+def test_specs_connects_to_the_selected_registry_entry(tmp_path) -> None:
+    """Check that Enter connects from registry-launched SPECS."""
+    chat = ChatConfig(output=tmp_path)
+    generation = GenerationConfig()
+    assistant = _assistant()
+    runtime = ImmediateRuntime(chat, generation)
+    app = ChatApp(
+        chat,
+        generation,
+        assistants=(DiscoveryItem(assistant.name, "BASE", None, assistant),),
+        runtime_factory=cast(Callable[..., ChatRuntime], lambda *_args: runtime),
+    )
+
+    async def verify() -> None:
+        async with app.run_test(size=(80, 24)) as pilot:
+            await pilot.press("s")
+            await pilot.pause()
+            await pilot.press("enter")
+            await _wait_for_chat(app, pilot)
+
+            assert app.query_one("#specs").display is False
+            assert app.query_one("#chat").display
+            assert runtime.session is not None
+            assert runtime.session.assistant is assistant
 
     asyncio.run(verify())
 
@@ -301,7 +414,7 @@ def test_specs_side_arrows_cycle_available_registry_rows(tmp_path) -> None:
             assert specs.has_focus
             assert str(app.query_one("#specs-identity", Static).content) == first.name
             assert str(app.query_one("#specs-hints", Static).content) == (
-                "↑↓ SCROLL    ←→ MODEL    ESC REGISTRY    CTRL+C QUIT"
+                "↑↓ SCROLL    ←→ CONSTRUCT    ENTER CONNECT    ESC REGISTRY    CTRL+C TERMINATE"
             )
 
             await pilot.press("right")
@@ -617,6 +730,9 @@ def test_registry_confirms_trace_erasure(tmp_path) -> None:
             ] == ["ERASE", "RENAME", "RETAIN"]
             assert app.focused is not None
             assert app.focused.id == "retain"
+            await pilot.press("up", "down")
+            assert app.focused is not None
+            assert app.focused.id == "retain"
             trace_message = app.screen.query_one("#trace-message", Static)
             assert trace_message.content_region.x == app.query_one(
                 "#catalog-hints", Static
@@ -624,7 +740,7 @@ def test_registry_confirms_trace_erasure(tmp_path) -> None:
             assert (
                 app.screen.query_one("#erase", KeyboardButton).content_region.x
                 - trace_message.content_region.x
-                == 1
+                == 0
             )
             assert str(app.query_one("#catalog-hints", Static).content) == (
                 "←→ MOVE    ENTER SELECT    ESC RETAIN"
@@ -1037,13 +1153,13 @@ def test_model_load_keeps_event_processing_active(tmp_path) -> None:
             status = app.query_one("#load-status", LoadingStatus)
             for _ in range(20):
                 await pilot.pause()
-                if status.state == "LOADING":
+                if status.state == "CONNECTING":
                     break
             else:
                 raise AssertionError("The loading state did not appear")
             rendered = status.render()
             assert isinstance(rendered, Text)
-            assert rendered.plain.endswith(" LOADING")
+            assert rendered.plain.endswith(" CONNECTING")
             assert "// MODEL SESSION" not in rendered.plain
             assert status.styles.color == app.query_one("#catalog-subtitle").styles.color
             assert app.query_one("#chooser", OptionList).disabled is True
@@ -1090,7 +1206,7 @@ def test_failed_confirmation_save_keeps_memory_only_chat(tmp_path) -> None:
             assert (
                 app.screen.query_one("#discard", KeyboardButton).content_region.x
                 - app.screen.query_one("#confirm-message", Static).content_region.x
-                == 1
+                == 0
             )
             assert [
                 str(button.label) for button in app.screen.query(KeyboardButton)
@@ -1131,7 +1247,7 @@ def test_save_requests_trace_name_and_uses_default_for_blank(tmp_path) -> None:
             await _wait_for_chat(app, pilot)
             assert runtime.session is not None
             runtime.session.add_user("default trace name")
-            app.query_one(Composer).insert("/registry")
+            app.query_one(Composer).insert("/disconnect")
             await pilot.press("enter", "right", "enter")
             await pilot.pause()
 
@@ -1169,42 +1285,51 @@ def test_command_menu_filters_navigates_and_returns_to_registry(tmp_path) -> Non
             await pilot.pause()
 
             menu = app.query_one("#command-menu", CommandMenu)
-            exit_button = menu.query_one("#command-exit", Horizontal)
-            registry_button = menu.query_one("#command-registry", Horizontal)
+            terminate_button = menu.query_one("#command-terminate", Horizontal)
+            disconnect_button = menu.query_one("#command-disconnect", Horizontal)
             save_button = menu.query_one("#command-save", Horizontal)
             specs_button = menu.query_one("#command-specs", Horizontal)
+            chroma_button = menu.query_one("#command-chroma", Horizontal)
             assert menu.display is True
             assert str(menu.query_one("#command-message", Static).content) == "COMMAND"
             assert menu.query_one("#command-message", Static).styles.color.ansi == 7
             assert menu.query_one("#command-message", Static).styles.text_style.bold
+            terminate_name = terminate_button.query_one(
+                ".command-name", Static
+            )
+            assert str(terminate_name.content) == "/terminate"
+            assert terminate_name.content_region.width >= len("/terminate")
             assert (
-                exit_button.query_one(".command-name", Static).content_region.x
+                terminate_button.query_one(".command-name", Static).content_region.x
                 - menu.query_one("#command-message", Static).content_region.x
                 == 1
             )
             assert str(
-                exit_button.query_one(".command-description", Static).content
-            ) == "Exit IDIOLECT."
+                terminate_button.query_one(".command-description", Static).content
+            ) == "TERMINATE IDIOLECT."
             assert str(
-                registry_button.query_one(".command-description", Static).content
-            ) == "Return to REGISTRY."
+                disconnect_button.query_one(".command-description", Static).content
+            ) == "DISCONNECT from CONSTRUCT."
             assert str(
                 save_button.query_one(".command-description", Static).content
             ) == "Save TRACE."
             assert str(
                 specs_button.query_one(".command-description", Static).content
-            ) == "View MODEL SPECS."
+            ) == "View SPECS."
+            assert str(
+                chroma_button.query_one(".command-description", Static).content
+            ) == "Select CHROMA."
             assert specs_button.display is False
             assert save_button.has_class("-disabled")
             assert save_button.has_class("-selected") is False
             assert save_button.query_one(".command-name", Static).styles.color == (
                 app.query_one("#catalog-subtitle").styles.color
             )
-            assert registry_button.region.y == exit_button.region.y + 2
-            assert exit_button.has_class("-selected")
-            assert registry_button.has_class("-selected") is False
-            selected_name = exit_button.query_one(".command-name", Static)
-            selected_description = exit_button.query_one(
+            assert disconnect_button.region.y == terminate_button.region.y + 2
+            assert terminate_button.has_class("-selected")
+            assert disconnect_button.has_class("-selected") is False
+            selected_name = terminate_button.query_one(".command-name", Static)
+            selected_description = terminate_button.query_one(
                 ".command-description", Static
             )
             assert selected_description.styles.color == selected_name.styles.color
@@ -1220,19 +1345,24 @@ def test_command_menu_filters_navigates_and_returns_to_registry(tmp_path) -> Non
                 "-selected"
             )
             await pilot.press("down")
-            assert registry_button.has_class("-selected")
+            assert disconnect_button.has_class("-selected")
             await pilot.press("down")
             assert specs_button.has_class("-selected")
             assert specs_button.display
-            assert exit_button.display is False
+            assert terminate_button.display is False
             await pilot.press("down")
-            assert exit_button.has_class("-selected")
+            assert chroma_button.has_class("-selected")
+            assert chroma_button.display
+            await pilot.press("down")
+            assert terminate_button.has_class("-selected")
+            await pilot.press("up")
+            assert chroma_button.has_class("-selected")
             await pilot.press("up")
             assert specs_button.has_class("-selected")
             await pilot.press("up")
-            assert registry_button.has_class("-selected")
+            assert disconnect_button.has_class("-selected")
 
-            await pilot.click("#command-registry")
+            await pilot.click("#command-disconnect")
             await pilot.pause()
             assert app.query_one("#chat").display
 
@@ -1264,16 +1394,16 @@ def test_command_menu_filters_navigates_and_returns_to_registry(tmp_path) -> Non
             composer.clear()
             composer.insert("/")
             await pilot.pause()
-            composer.insert("r")
+            composer.insert("d")
             await pilot.pause()
-            assert exit_button.display is False
-            assert registry_button.display is True
+            assert terminate_button.display is False
+            assert disconnect_button.display is True
 
             await pilot.press("tab")
             await pilot.pause()
-            assert composer.text == "/r"
+            assert composer.text == "/d"
             assert menu.display
-            assert registry_button.has_class("-selected")
+            assert disconnect_button.has_class("-selected")
             await pilot.press("enter")
             await pilot.pause()
             assert app.query_one("#landing").display
@@ -1648,7 +1778,7 @@ def test_specs_command_restores_the_unchanged_trace_chat(tmp_path) -> None:
             assert app.query_one("#chat").display is False
             assert app.query_one("#specs").display
             assert str(app.query_one("#specs-hints", Static).content) == (
-                "↑↓ SCROLL    ESC CHAT    CTRL+C QUIT"
+                "↑↓ SCROLL    ESC CHAT    CTRL+C TERMINATE"
             )
             content = app.query_one("#specs-body", Static).content
             assert isinstance(content, SpecsDocument)
@@ -1807,6 +1937,9 @@ def test_dirty_slash_commands_open_connection_confirmation(tmp_path) -> None:
             )
             assert app.focused is not None
             assert app.focused.id == "discard"
+            await pilot.press("up", "down")
+            assert app.focused is not None
+            assert app.focused.id == "discard"
             assert str(app.query_one("#footer", Static).content) == (
                 "←→ MOVE    ENTER SELECT    ESC RESUME"
             )
@@ -1826,12 +1959,12 @@ def test_dirty_slash_commands_open_connection_confirmation(tmp_path) -> None:
                 == 1
             )
 
-    asyncio.run(verify("/exit"))
-    asyncio.run(verify("/registry"))
+    asyncio.run(verify("/terminate"))
+    asyncio.run(verify("/disconnect"))
 
 
 def test_commands_follow_generation_navigation_rules(tmp_path) -> None:
-    """Check that exit cancels and registry stays unavailable during generation."""
+    """Check that terminate cancels and disconnect stays unavailable during generation."""
     chat = ChatConfig(output=tmp_path)
     generation = GenerationConfig(max_prompt_tokens=100)
     runtime = ProgressRuntime(chat, generation)
@@ -1850,16 +1983,16 @@ def test_commands_follow_generation_navigation_rules(tmp_path) -> None:
             await pilot.press("enter")
             assert await asyncio.to_thread(runtime.prefill_started.wait, 1)
 
-            composer.insert("/registry")
+            composer.insert("/disconnect")
             await pilot.pause()
-            registry = app.query_one("#command-registry", Horizontal)
-            assert registry.has_class("-disabled")
+            disconnect = app.query_one("#command-disconnect", Horizontal)
+            assert disconnect.has_class("-disabled")
             await pilot.press("enter")
             await pilot.pause()
             assert app.query_one("#chat").display
             assert runtime.cancelled.is_set() is False
 
-            composer.insert("/exit")
+            composer.insert("/terminate")
             await pilot.press("enter")
             assert await asyncio.to_thread(runtime.cancelled.wait, 1)
             assert await asyncio.to_thread(runtime.generation_finished.wait, 1)

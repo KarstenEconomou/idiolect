@@ -46,6 +46,7 @@ from idiolect.tui.commands import (
 from idiolect.tui.markdown import is_web_link
 from idiolect.tui.specs import HalfCellScrollBarRender, render_specs
 from idiolect.tui.widgets import (
+    ChromaMenuModal,
     CommandBar,
     CommandMenu,
     Composer,
@@ -67,12 +68,14 @@ _WATERMARK_SOURCE = """     ╭─╮
      ╰─╯"""
 _TAGLINE = "Someone, reconstructed."
 _ACCENT_THEMES = (
-    ("green", "green"),
-    ("yellow", "yellow"),
-    ("blue", "blue"),
-    ("purple", "magenta"),
-    ("cyan", "cyan"),
+    ("red", "red", "LOOKOUT"),
+    ("yellow", "yellow", "PICKPOCKET"),
+    ("green", "green", "HACKER"),
+    ("blue", "blue", "LOCKSMITH"),
+    ("magenta", "magenta", "MOLE"),
+    ("cyan", "cyan", "GENTLEMAN"),
 )
+_DEFAULT_ACCENT_THEME = "green"
 
 
 def _watermark(color: str = "green") -> Text:
@@ -106,6 +109,8 @@ def _accent_theme_css() -> str:
         "#confirm-actions Button.-active",
         "#trace-actions Button:focus",
         "#trace-actions Button.-active",
+        "#chroma-actions Button:focus",
+        "#chroma-actions Button.-active",
     )
     button_selectors = (
         "Button:hover",
@@ -113,7 +118,7 @@ def _accent_theme_css() -> str:
         "Button.-active",
     )
     rules = []
-    for name, color in _ACCENT_THEMES:
+    for name, color, _ in _ACCENT_THEMES:
         prefix = f".-accent-{name} "
         colored = ", ".join(prefix + selector for selector in color_selectors)
         buttons = ", ".join(prefix + selector for selector in button_selectors)
@@ -242,7 +247,7 @@ class ChatApp(App[None]):
     #command-message { height: 1; color: ansi_white; text-style: bold; }
     #command-actions { height: auto; max-height: 3; }
     .command-action { height: 1; }
-    .command-name { width: 12; height: 1; padding: 0 1; color: $terminal; }
+    .command-name { width: 13; height: 1; padding: 0 1; color: $terminal; }
     .command-description { width: 1fr; height: 1; color: $metadata; }
     .command-action.-selected .command-name { color: $accent; text-style: bold; }
     .command-action.-selected .command-description { color: $accent; text-style: dim; }
@@ -262,7 +267,7 @@ class ChatApp(App[None]):
     #confirm-dialog { width: 100%; height: 2; padding: 0 1; background: $terminal; border: none; }
     #confirm-message { height: 1; color: ansi_white; text-style: bold; }
     #confirm-actions { height: 1; }
-    #confirm-actions Button { width: auto; min-width: 0; height: 1; padding: 0 1; border: none; background: $terminal; color: $metadata; text-style: none; }
+    #confirm-actions Button { width: auto; min-width: 0; height: 1; padding: 0; border: none; background: $terminal; color: $metadata; text-style: none; }
     #confirm-actions Button:hover { border: none; background: $terminal; color: $metadata; text-style: none; }
     #confirm-actions Button:focus, #confirm-actions Button.-active { border: none; background: $terminal; color: $accent; text-style: bold; }
     #trace-name-dialog { width: 100%; height: 2; padding: 0 1; background: $terminal; border: none; }
@@ -274,9 +279,16 @@ class ChatApp(App[None]):
     #trace-dialog { width: 100%; height: 2; padding: 0 1; background: $terminal; border: none; }
     #trace-message { height: 1; color: ansi_white; text-style: bold; }
     #trace-actions { height: 1; }
-    #trace-actions Button { width: auto; min-width: 0; height: 1; padding: 0 1; border: none; background: $terminal; color: $metadata; text-style: none; }
+    #trace-actions Button { width: auto; min-width: 0; height: 1; padding: 0; border: none; background: $terminal; color: $metadata; text-style: none; }
     #trace-actions Button:hover { border: none; background: $terminal; color: $metadata; text-style: none; }
     #trace-actions Button:focus, #trace-actions Button.-active { border: none; background: $terminal; color: $accent; text-style: bold; }
+    #chroma-dialog { width: 100%; height: 2; padding: 0 1; background: $terminal; border: none; }
+    #chroma-dialog.-unplaced { visibility: hidden; }
+    #chroma-message { height: 1; color: ansi_white; text-style: bold; }
+    #chroma-actions { height: 1; }
+    #chroma-actions Button { width: auto; min-width: 0; height: 1; padding: 0; border: none; background: $terminal; color: $metadata; text-style: none; }
+    #chroma-actions Button:hover { border: none; background: $terminal; color: $metadata; text-style: none; }
+    #chroma-actions Button:focus, #chroma-actions Button.-active { border: none; background: $terminal; color: $accent; text-style: bold; }
     Button { border: tall $metadata; background: $terminal; color: $terminal; }
     Button:hover, Button:focus, Button.-active { border: tall $accent; background: $terminal; color: $terminal; background-tint: transparent; tint: transparent; text-style: reverse bold; }
     ModalScreen { background: transparent; }
@@ -341,6 +353,8 @@ class ChatApp(App[None]):
         self._trace_name_open = False
         self._trace_menu_id: str | None = None
         self._trace_rename_open = False
+        self._chroma_menu_open = False
+        self._chroma_initial_theme_index = 0
         self._trace_blink_visible = True
         self._trace_blink_timer: Timer | None = None
         self._load_status_text: str | None = None
@@ -353,7 +367,11 @@ class ChatApp(App[None]):
         self._specs_key: str | None = None
         self._specs_from_chat = False
         self._active_trace: SavedChat | None = None
-        self._accent_theme_index = 0
+        self._accent_theme_index = next(
+            index
+            for index, (name, _, _) in enumerate(_ACCENT_THEMES)
+            if name == _DEFAULT_ACCENT_THEME
+        )
 
     def compose(self) -> ComposeResult:
         """Create the landing and chat screen widgets."""
@@ -363,7 +381,7 @@ class ChatApp(App[None]):
                 yield Static("REGISTRY", markup=False, id="catalog-title")
             with Horizontal(id="catalog-subtitle"):
                 yield Static(
-                    "Connect to a BASE, CONSTRUCT, or TRACE.",
+                    "CONNECT to a BASE, CONSTRUCT, or TRACE.",
                     markup=False,
                     id="catalog-description",
                 )
@@ -373,7 +391,7 @@ class ChatApp(App[None]):
             yield KeyboardOptionList(id="chooser")
             yield LoadingStatus(id="catalog-alert")
             yield Static(
-                "↑↓ MOVE    ENTER CONNECT    CTRL+C QUIT",
+                "↑↓ MOVE    ENTER CONNECT    CTRL+C TERMINATE",
                 markup=False,
                 id="catalog-hints",
             )
@@ -385,7 +403,7 @@ class ChatApp(App[None]):
             with SpecsScroll(id="specs-scroll"):
                 yield Static("", markup=False, id="specs-body")
             yield Static(
-                "↑↓ SCROLL    ←→ MODEL    ESC REGISTRY    CTRL+C QUIT",
+                "↑↓ SCROLL    ←→ CONSTRUCT    ENTER CONNECT    ESC REGISTRY    CTRL+C TERMINATE",
                 markup=False,
                 id="specs-hints",
             )
@@ -411,6 +429,7 @@ class ChatApp(App[None]):
         """Populate the chooser or open a direct selection."""
         specs_scroll = self.query_one("#specs-scroll", VerticalScroll)
         cast(Any, specs_scroll.vertical_scrollbar).renderer = HalfCellScrollBarRender
+        self._set_accent_theme(_DEFAULT_ACCENT_THEME)
         self._fill_chooser()
         self._loading_timer = self.set_interval(0.1, self._refresh_loading_state)
         if self.initial_chat is not None:
@@ -517,19 +536,56 @@ class ChatApp(App[None]):
         elif isinstance(row, SavedChat):
             self._show_specs(event.key)
 
-    def on_keyboard_option_list_theme_requested(
+    def on_keyboard_option_list_chroma_requested(
         self,
-        event: KeyboardOptionList.ThemeRequested,
+        event: KeyboardOptionList.ChromaRequested,
     ) -> None:
-        """Cycle the registry through the configured ANSI accent themes."""
+        """Open the registry's accent theme menu."""
         del event
-        self._accent_theme_index = (self._accent_theme_index + 1) % len(
-            _ACCENT_THEMES
+        if self._loading or self._trace_menu_id is not None:
+            return
+        self._open_chroma()
+
+    def _open_chroma(self) -> None:
+        """Open the accent theme menu from the active screen."""
+        self._chroma_initial_theme_index = self._accent_theme_index
+        self._chroma_menu_open = True
+        if self.query_one("#landing").display:
+            self._update_catalog_hints()
+        else:
+            self._update_footer()
+        themes = tuple((name, label) for name, _, label in _ACCENT_THEMES)
+        current = _ACCENT_THEMES[self._accent_theme_index][0]
+        self.push_screen(
+            ChromaMenuModal(themes, current, self._set_accent_theme),
+            self._after_chroma,
         )
-        name, color = _ACCENT_THEMES[self._accent_theme_index]
-        for theme_name, _ in _ACCENT_THEMES:
-            self.remove_class(f"-accent-{theme_name}")
-        self.add_class(f"-accent-{name}")
+
+    def _after_chroma(self, choice: str | None) -> None:
+        """Commit or cancel the CHROMA preview."""
+        if choice is None:
+            name = _ACCENT_THEMES[self._chroma_initial_theme_index][0]
+            self._set_accent_theme(name)
+        else:
+            self._set_accent_theme(choice)
+        self._chroma_menu_open = False
+        if self.query_one("#landing").display:
+            self._update_catalog_hints()
+        else:
+            self._update_footer()
+
+    def _set_accent_theme(self, name: str) -> None:
+        """Apply one configured ANSI accent theme across the interface."""
+        theme_index = next(
+            index
+            for index, (theme_name, _, _) in enumerate(_ACCENT_THEMES)
+            if theme_name == name
+        )
+        self._accent_theme_index = theme_index
+        theme_name, color, _ = _ACCENT_THEMES[theme_index]
+        for available_name, _, _ in _ACCENT_THEMES:
+            self.remove_class(f"-accent-{available_name}")
+        self.add_class(f"-accent-{theme_name}")
         self.query_one("#watermark", Static).update(_watermark(color))
         self.query_one("#transcript", Transcript).set_accent(color)
         self.query_one("#command-bar", CommandBar).set_accent(color)
@@ -543,6 +599,17 @@ class ChatApp(App[None]):
     ) -> None:
         """Show the adjacent available registry entry in SPECS."""
         self._cycle_specs(event.offset)
+
+    def on_specs_scroll_connect_requested(
+        self,
+        event: SpecsScroll.ConnectRequested,
+    ) -> None:
+        """Connect to the selected registry entry from SPECS."""
+        del event
+        if self._specs_from_chat or self._loading or self._specs_key is None:
+            return
+        self.query_one("#specs").display = False
+        self._open_row(self._specs_key)
 
     def _after_trace_action(self, trace: SavedChat, choice: str | None) -> None:
         if choice == "rename":
@@ -1414,6 +1481,9 @@ class ChatApp(App[None]):
             self.call_after_refresh(self._scroll_transcript_end)
 
     def _update_footer(self) -> None:
+        if self._chroma_menu_open:
+            self._set_footer("←→ MOVE    ENTER SELECT    ESC CANCEL")
+            return
         if self._confirmation_open:
             self._set_footer(
                 "ENTER SAVE    ESC RESUME"
@@ -1451,7 +1521,9 @@ class ChatApp(App[None]):
 
     def _set_status(self, value: str | None) -> None:
         normalized = (
-            "" if value is None or value.casefold() == "ready" else value.upper()
+            ""
+            if value is None or value.casefold() == "ready"
+            else self._status_label(value)
         )
         if normalized != self._status_text:
             self.query_one("#status", LoadingStatus).set_state(
@@ -1470,15 +1542,17 @@ class ChatApp(App[None]):
             self._render_transcript()
             self._update_footer()
             return
-        if name == "exit":
+        if name == "terminate":
             self.action_interrupt()
-        elif name == "registry":
+        elif name == "disconnect":
             if self._generating:
                 self._show_error("Stop the active reply before returning to REGISTRY")
             else:
                 self._return_to_landing()
         elif name == "specs":
             self._show_chat_specs()
+        elif name == "chroma":
+            self._open_chroma()
         elif name == "save":
             session = self._session()
             if not session.dirty:
@@ -1515,7 +1589,7 @@ class ChatApp(App[None]):
         return tuple(
             index
             for index, command in enumerate(self._command_matches)
-            if (command != "/registry" or not self._generating)
+            if (command != "/disconnect" or not self._generating)
             and (command != "/save" or self._save_enabled())
         )
 
@@ -1772,12 +1846,18 @@ class ChatApp(App[None]):
         if not self.is_mounted or len(self.query("#load-status")) == 0:
             return
         state = self.runtime.state.value
-        status = state.upper() if self._loading else ""
+        status = self._status_label(state) if self._loading else ""
         if status != self._load_status_text:
             self.query_one("#load-status", LoadingStatus).set_state(status)
             self._load_status_text = status
         if self._loading and self.query_one("#chat").display:
             self._set_status(state)
+
+    @staticmethod
+    def _status_label(value: str) -> str:
+        """Return the user-facing label for one worker state."""
+        normalized = value.upper()
+        return "CONNECTING" if normalized == "LOADING" else normalized
 
     def _fill_chooser(self) -> None:
         self._catalog_width = self.size.width
@@ -1846,7 +1926,7 @@ class ChatApp(App[None]):
         self.query_one("#chat").display = False
         self.query_one("#specs").display = True
         self.query_one("#specs-hints", Static).update(
-            "↑↓ SCROLL    ←→ MODEL    ESC REGISTRY    CTRL+C QUIT"
+            "↑↓ SCROLL    ←→ CONSTRUCT    ENTER CONNECT    ESC REGISTRY    CTRL+C TERMINATE"
         )
         self._render_specs()
         self.query_one("#specs-scroll", VerticalScroll).focus()
@@ -1859,7 +1939,7 @@ class ChatApp(App[None]):
         self.query_one("#chat").display = False
         self.query_one("#specs").display = True
         self.query_one("#specs-hints", Static).update(
-            "↑↓ SCROLL    ESC CHAT    CTRL+C QUIT"
+            "↑↓ SCROLL    ESC CHAT    CTRL+C TERMINATE"
         )
         self._render_specs()
         specs_scroll = self.query_one("#specs-scroll", SpecsScroll)
@@ -1990,6 +2070,11 @@ class ChatApp(App[None]):
 
     def _update_catalog_hints(self) -> None:
         """Show actions available for the current registry row."""
+        if self._chroma_menu_open:
+            self.query_one("#catalog-hints", Static).update(
+                "←→ MOVE    ENTER SELECT    ESC CANCEL"
+            )
+            return
         if self._trace_menu_id is not None:
             self.query_one("#catalog-hints", Static).update(
                 "ENTER NAME    ESC RETAIN"
@@ -2002,15 +2087,20 @@ class ChatApp(App[None]):
             self._rows.get(self._selected_catalog_key or ""),
             SavedChat,
         )
-        fields = ["↑↓ MOVE", "ENTER CONNECT", "S SPECS"]
+        fields = ["↑↓ MOVE", "ENTER CONNECT", "S SPECS", "C CHROMA"]
         if has_traces:
             fields.append("SPACE DETAILS")
         if selected_trace:
             fields.append("BACKSPACE MANAGE")
-        fields.append("CTRL+C QUIT")
+        fields.append("CTRL+C TERMINATE")
         available = max(20, self.size.width - 4)
         gap = "    " if available >= 60 else "  "
-        for removable in ("CTRL+C QUIT", "SPACE DETAILS", "↑↓ MOVE"):
+        for removable in (
+            "CTRL+C TERMINATE",
+            "C CHROMA",
+            "SPACE DETAILS",
+            "↑↓ MOVE",
+        ):
             if len(gap.join(fields)) <= available:
                 break
             if removable in fields:
