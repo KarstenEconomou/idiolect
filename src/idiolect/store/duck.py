@@ -214,9 +214,21 @@ class DuckRepository:
         try:
             with duckdb.connect(str(self._path), read_only=True) as connection:
                 rows = connection.execute(query, parameters).fetchall()
-                return tuple(self._message(connection, row) for row in rows)
+                attachments = _grouped_attachments(connection)
+                reactions = _grouped_reactions(connection)
+                mentions = _grouped_mentions(connection)
         except duckdb.Error as error:
             raise StoreError(f"Cannot read messages from: {self._path}") from error
+        return tuple(
+            self._message(
+                row,
+                attachments.get(cast(str, row[0])) or [],
+                reactions.get(cast(str, row[0])) or [],
+                mentions.get((cast(str, row[0]), "body")) or (),
+                mentions.get((cast(str, row[0]), "quote")) or (),
+            )
+            for row in rows
+        )
 
     def stats(self) -> StoreStats:
         """Return record counts from the store."""
@@ -333,24 +345,15 @@ class DuckRepository:
             ],
         )
 
-    def _message(self, connection: duckdb.DuckDBPyConnection, row: tuple[Any, ...]) -> Message:
+    def _message(
+        self,
+        row: tuple[Any, ...],
+        attachment_rows: list[tuple[Any, ...]],
+        reaction_rows: list[tuple[Any, ...]],
+        body_mentions: tuple[Mention, ...],
+        quote_mentions: tuple[Mention, ...],
+    ) -> Message:
         message_id = MessageId(cast(str, row[0]))
-        attachment_rows = connection.execute(
-            """
-            SELECT id, media_type, name, size
-            FROM attachments WHERE message_id = ? ORDER BY id
-            """,
-            [str(message_id)],
-        ).fetchall()
-        reaction_rows = connection.execute(
-            """
-            SELECT event_id, chat_id, author_id, value, sent_at, removed
-            FROM reactions WHERE message_id = ? ORDER BY sent_at, event_id
-            """,
-            [str(message_id)],
-        ).fetchall()
-        body_mentions = self._mentions(connection, message_id, "body")
-        quote_mentions = self._mentions(connection, message_id, "quote")
         quote = None
         if row[11] is not None and row[12] is not None:
             quote = Quote(
@@ -396,27 +399,57 @@ class DuckRepository:
             quote=quote,
         )
 
-    def _mentions(
-        self,
-        connection: duckdb.DuckDBPyConnection,
-        message_id: MessageId,
-        scope: str,
-    ) -> tuple[Mention, ...]:
-        rows = connection.execute(
-            """
-            SELECT person_id, start, length, name
-            FROM mentions
-            WHERE message_id = ? AND scope = ?
-            ORDER BY ordinal
-            """,
-            [str(message_id), scope],
-        ).fetchall()
-        return tuple(
+
+def _grouped_attachments(
+    connection: duckdb.DuckDBPyConnection,
+) -> dict[str, list[tuple[Any, ...]]]:
+    """Return one attachment row list per message ID."""
+    rows = connection.execute(
+        """
+        SELECT message_id, id, media_type, name, size
+        FROM attachments ORDER BY message_id, id
+        """
+    ).fetchall()
+    grouped: dict[str, list[tuple[Any, ...]]] = {}
+    for row in rows:
+        grouped.setdefault(cast(str, row[0]), []).append(row[1:])
+    return grouped
+
+
+def _grouped_reactions(
+    connection: duckdb.DuckDBPyConnection,
+) -> dict[str, list[tuple[Any, ...]]]:
+    """Return one reaction row list per message ID."""
+    rows = connection.execute(
+        """
+        SELECT event_id, message_id, chat_id, author_id, value, sent_at, removed
+        FROM reactions ORDER BY message_id, sent_at, event_id
+        """
+    ).fetchall()
+    grouped: dict[str, list[tuple[Any, ...]]] = {}
+    for row in rows:
+        grouped.setdefault(cast(str, row[1]), []).append((*row[:1], *row[2:]))
+    return grouped
+
+
+def _grouped_mentions(
+    connection: duckdb.DuckDBPyConnection,
+) -> dict[tuple[str, str], tuple[Mention, ...]]:
+    """Return one mention tuple per message ID and scope."""
+    rows = connection.execute(
+        """
+        SELECT message_id, scope, ordinal, person_id, start, length, name
+        FROM mentions ORDER BY message_id, scope, ordinal
+        """
+    ).fetchall()
+    grouped: dict[tuple[str, str], list[Mention]] = {}
+    for row in rows:
+        grouped.setdefault((cast(str, row[0]), cast(str, row[1])), []).append(
             Mention(
-                person_id=PersonId(cast(str, item[0])),
-                start_utf16=cast(int, item[1]),
-                length_utf16=cast(int, item[2]),
-                name=cast(str | None, item[3]),
+                person_id=PersonId(cast(str, row[3])),
+                start_utf16=cast(int, row[4]),
+                length_utf16=cast(int, row[5]),
+                name=cast(str | None, row[6]),
             )
-            for item in rows
         )
+    return {key: tuple(value) for key, value in grouped.items()}
