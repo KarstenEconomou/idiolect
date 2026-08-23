@@ -233,10 +233,14 @@ var/chat/CHAT_ID/
 ```
 
 The content identity includes assistant digests, chat and generation policies,
-title, parent snapshot, turns, attempts, finish reasons, seeds, and telemetry.
-Creation time is not part of the ID. Saving an unchanged transcript with its
+title, parent snapshot, turns, attempts, finish reasons, seeds, telemetry, and
+the recorded MLX and MLX-LM runtime versions. Creation time is not part of the
+ID. Saving an unchanged transcript with its
 current name returns its existing artifact. A resumed transcript saves as a
 child. The chooser presents verified lineage leaves and preserves every older
 snapshot on disk.
+The loader accepts the previous snapshot version without recorded runtime
+versions and verifies the numeric sampling ranges of the saved generation
+policy.
 If a confirmation save fails, the requested navigation or exit is cancelled and
 the memory-only transcript stays open.

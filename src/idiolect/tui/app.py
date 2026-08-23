@@ -918,7 +918,11 @@ class ChatApp(App[None]):
             self._show_error("Chat output is not configured")
             return False
         try:
-            saved = self.store.save(self._session(), title if title.strip() else None)
+            saved = self.store.save(
+                self._session(),
+                title if title.strip() else None,
+                self.runtime.backend_versions,
+            )
         except ChatStorageError as error:
             self._show_error(str(error))
             return False

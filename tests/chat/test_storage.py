@@ -1,10 +1,13 @@
 """Test immutable local chat snapshots."""
 
+import hashlib
 import json
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 
+from idiolect.artifact import canonical_json_bytes
 from idiolect.chat.discovery import Assistant
 from idiolect.chat.state import ChatSession, TurnTelemetry
 from idiolect.chat.storage import ChatStorageError, ChatStore
@@ -102,6 +105,85 @@ def test_erase_removes_only_a_verified_lineage_leaf(tmp_path, monkeypatch) -> No
     store.erase(renamed.id)
 
     assert [chat.id for chat in store.leaves()] == [first.id]
+
+
+def test_snapshot_records_and_restores_backend_versions(tmp_path, monkeypatch) -> None:
+    """Check that runtime versions survive the snapshot round trip."""
+    state, assistant = _state(tmp_path)
+    monkeypatch.setattr(
+        "idiolect.chat.storage.load_assistant", lambda *_args: assistant
+    )
+    store = ChatStore(tmp_path / "chat")
+    state.add_user("private")
+
+    saved = store.save(state, backend_versions={"mlx_version": "0.29.0"})
+    loaded = store.load(saved.id)
+
+    assert saved.backend_versions == {"mlx_version": "0.29.0"}
+    assert loaded.backend_versions == {"mlx_version": "0.29.0"}
+
+
+def test_snapshot_rejects_an_invalid_recorded_generation_policy(
+    tmp_path, monkeypatch
+) -> None:
+    """Check that a self-consistent snapshot cannot smuggle bad sampling values."""
+    state, assistant = _state(tmp_path)
+    monkeypatch.setattr(
+        "idiolect.chat.storage.load_assistant", lambda *_args: assistant
+    )
+    store = ChatStore(tmp_path / "chat")
+    state.add_user("private")
+    saved = store.save(state)
+
+    manifest = json.loads((saved.path / "manifest.json").read_text(encoding="utf-8"))
+    manifest["generation_policy"]["temperature"] = -5.0
+    new_id = _readdress(saved.path, manifest)
+
+    with pytest.raises(ChatStorageError, match="generation policy is not valid"):
+        store.load(new_id)
+
+
+def test_snapshot_still_loads_the_previous_version(tmp_path, monkeypatch) -> None:
+    """Check that version 2 snapshots without backend versions resume."""
+    state, assistant = _state(tmp_path)
+    monkeypatch.setattr(
+        "idiolect.chat.storage.load_assistant", lambda *_args: assistant
+    )
+    store = ChatStore(tmp_path / "chat")
+    state.add_user("private")
+    saved = store.save(state, backend_versions={"mlx_version": "0.29.0"})
+
+    manifest = json.loads((saved.path / "manifest.json").read_text(encoding="utf-8"))
+    del manifest["backend_versions"]
+    manifest["version"] = 2
+    new_id = _readdress(saved.path, manifest)
+    loaded = store.load(new_id)
+
+    assert loaded.backend_versions is None
+
+
+def _readdress(path: Path, manifest: dict) -> str:
+    """Rewrite one snapshot in place under its recomputed content address."""
+    identity_keys = (
+        "version",
+        "assistant",
+        "chat_policy",
+        "generation_policy",
+        "title",
+        "parent_chat_id",
+        "turn_count",
+        "files",
+        "backend_versions",
+    )
+    identity = {key: manifest[key] for key in identity_keys if key in manifest}
+    chat_id = hashlib.sha256(canonical_json_bytes(identity)).hexdigest()
+    manifest["chat_id"] = chat_id
+    destination = path.parent / chat_id
+    (path / "manifest.json").write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    path.rename(destination)
+    return chat_id
 
 
 def _state(tmp_path):

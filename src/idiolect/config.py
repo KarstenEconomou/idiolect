@@ -641,13 +641,10 @@ def _validate_train(config: TrainConfig) -> None:
         raise ConfigError("LoRA dropout must be at least zero and less than one")
 
 
-def _validate_inference(config: InferenceConfig) -> None:
-    if config.seeds and len(set(config.seeds)) != len(config.seeds):
-        raise ConfigError("Inference seeds must be unique")
-    if config.max_examples < 0:
-        raise ConfigError("Inference max_examples must not be negative")
+def validate_generation_values(config: GenerationConfig) -> None:
+    """Verify the numeric ranges of one generation policy."""
     if config.max_prompt_tokens < 0 or config.max_tokens < 1:
-        raise ConfigError("Inference token limits are not valid")
+        raise ConfigError("generation token limits are not valid")
     values = (
         config.temperature,
         config.top_p,
@@ -655,15 +652,26 @@ def _validate_inference(config: InferenceConfig) -> None:
         config.repetition_penalty,
     )
     if any(not math.isfinite(value) for value in values):
-        raise ConfigError("Inference sampling values must be finite")
+        raise ConfigError("sampling values must be finite")
     if config.temperature < 0:
-        raise ConfigError("Inference temperature must not be negative")
+        raise ConfigError("generation temperature must not be negative")
     if not 0.0 <= config.top_p <= 1.0 or not 0.0 <= config.min_p <= 1.0:
-        raise ConfigError("Inference probability limits must be from zero to one")
+        raise ConfigError("generation probability limits must be from zero to one")
     if config.top_k < 0 or config.min_tokens_to_keep < 1:
-        raise ConfigError("Inference token sampling limits are not valid")
+        raise ConfigError("generation token sampling limits are not valid")
     if config.repetition_penalty <= 0 or config.repetition_context_size < 1:
-        raise ConfigError("Inference repetition settings are not valid")
+        raise ConfigError("generation repetition settings are not valid")
+
+
+def _validate_inference(config: InferenceConfig) -> None:
+    if config.seeds and len(set(config.seeds)) != len(config.seeds):
+        raise ConfigError("Inference seeds must be unique")
+    if config.max_examples < 0:
+        raise ConfigError("Inference max_examples must not be negative")
+    try:
+        validate_generation_values(config)
+    except ConfigError as error:
+        raise ConfigError(f"Inference {error}") from error
 
 
 def _validate_eval(config: EvalConfig) -> None:

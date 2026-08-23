@@ -7,7 +7,7 @@ from collections.abc import Callable, Iterator
 from dataclasses import replace
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from typing import cast
+from typing import ClassVar, cast
 
 from rich.console import Console, RenderableType
 from rich.text import Text
@@ -1518,6 +1518,8 @@ class SimpleRuntime:
 class BlockingRuntime:
     """Hold one fake model load."""
 
+    backend_versions: ClassVar[dict[str, str | None]] = {}
+
     def __init__(self, chat: ChatConfig, generation: GenerationConfig) -> None:
         """Create model-load synchronization points."""
         self.chat = chat
@@ -1664,7 +1666,12 @@ class FailingStore:
         """Return no saved chat rows."""
         return ()
 
-    def save(self, _session: ChatSession, _title: str | None = None) -> None:
+    def save(
+        self,
+        _session: ChatSession,
+        _title: str | None = None,
+        _backend_versions: dict[str, str | None] | None = None,
+    ) -> None:
         """Raise a controlled storage error."""
         raise ChatStorageError("Synthetic disk failure")
 
@@ -1684,7 +1691,10 @@ class RecordingStore:
         self,
         session: ChatSession,
         title: str | None = None,
+        backend_versions: dict[str, str | None] | None = None,
     ) -> SimpleNamespace:
+        """Record the requested title and return one synthetic trace."""
+        del backend_versions
         """Record the requested title and return one synthetic trace."""
         self.titles.append(title)
         session.mark_saved("a" * 64, title or "default trace name")

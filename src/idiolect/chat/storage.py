@@ -7,19 +7,27 @@ import os
 import shutil
 import tempfile
 import unicodedata
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TypeGuard
 
+from idiolect.artifact import canonical_json_bytes, is_digest, write_json
 from idiolect.chat.discovery import Assistant, load_assistant, model_basename
 from idiolect.chat.state import ChatSession, ChatTurn, TurnTelemetry
-from idiolect.config import ChatConfig, GenerationConfig, TrainDataConfig
+from idiolect.config import (
+    ChatConfig,
+    ConfigError,
+    GenerationConfig,
+    TrainDataConfig,
+    validate_generation_values,
+)
 from idiolect.inference.base import TargetMode
 from idiolect.model import ModelSpec
 from idiolect.prompt import validate_prompt_config
 
-_SNAPSHOT_VERSION = 2
+_SNAPSHOT_VERSION = 3
 _ASSISTANT_KEYS = {
     "name",
     "target_name",
@@ -70,6 +78,31 @@ class SavedChat:
     chat: ChatConfig
     generation: GenerationConfig
     turns: tuple[ChatTurn, ...]
+    backend_versions: Mapping[str, str | None] | None = None
+
+
+_MANIFEST_KEYS = {
+    "chat_id",
+    "created_at",
+    "version",
+    "assistant",
+    "chat_policy",
+    "generation_policy",
+    "title",
+    "parent_chat_id",
+    "turn_count",
+    "files",
+}
+_IDENTITY_KEYS = (
+    "version",
+    "assistant",
+    "chat_policy",
+    "generation_policy",
+    "title",
+    "parent_chat_id",
+    "turn_count",
+    "files",
+)
 
 
 class ChatStore:
@@ -80,7 +113,12 @@ class ChatStore:
         self.root = root.expanduser().resolve()
         self._clock = (lambda: datetime.now(UTC)) if clock is None else clock
 
-    def save(self, state: ChatSession, title: str | None = None) -> SavedChat:
+    def save(
+        self,
+        state: ChatSession,
+        title: str | None = None,
+        backend_versions: Mapping[str, str | None] | None = None,
+    ) -> SavedChat:
         """Save or return one immutable snapshot for the current state."""
         if state.generating:
             raise ChatStorageError("Stop generation before saving")
@@ -91,12 +129,17 @@ class ChatStore:
             and state.saved_chat_id is not None
             and (title is None or _title(state.turns, title) == state.title)
         ):
-            return self.load(state.saved_chat_id)
+            # The referenced snapshot may have been erased outside this store.
+            try:
+                return self.load(state.saved_chat_id)
+            except ChatStorageError:
+                pass
         chosen_title = (
             default_chat_title(state) if title is None else _title(state.turns, title)
         )
         rows = [_turn_value(turn) for turn in state.turns]
         turns_bytes = _jsonl_bytes(rows)
+        versions = dict(backend_versions) if backend_versions is not None else None
         identity = {
             "version": _SNAPSHOT_VERSION,
             "assistant": _assistant_value(state.assistant),
@@ -105,9 +148,10 @@ class ChatStore:
             "title": chosen_title,
             "parent_chat_id": state.saved_chat_id,
             "turn_count": len(rows),
+            "backend_versions": versions,
             "files": {"turns.jsonl": hashlib.sha256(turns_bytes).hexdigest()},
         }
-        chat_id = hashlib.sha256(_json_bytes(identity)).hexdigest()
+        chat_id = hashlib.sha256(canonical_json_bytes(identity)).hexdigest()
         destination = self.root / chat_id
         if destination.exists():
             saved = self.load(chat_id)
@@ -126,7 +170,7 @@ class ChatStore:
                 "created_at": self._clock().isoformat(),
                 **identity,
             }
-            _write_json(temporary / "manifest.json", manifest)
+            write_json(temporary / "manifest.json", manifest)
             temporary.rename(destination)
         except (OSError, TypeError, ValueError) as error:
             shutil.rmtree(temporary, ignore_errors=True)
@@ -143,42 +187,25 @@ class ChatStore:
         """Load and verify one saved chat snapshot."""
         path = value if isinstance(value, Path) else self.root / value
         try:
-            if not _digest(path.name):
+            if not is_digest(path.name):
                 raise ChatStorageError(f"Chat path does not contain an ID: {path}")
             manifest = json.loads((path / "manifest.json").read_text(encoding="utf-8"))
-            if (
-                not isinstance(manifest, dict)
-                or set(manifest)
-                != {
-                    "chat_id",
-                    "created_at",
-                    "version",
-                    "assistant",
-                    "chat_policy",
-                    "generation_policy",
-                    "title",
-                    "parent_chat_id",
-                    "turn_count",
-                    "files",
-                }
-                or manifest.get("chat_id") != path.name
-                or manifest.get("version") != _SNAPSHOT_VERSION
-            ):
+            if not isinstance(manifest, dict) or manifest.get("chat_id") != path.name:
                 raise ChatStorageError(f"Chat manifest does not match its path: {path}")
-            identity = {
-                key: manifest[key]
-                for key in (
-                    "version",
-                    "assistant",
-                    "chat_policy",
-                    "generation_policy",
-                    "title",
-                    "parent_chat_id",
-                    "turn_count",
-                    "files",
+            version = manifest.get("version")
+            if version == _SNAPSHOT_VERSION:
+                identity_keys = (*_IDENTITY_KEYS, "backend_versions")
+            elif version == _SNAPSHOT_VERSION - 1:
+                # Version 2 snapshots recorded no backend runtime versions.
+                identity_keys = _IDENTITY_KEYS
+            else:
+                raise ChatStorageError(
+                    f"Chat snapshot version is not supported: {path}"
                 )
-            }
-            if hashlib.sha256(_json_bytes(identity)).hexdigest() != path.name:
+            if set(manifest) != set(identity_keys) | {"chat_id", "created_at"}:
+                raise ChatStorageError(f"Chat manifest does not match its path: {path}")
+            identity = {key: manifest[key] for key in identity_keys}
+            if hashlib.sha256(canonical_json_bytes(identity)).hexdigest() != path.name:
                 raise ChatStorageError(f"Chat identity does not match its ID: {path}")
             if {item.name for item in path.iterdir() if item.is_file()} != {
                 "manifest.json",
@@ -190,7 +217,7 @@ class ChatStore:
             if not isinstance(files, dict) or set(files) != {"turns.jsonl"}:
                 raise TypeError
             expected = files["turns.jsonl"]
-            if not _digest(expected):
+            if not is_digest(expected):
                 raise TypeError
             if hashlib.sha256(turns_path.read_bytes()).hexdigest() != expected:
                 raise ChatStorageError(
@@ -219,19 +246,29 @@ class ChatStore:
                 assistant = _base_assistant(assistant_value)
             else:
                 raise TypeError
-            if _json_bytes(_assistant_value(assistant)) != _json_bytes(assistant_value):
+            if canonical_json_bytes(_assistant_value(assistant)) != canonical_json_bytes(assistant_value):
                 raise ChatStorageError(
                     "Saved chat assistant does not match local artifacts"
                 )
             chat = _chat_config(manifest["chat_policy"])
             generation = _generation_config(manifest["generation_policy"])
+            try:
+                validate_generation_values(generation)
+            except ConfigError as error:
+                raise ChatStorageError(
+                    f"Saved chat generation policy is not valid: {error}"
+                ) from error
+            if version == _SNAPSHOT_VERSION:
+                backend_versions = _backend_versions(manifest["backend_versions"])
+            else:
+                backend_versions = None
             created_at = datetime.fromisoformat(manifest["created_at"])
             if created_at.utcoffset() is None:
                 raise TypeError
             title = _required_text(manifest, "title")
             parent = manifest["parent_chat_id"]
             if parent is not None and (
-                not isinstance(parent, str) or not _digest(parent)
+                not isinstance(parent, str) or not is_digest(parent)
             ):
                 raise TypeError
         except ChatStorageError:
@@ -248,6 +285,7 @@ class ChatStore:
             chat,
             generation,
             turns,
+            backend_versions,
         )
 
     def leaves(self) -> tuple[SavedChat, ...]:
@@ -297,7 +335,7 @@ class ChatStore:
             saved.parent_id,
             saved.title,
         )
-        renamed = self.save(state, chosen_title)
+        renamed = self.save(state, chosen_title, saved.backend_versions)
         self.erase(saved.id)
         return renamed
 
@@ -307,7 +345,7 @@ class ChatStore:
             return ()
         chats = []
         for path in sorted(self.root.iterdir()):
-            if not path.is_dir() or not _digest(path.name):
+            if not path.is_dir() or not is_digest(path.name):
                 continue
             try:
                 chats.append(self.load(path))
@@ -372,7 +410,7 @@ def _base_assistant(value: dict[str, Any]) -> Assistant:
     if not isinstance(trust, bool) or not _nonnegative_int(context) or context < 1:
         raise TypeError
     digest = _required_text(value, "model_digest")
-    if not _digest(digest):
+    if not is_digest(digest):
         raise TypeError
     model = ModelSpec(
         _required_text(value, "model_name"),
@@ -474,6 +512,18 @@ def _generation_config(value: Any) -> GenerationConfig:
     if not isinstance(value, dict) or set(value) != _GENERATION_KEYS:
         raise TypeError
     return GenerationConfig(**value)
+
+
+def _backend_versions(value: object) -> Mapping[str, str | None]:
+    if value is None:
+        return {}
+    if not isinstance(value, dict) or not all(
+        isinstance(name, str)
+        and (item is None or isinstance(item, str))
+        for name, item in value.items()
+    ):
+        raise TypeError
+    return dict(value)
 
 
 def _turn_value(turn: ChatTurn) -> dict[str, Any]:
@@ -587,12 +637,6 @@ def _text(value: dict[str, Any], name: str) -> str:
     return result
 
 
-def _write_json(path: Path, value: Any) -> None:
-    with path.open("x", encoding="utf-8") as stream:
-        json.dump(value, stream, ensure_ascii=False, indent=2, sort_keys=True)
-        stream.write("\n")
-    os.chmod(path, 0o600)
-
 
 def _jsonl_bytes(rows: list[dict[str, Any]]) -> bytes:
     return (
@@ -602,17 +646,6 @@ def _jsonl_bytes(rows: list[dict[str, Any]]) -> bytes:
         + "\n"
     ).encode()
 
-
-def _json_bytes(value: Any) -> bytes:
-    return json.dumps(
-        value, ensure_ascii=False, separators=(",", ":"), sort_keys=True
-    ).encode()
-
-
-def _digest(value: str) -> bool:
-    return len(value) == 64 and all(
-        character in "0123456789abcdef" for character in value
-    )
 
 
 def _nonnegative_int(value: object) -> TypeGuard[int]:

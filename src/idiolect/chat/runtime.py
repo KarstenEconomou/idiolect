@@ -275,6 +275,16 @@ class ChatRuntime:
             self.worker.shutdown()
             self.worker = None
 
+    @property
+    def backend_versions(self) -> dict[str, str | None]:
+        """Return the recorded backend runtime versions, when probed."""
+        return {
+            name: value
+            for name in ("mlx_version", "mlx_lm_version")
+            if (value := self.probe.get(name)) is None
+            or isinstance(value, str)
+        }
+
     def _ensure_worker(self) -> None:
         if self.worker is None or not self.worker.alive:
             self.worker = self._worker_factory()
