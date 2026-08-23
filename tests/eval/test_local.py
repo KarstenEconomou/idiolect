@@ -4,7 +4,7 @@ import hashlib
 import json
 import math
 import shutil
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -125,10 +125,17 @@ class VariableScoreBackend:
 class FakeInferencer:
     """Write aligned synthetic inference artifacts."""
 
-    def __init__(self, root: Path, leaked: bool = False) -> None:
-        """Set the private output directory."""
+    def __init__(
+        self,
+        root: Path,
+        leaked: bool = False,
+        degenerate_run: int | None = None,
+    ) -> None:
+        """Set the private output directory and optional degenerate run."""
         self.root = root
         self.leaked = leaked
+        self.degenerate_run = degenerate_run
+        self._adapter_calls = 0
 
     def dataset(
         self,
@@ -160,10 +167,18 @@ class FakeInferencer:
             for seed in config.seeds:
                 if target.adapter_path is None:
                     text = "Base response"
-                elif self.leaked:
-                    text = "private training phrase that is deliberately very long"
                 else:
-                    text = "personal response!"
+                    self._adapter_calls += 1
+                    if (
+                        self.degenerate_run is not None
+                        and self._adapter_calls
+                        <= self.degenerate_run * len(examples) * len(config.seeds)
+                    ):
+                        text = ""
+                    elif self.leaked:
+                        text = "private training phrase that is deliberately very long"
+                    else:
+                        text = "personal response!"
                 values.append(
                     Prediction(
                         example_id,
@@ -240,6 +255,27 @@ def test_policy_evaluation_is_paired_private_and_content_addressed(
     (first.path / "metrics.json").write_text("changed\n", encoding="utf-8")
     with pytest.raises(EvaluationError, match="does not match its manifest"):
         load_evaluation(first.path)
+
+
+def test_behavior_gates_apply_to_each_run_separately(tmp_path: Path) -> None:
+    """Check one degenerate run fails eligibility even when pooled rates pass."""
+    dataset = _dataset(tmp_path)
+    runs = _runs(tmp_path, dataset)
+    evaluator = LocalEvaluator(
+        FakeScoreBackend(),
+        FakeInferencer(tmp_path / "inference", degenerate_run=1),
+        target_loader=_target,
+        clock=lambda: _NOW,
+    )
+    config = replace(_eval_config(tmp_path), max_empty_rate=0.6)
+
+    result = evaluator.evaluate(runs, dataset, config, _inference_config(tmp_path))
+
+    assert result.eligible is False
+    report = json.loads((result.path / "metrics.json").read_text(encoding="utf-8"))
+    assert report["gates"]["empty_output"]["passed"] is False
+    # The pooled policy rate alone would have passed the configured limit.
+    assert report["behavior"]["policy"]["empty_rate"] <= 0.6
 
 
 def test_policy_requires_complete_seed_set_and_gates_new_memorization(

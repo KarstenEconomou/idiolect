@@ -509,19 +509,25 @@ def _report(
         policy_behavior["long_training_match_rate"]
         - max(base_behavior["long_training_match_rate"], reference_memorization),
     )
+    # Every run must clear the behavior limits on its own, because any one
+    # adapter is deployable on its own.
+    floor = max(base_behavior["long_training_match_rate"], reference_memorization)
+    worst_incremental = max(
+        max(0.0, value["long_training_match_rate"] - floor)
+        for value in run_behavior.values()
+    )
+
+    def _worst(name: str) -> float:
+        return max(value[name] for value in run_behavior.values())
+
     gates = {
-        "empty_output": _gate(
-            policy_behavior["empty_rate"], config.max_empty_rate
-        ),
+        "empty_output": _gate(_worst("empty_rate"), config.max_empty_rate),
         "format_violation": _gate(
-            policy_behavior["format_violation_rate"],
-            config.max_format_violation_rate,
+            _worst("format_violation_rate"), config.max_format_violation_rate
         ),
-        "truncation": _gate(
-            policy_behavior["truncation_rate"], config.max_truncation_rate
-        ),
+        "truncation": _gate(_worst("truncation_rate"), config.max_truncation_rate),
         "incremental_memorization": _gate(
-            incremental, config.max_memorization_rate_delta
+            worst_incremental, config.max_memorization_rate_delta
         ),
     }
     eligible = all(value.passed for value in gates.values())
@@ -538,6 +544,7 @@ def _report(
             behavior={
             "reference_long_training_match_rate": reference_memorization,
             "incremental_memorization_rate": incremental,
+            "worst_run_incremental_memorization_rate": worst_incremental,
             "base": base_behavior,
             "policy": policy_behavior,
             "runs": run_behavior,
