@@ -1,5 +1,6 @@
 """Build local target-specific chat datasets."""
 
+import bisect
 import hashlib
 import json
 import os
@@ -22,6 +23,7 @@ from idiolect.data.render import (
 from idiolect.store.base import Repository
 from idiolect.types import (
     ChatExample,
+    ChatId,
     DatasetId,
     DatasetRef,
     Example,
@@ -392,20 +394,19 @@ def _render_splits(
     context_size: int,
 ) -> Mapping[Split, tuple[_RenderedExample, ...]]:
     ordered = tuple(sorted(messages, key=_message_key))
+    chats = _chat_timeline(ordered)
     lower_bound: tuple[datetime, str] | None = None
     result: dict[Split, tuple[_RenderedExample, ...]] = {}
     for split in (Split.TRAIN, Split.VALID, Split.TEST):
         targets = split_targets[split]
         examples = []
         for target in targets:
-            context = tuple(
-                message
-                for message in ordered
-                if message.chat_id == target.chat_id
-                and (lower_bound is None or _message_key(message) > lower_bound)
-                and message.sent_at < target.sent_at
-                and _available_at(message, target.sent_at)
-            )[-context_size:]
+            context = _context_window(
+                chats.get(target.chat_id),
+                target,
+                lower_bound,
+                context_size,
+            )
             source = Example(context, target)
             try:
                 value = render_example(source, name, pseudonyms)
@@ -416,6 +417,49 @@ def _render_splits(
         if targets:
             lower_bound = _message_key(targets[-1])
     return result
+
+
+def _chat_timeline(
+    ordered: Sequence[Message],
+) -> dict[ChatId, tuple[list[tuple[datetime, str]], list[datetime], list[Message]]]:
+    """Group ordered messages into per-chat keys, send times, and messages."""
+    chats: dict[
+        ChatId,
+        tuple[list[tuple[datetime, str]], list[datetime], list[Message]],
+    ] = {}
+    for message in ordered:
+        keys, times, entries = chats.setdefault(message.chat_id, ([], [], []))
+        keys.append(_message_key(message))
+        times.append(message.sent_at)
+        entries.append(message)
+    return chats
+
+
+def _context_window(
+    timeline: tuple[list[tuple[datetime, str]], list[datetime], list[Message]] | None,
+    target: Message,
+    lower_bound: tuple[datetime, str] | None,
+    context_size: int,
+) -> tuple[Message, ...]:
+    """Return the newest available messages that precede one target."""
+    if timeline is None or context_size < 1:
+        return ()
+    keys, times, entries = timeline
+    end = bisect.bisect_left(times, target.sent_at)
+    start = (
+        0
+        if lower_bound is None
+        else bisect.bisect_right(keys, lower_bound)
+    )
+    selected: list[Message] = []
+    for index in range(end - 1, start - 1, -1):
+        if len(selected) == context_size:
+            break
+        message = entries[index]
+        if _available_at(message, target.sent_at):
+            selected.append(message)
+    selected.reverse()
+    return tuple(selected)
 
 
 def _available_at(message: Message, observed_at: datetime) -> bool:
