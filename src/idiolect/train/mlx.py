@@ -25,7 +25,7 @@ from idiolect.prompt import PromptError, format_row, validate_prompt_config
 from idiolect.train.base import LoadedRun
 from idiolect.types import DatasetId, DatasetRef, RunId, RunRef, Split, TrainResult
 
-_RUN_VERSION = 2
+_RUN_VERSION = 3
 _REQUIRED_TOML = frozenset(
     {
         "base_model",
@@ -508,6 +508,10 @@ def _recipe(
     dataset_digest: str,
     seed: int,
 ) -> Mapping[str, Any]:
+    # One run's identity must depend only on that run's own inputs, so the
+    # policy records only the seed of this run.
+    policy = dict(training_policy(config))
+    policy["seeds"] = [seed]
     return {
         "version": _RUN_VERSION,
         "backend": "mlx-lm",
@@ -515,7 +519,7 @@ def _recipe(
         "dataset_digest": dataset_digest,
         "model_digest": model_digest,
         "seed": seed,
-        "config": training_policy(config),
+        "config": policy,
     }
 
 

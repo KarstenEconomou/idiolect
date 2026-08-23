@@ -48,7 +48,7 @@ The command creates `conf/exp/<name>.toml` and stops if the target exists. Names
 
 Use a name that identifies the model and the main changed dimensions. Do not use a sequence number as the only name. Commit a configuration before its training run. Keep a used configuration unchanged. Create another file for another policy.
 
-The file name is a human label. The content-addressed run ID is the technical identity. It includes the complete resolved training policy, dataset digest, model digest, and seed.
+The file name is a human label. The content-addressed run ID is the technical identity. It includes the complete resolved training policy, dataset digest, model digest, and one seed. The recorded policy lists only the seed of that run, so adding another seed does not change the ID of an existing run.
 
 The principal values are:
 
@@ -116,7 +116,7 @@ var/runs/<run-id>/
 └── train.log
 ```
 
-The run ID includes the dataset ID, dataset digest, model digest, model revision, seed, and complete training policy. A repeated equal run returns the existing adapter. The loader checks every run file against the manifest and rejects a changed file.
+The run ID includes the dataset ID, dataset digest, model digest, model revision, one seed, and the training policy of that run. A repeated equal run returns the existing adapter. The loader checks every run file against the manifest and rejects a changed file.
 
 All output is private. Git ignores `var/`, model files, adapters, checkpoints, and report directories.
 
