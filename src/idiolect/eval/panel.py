@@ -43,8 +43,8 @@ from idiolect.types import (
     Split,
 )
 
-_JUDGMENT_VERSION = 1
-_PANEL_VERSION = 1
+_JUDGMENT_VERSION = 2
+_PANEL_VERSION = 2
 _DIMENSIONS = (
     ("target_likeness", "Which reply would the target be more likely to send here?"),
     ("voice", "Which reply sounds more like the target?"),
@@ -345,7 +345,9 @@ def _ballots(
     ordered_rows = list(rows)
     random.Random(config.ballot_seed).shuffle(ordered_rows)
     count = min(config.ballots_per_rater, len(ordered_rows))
-    controls = round(count * config.control_fraction)
+    # Round the control share half-up so the configured fraction is honored
+    # at the half boundary.
+    controls = math.floor(count * config.control_fraction + 0.5)
     primary = count - controls
     matchups = ["policy-base"] * primary
     matchups.extend(
@@ -354,13 +356,16 @@ def _ballots(
     )
     random.Random(config.ballot_seed + 1).shuffle(matchups)
     order_rng = random.Random(_derived_seed(config.ballot_seed, rater_id))
+    run_rng = random.Random(_derived_seed(config.ballot_seed + 2, rater_id))
     result = []
     for position, (row, matchup) in enumerate(
         zip(ordered_rows[:count], matchups, strict=True)
     ):
         available_seeds = sorted(base[row.example_id])
         seed = available_seeds[position % len(available_seeds)]
-        run_index = position % len(runs)
+        # Draw the run from its own random stream so run identity is not
+        # systematically paired with one seed inside primary comparisons.
+        run_index = run_rng.randrange(len(runs)) if len(runs) > 1 else 0
         if matchup == "policy-base":
             candidates = (
                 ("policy", runs[run_index][row.example_id][seed]),

@@ -157,6 +157,12 @@ position preference, and finite-sample nominal Krippendorff agreement for each
 rating dimension. It remains `incomplete` until both configured panel minimums
 are met.
 
+Ballot construction draws the compared run from a rater-specific random stream,
+so run identity is not paired with one generation seed across primary
+comparisons. Judgment and panel artifacts record the ballot scheme version. The
+current version is 2; older judgment artifacts do not match the current schedule
+and must be rated again.
+
 ## Interpretation
 
 Prefer evidence that converges:
