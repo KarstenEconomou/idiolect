@@ -73,8 +73,9 @@ TUI tests.
   enabled command exists.
 - Let `/specs` open the active session's exact model sheet without changing the
   chat session, turns, dirty state, or transcript. Include saved TRACE lineage
-  when available. In this temporary view, hide model-cycling hints and make
-  Escape restore chat directly.
+  when available. In this temporary view, hide model-cycling hints, make
+  Escape restore chat directly, and make Ctrl+C restore chat before opening
+  the normal exit confirmation.
 - Offer `/save` only when the current transcript has new unsaved data. Request
   its optional trace name with the existing field, record the checkpoint, and
   keep the chat open. Disable the command after the record succeeds. An explicit

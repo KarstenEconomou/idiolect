@@ -185,7 +185,8 @@ bar.
 `/specs` uses the active session's recorded generation policy and includes full
 TRACE lineage for a resumed or newly saved snapshot. It does not change turns,
 unsaved state, or transcript content. Escape restores the same chat directly;
-Left and Right do not cycle registry models in this temporary view.
+Left and Right do not cycle registry models in this temporary view. Ctrl+C
+restores chat and opens the normal exit menu when the session has unsaved data.
 
 `/save` is available only when the transcript contains new unsaved data and no
 reply is active. Otherwise it is shown as unavailable and cannot be selected;

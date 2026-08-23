@@ -1656,9 +1656,14 @@ def test_specs_command_restores_the_unchanged_trace_chat(tmp_path) -> None:
             assert f"TRACE ID\n {trace.id}\n" in content.plain
             assert "TEMPERATURE\n 0.3\n" in content.plain
 
-            await pilot.press("right")
+            await pilot.press("ctrl+c")
             await pilot.pause()
-            assert f"TRACE ID\n {trace.id}\n" in content.plain
+
+            assert app.query_one("#chat").display
+            assert app.query_one("#specs").display is False
+            assert str(
+                app.screen.query_one("#confirm-message", Static).content
+            ) == "CONNECTION"
             await pilot.press("escape")
             await pilot.pause()
 

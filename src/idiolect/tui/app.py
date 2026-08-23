@@ -968,6 +968,8 @@ class ChatApp(App[None]):
 
     def action_interrupt(self) -> None:
         """Stop active work or open the idle quit confirmation."""
+        if self.query_one("#specs").display and self._specs_from_chat:
+            self._restore_chat_from_specs()
         if self._generating:
             self.runtime.cancel()
         else:
