@@ -1,10 +1,11 @@
-"""Test target-relative chat rendering."""
+"""Test target-relative response-episode rendering."""
 
 from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from idiolect.data.render import RenderError, render_example
+from idiolect.prompt import MESSAGE_BOUNDARY, split_bubbles
 from idiolect.types import (
     Attachment,
     ChatId,
@@ -16,12 +17,80 @@ from idiolect.types import (
     PersonId,
     Quote,
     Reaction,
+    ResponseEpisode,
 )
 
 _NOW = datetime(2026, 1, 1, tzinfo=UTC)
 _CHAT = ChatId("chat")
 _TARGET = PersonId("target")
 _FRIEND = PersonId("friend")
+
+
+def test_renderer_serializes_one_episode_with_message_boundaries() -> None:
+    """Check that one target episode keeps its three Signal bubbles."""
+    question = _message("question", _FRIEND, "what do you think?", 0)
+    bubbles = (
+        _message("bubble-one", _TARGET, "I don't know", 1),
+        _message("bubble-two", _TARGET, "seems overfit to me", 2),
+        _message("bubble-three", _TARGET, "especially on the style evals", 3),
+    )
+    example = Example((_episode((question,)),), _episode(bubbles))
+
+    rendered = render_example(
+        example,
+        "DIXIE",
+        {_FRIEND: "friend"},
+    )
+
+    assert rendered.completion == (
+        "I don't know"
+        f"\n{MESSAGE_BOUNDARY}\n"
+        "seems overfit to me"
+        f"\n{MESSAGE_BOUNDARY}\n"
+        "especially on the style evals"
+    )
+    assert split_bubbles(rendered.completion) == (
+        "I don't know",
+        "seems overfit to me",
+        "especially on the style evals",
+    )
+    assert "[next response]" in rendered.prompt
+    assert "reply to" not in rendered.prompt
+
+
+def test_renderer_keeps_a_single_bubble_unchanged() -> None:
+    """Check that a normal one-message response stays one message."""
+    context = _message("context", _FRIEND, "hello", 0)
+    target = _episode((_message("target-message", _TARGET, "hi", 1),))
+
+    rendered = render_example(
+        Example((_episode((context,)),), target),
+        "DIXIE",
+        {_FRIEND: "friend"},
+    )
+
+    assert rendered.completion == "hi"
+    assert MESSAGE_BOUNDARY not in rendered.completion
+
+
+def test_renderer_groups_one_context_episode_into_one_entry() -> None:
+    """Check speaker change, episode boundary, and bubble boundary differ."""
+    first = _message("friend-one", _FRIEND, "one", 0)
+    second = _message("friend-two", _FRIEND, "two", 60)
+    other = _message("other", PersonId("other"), "intervening", 70)
+    target = _message("target-message", _TARGET, "done", 80)
+
+    rendered = render_example(
+        Example(
+            (_episode((first, second)), _episode((other,))),
+            _episode((target,)),
+        ),
+        "DIXIE",
+        {_FRIEND: "friend", PersonId("other"): "person_01"},
+    )
+
+    assert "[friend]\none\n[new message]\ntwo" in rendered.prompt
+    assert "[person_01]\nintervening" in rendered.prompt
 
 
 def test_renderer_preserves_name_and_native_addressing() -> None:
@@ -53,17 +122,51 @@ def test_renderer_preserves_name_and_native_addressing() -> None:
     )
 
     rendered = render_example(
-        Example((prior, tagged, plain), target),
+        Example(
+            (
+                _episode((prior,)),
+                _episode((tagged, plain)),
+            ),
+            _episode((target,)),
+        ),
         "DIXIE",
         {_FRIEND: "friend"},
     )
 
     assert "You are DIXIE." in rendered.prompt
-    assert "[friend | mentions @DIXIE | reply to DIXIE: \"I'll check\"]" in rendered.prompt
+    assert (
+        "[friend | mentions @DIXIE | reply to DIXIE: \"I'll check\"]" in rendered.prompt
+    )
     assert "Hey @DIXIE, coming?" in rendered.prompt
-    assert "[friend]\nDIXIE, can you answer?" in rendered.prompt
-    assert "[next response | reply to friend: \"Hey @DIXIE, coming?\"]" in rendered.prompt
+    assert "DIXIE, can you answer?" in rendered.prompt
     assert rendered.completion == "yeah @friend"
+
+
+def test_renderer_reports_the_reply_edge_of_the_episode_start() -> None:
+    """Check that only the antecedent of the first bubble labels the entry."""
+    anchor = _message("anchor", _TARGET, "the question", 0)
+    first = _message(
+        "reply-one",
+        _FRIEND,
+        "first part",
+        1,
+        reply_to=anchor.id,
+        quote=Quote(_TARGET, anchor.sent_at, anchor.text),
+    )
+    second = _message("reply-two", _FRIEND, "second part", 2)
+    target = _message("target-message", _TARGET, "done", 3)
+
+    rendered = render_example(
+        Example(
+            (_episode((anchor,)), _episode((first, second))),
+            _episode((target,)),
+        ),
+        "DIXIE",
+        {_FRIEND: "friend"},
+    )
+
+    assert "[friend | reply to DIXIE: \"the question\"]" in rendered.prompt
+    assert "first part\n[new message]\nsecond part" in rendered.prompt
 
 
 def test_renderer_uses_identity_when_display_names_match() -> None:
@@ -79,7 +182,7 @@ def test_renderer_uses_identity_when_display_names_match() -> None:
     target = _message("target-message", _TARGET, "which one", 1)
 
     rendered = render_example(
-        Example((context,), target),
+        Example((_episode((context,)),), _episode((target,))),
         "DIXIE",
         {_FRIEND: "friend", other: "other_dixie"},
     )
@@ -95,7 +198,11 @@ def test_renderer_requires_stable_non_target_names() -> None:
     target = _message("target-message", _TARGET, "hi", 1)
 
     with pytest.raises(RenderError, match="stable pseudonym"):
-        render_example(Example((context,), target), "DIXIE", {})
+        render_example(
+            Example((_episode((context,)),), _episode((target,))),
+            "DIXIE",
+            {},
+        )
 
 
 def test_renderer_marks_media_that_accompanies_context_text() -> None:
@@ -112,7 +219,7 @@ def test_renderer_marks_media_that_accompanies_context_text() -> None:
     target = _message("target-message", _TARGET, "wow", 1)
 
     rendered = render_example(
-        Example((context,), target),
+        Example((_episode((context,)),), _episode((target,))),
         "DIXIE",
         {_FRIEND: "friend"},
     )
@@ -145,26 +252,62 @@ def test_renderer_interleaves_only_causal_reactions() -> None:
                 _CHAT,
                 _FRIEND,
                 "❌",
-                _NOW + timedelta(seconds=3),
+                _NOW + timedelta(seconds=30),
             ),
         ),
     )
-    target = _message("target-message", _TARGET, "nice", 2)
+    mid_bubble = _message("mid-bubble", _FRIEND, "more news", 5)
+    target = _message("target-message", _TARGET, "nice", 10)
 
     rendered = render_example(
-        Example((context,), target),
+        Example(
+            (_episode((context, mid_bubble)),),
+            _episode((target,)),
+        ),
         "DIXIE",
         {_FRIEND: "friend"},
     )
 
     assert "[DIXIE reacted \"👍\" to friend's message]" in rendered.prompt
+    assert rendered.prompt.index('reacted "👍"') < rendered.prompt.index("more news")
     assert "❌" not in rendered.prompt
+
+
+def test_renderer_rejects_reserved_boundary_text() -> None:
+    """Check that source text cannot forge the serialization contract."""
+    target = _message("target-message", _TARGET, f"one\n{MESSAGE_BOUNDARY}\ntwo", 0)
+
+    with pytest.raises(RenderError, match="reserved boundary"):
+        render_example(
+            Example((), _episode((target,))),
+            "DIXIE",
+            {},
+        )
+
+
+def test_renderer_requires_text_in_every_target_bubble() -> None:
+    """Check that media-only episodes cannot become completions."""
+    target = Message(
+        id=MessageId("target-message"),
+        event_id=EventId("event-target-message"),
+        chat_id=_CHAT,
+        author_id=_TARGET,
+        sent_at=_NOW,
+        attachments=(Attachment("attachment"),),
+    )
+
+    with pytest.raises(RenderError, match="only text"):
+        render_example(
+            Example((), _episode((target,))),
+            "DIXIE",
+            {},
+        )
 
 
 def _message(
     value: str,
     author: PersonId,
-    text: str,
+    text: str | None,
     offset: int,
     *,
     mentions: tuple[Mention, ...] = (),
@@ -183,3 +326,8 @@ def _message(
         mentions=mentions,
         quote=quote,
     )
+
+
+def _episode(messages: tuple[Message, ...]) -> ResponseEpisode:
+    """Make one fixed response episode."""
+    return ResponseEpisode(_CHAT, messages[0].author_id, messages)

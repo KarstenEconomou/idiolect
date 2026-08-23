@@ -1,8 +1,8 @@
 """Build local target-specific chat datasets."""
 
-import bisect
 import hashlib
 import json
+import math
 import os
 import shutil
 import tempfile
@@ -14,12 +14,19 @@ from typing import Any
 
 from idiolect.artifact import canonical_json_bytes, is_digest
 from idiolect.config import DataConfig
+from idiolect.data.episodes import (
+    EpisodeError,
+    build_episodes,
+    burst_gap_samples,
+    gap_diagnostics,
+)
 from idiolect.data.render import (
     RenderError,
     normalize_person_name,
     render_example,
     validate_mentions,
 )
+from idiolect.prompt import MESSAGE_BOUNDARY
 from idiolect.store.base import Repository
 from idiolect.types import (
     ChatExample,
@@ -31,11 +38,22 @@ from idiolect.types import (
     MessageId,
     PersonId,
     Reaction,
+    ResponseEpisode,
     Split,
 )
 
-_SCHEMA_VERSION = 2
-_RENDER_VERSION = 2
+_SCHEMA_VERSION = 1
+_RENDER_VERSION = 1
+_SPLIT_SCHEME = "chronological-purged-causal-context-v1"
+_UNIT = "response-episode-v1"
+_TARGET_POLICY = "clean-text-episodes-no-attachments-v1"
+_EPISODE_REASONS = (
+    "deleted",
+    "edited",
+    "attachment",
+    "no_text",
+    "no_visible_text",
+)
 
 
 class DataError(ValueError):
@@ -78,6 +96,17 @@ class _RenderedExample:
 
     value: ChatExample
     source: Example
+    reply_parent: MessageId | None
+    anchors: tuple[MessageId, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _ChatTimeline:
+    """Keep one chat's response episodes in conversation order."""
+
+    keys: tuple[tuple[datetime, str], ...]
+    episodes: tuple[ResponseEpisode, ...]
+    owner: Mapping[MessageId, ResponseEpisode]
 
 
 class LocalBuilder:
@@ -100,14 +129,20 @@ class LocalBuilder:
         messages = tuple(self._repository.messages())
         _validate_messages(messages)
         target_name = normalize_person_name(name)
-        targets, selection = _select_targets(messages, person_id)
+        ordered = tuple(sorted(messages, key=_message_key))
+        try:
+            episodes = build_episodes(ordered, config.burst_gap_seconds)
+        except EpisodeError as error:
+            raise DataError(str(error)) from error
+        targets, selection = _select_target_episodes(episodes, person_id)
         if not targets:
-            raise DataError("The target person has no usable messages")
+            raise DataError("The target person has no usable response episodes")
 
         split_targets = _split_targets(targets, config)
         pseudonyms = _pseudonyms(messages, person_id)
+        chats = _chat_timelines(episodes)
         rendered = _render_splits(
-            messages,
+            chats,
             split_targets,
             person_id,
             target_name,
@@ -118,15 +153,19 @@ class LocalBuilder:
         recipe = {
             "schema_version": _SCHEMA_VERSION,
             "render_version": _RENDER_VERSION,
+            "unit": _UNIT,
             "target_id": str(person_id),
             "target_name": target_name,
             "context": config.context,
+            "burst_gap_seconds": config.burst_gap_seconds,
+            "bubble_boundary": MESSAGE_BOUNDARY,
             "valid_ratio": config.valid_ratio,
             "test_ratio": config.test_ratio,
-            "split": "chronological-purged-causal-context-v2",
-            "target_policy": "unedited-text-only-no-attachments-v1",
+            "split": _SPLIT_SCHEME,
+            "target_policy": _TARGET_POLICY,
             "format": "mlx-lm-completion-jsonl",
             "source_digest": source_digest,
+            "diagnostics": _diagnostics(messages, episodes, config),
         }
         counts = {split: len(values) for split, values in rendered.items()}
         files = {
@@ -252,6 +291,11 @@ def resolve_self(people: Iterable[PersonSummary]) -> PersonId:
 def _validate_config(config: DataConfig) -> None:
     if config.context < 1:
         raise DataError("Dataset context must be greater than zero")
+    if (
+        not math.isfinite(config.burst_gap_seconds)
+        or config.burst_gap_seconds <= 0
+    ):
+        raise DataError("Dataset burst_gap_seconds must be greater than zero")
     if not 0 <= config.valid_ratio < 1:
         raise DataError("Dataset valid_ratio must be at least zero and less than one")
     if not 0 <= config.test_ratio < 1:
@@ -313,34 +357,61 @@ def _validate_messages(messages: Sequence[Message]) -> None:
             raise DataError(f"Source message quote does not match its target: {message.id}")
 
 
-def _select_targets(
-    messages: Sequence[Message],
+def _select_target_episodes(
+    episodes: Sequence[ResponseEpisode],
     person_id: PersonId,
-) -> tuple[tuple[Message, ...], Mapping[str, int]]:
-    reasons = {
-        "attachment": 0,
-        "deleted": 0,
-        "edited": 0,
-        "no_text": 0,
-        "no_visible_text": 0,
-    }
-    targets = []
+) -> tuple[tuple[ResponseEpisode, ...], Mapping[str, int]]:
+    """Select clean target response episodes for one person.
+
+    One structural episode can contain an unusable bubble such as an
+    attachment. That bubble stays an observable event: it terminates the
+    current clean run, exactly like a message from another participant, and
+    the surrounding clean bubbles become separate training episodes. One
+    training episode is therefore a maximal run of clean messages and is
+    never fragmented by split assignment later.
+    """
+    reasons = dict.fromkeys(_EPISODE_REASONS, 0)
+    targets: list[ResponseEpisode] = []
     total = 0
-    for message in messages:
-        if message.author_id != person_id:
+    unusable = 0
+    included_messages = 0
+    excluded_messages = 0
+    for episode in episodes:
+        if episode.author_id != person_id:
             continue
         total += 1
-        reason = _target_exclusion(message)
-        if reason is None:
-            targets.append(message)
-        else:
+        run: list[Message] = []
+        runs: list[tuple[Message, ...]] = []
+        for message in episode.messages:
+            reason = _target_exclusion(message)
+            if reason is None:
+                run.append(message)
+                continue
             reasons[reason] += 1
-    return tuple(targets), {
-        "target_messages": total,
+            excluded_messages += 1
+            if run:
+                runs.append(tuple(run))
+                run = []
+        if run:
+            runs.append(tuple(run))
+        if not runs:
+            unusable += 1
+            continue
+        included_messages += sum(len(value) for value in runs)
+        targets.extend(
+            ResponseEpisode(episode.chat_id, episode.author_id, value)
+            for value in runs
+        )
+    selection = {
+        "target_episodes": total,
         "included": len(targets),
-        "excluded": total - len(targets),
+        "unusable_episodes": unusable,
+        "authored_messages": included_messages + excluded_messages,
+        "episode_messages_included": included_messages,
+        "episode_messages_excluded": excluded_messages,
         **reasons,
     }
+    return tuple(sorted(targets, key=_episode_key)), selection
 
 
 def _target_exclusion(message: Message) -> str | None:
@@ -361,15 +432,15 @@ def _target_exclusion(message: Message) -> str | None:
 
 
 def _split_targets(
-    targets: Sequence[Message],
+    targets: Sequence[ResponseEpisode],
     config: DataConfig,
-) -> Mapping[Split, tuple[Message, ...]]:
-    ordered = tuple(sorted(targets, key=_message_key))
+) -> Mapping[Split, tuple[ResponseEpisode, ...]]:
+    ordered = tuple(sorted(targets, key=_episode_key))
     valid = _holdout_count(len(ordered), config.valid_ratio)
     test = _holdout_count(len(ordered), config.test_ratio)
     train = len(ordered) - valid - test
     if train < 1:
-        raise DataError("The target has too few messages for the requested splits")
+        raise DataError("The target has too few response episodes for the requested splits")
     train_end = train
     valid_end = train + valid
     return {
@@ -385,81 +456,140 @@ def _holdout_count(total: int, ratio: float) -> int:
     return max(1, int(total * ratio))
 
 
+def _chat_timelines(
+    episodes: Sequence[ResponseEpisode],
+) -> Mapping[ChatId, _ChatTimeline]:
+    """Group episodes into per-chat keys, episodes, and message ownership."""
+    chats: dict[
+        ChatId,
+        tuple[list[tuple[datetime, str]], list[ResponseEpisode]],
+    ] = {}
+    for episode in episodes:
+        keys, entries = chats.setdefault(episode.chat_id, ([], []))
+        keys.append(_episode_key(episode))
+        entries.append(episode)
+    timelines: dict[ChatId, _ChatTimeline] = {}
+    for chat_id, (keys, entries) in chats.items():
+        order = sorted(range(len(entries)), key=lambda index: keys[index])
+        ordered_episodes = tuple(entries[index] for index in order)
+        owner = {
+            message.id: episode
+            for episode in ordered_episodes
+            for message in episode.messages
+        }
+        timelines[chat_id] = _ChatTimeline(
+            tuple(keys[index] for index in order),
+            ordered_episodes,
+            owner,
+        )
+    return timelines
+
+
 def _render_splits(
-    messages: Sequence[Message],
-    split_targets: Mapping[Split, tuple[Message, ...]],
+    chats: Mapping[ChatId, _ChatTimeline],
+    split_targets: Mapping[Split, tuple[ResponseEpisode, ...]],
     person_id: PersonId,
     name: str,
     pseudonyms: Mapping[PersonId, str],
     context_size: int,
 ) -> Mapping[Split, tuple[_RenderedExample, ...]]:
-    ordered = tuple(sorted(messages, key=_message_key))
-    chats = _chat_timeline(ordered)
+    """Render every split with causal context after episode assignment."""
     lower_bound: tuple[datetime, str] | None = None
     result: dict[Split, tuple[_RenderedExample, ...]] = {}
     for split in (Split.TRAIN, Split.VALID, Split.TEST):
         targets = split_targets[split]
         examples = []
         for target in targets:
-            context = _context_window(
+            context_episodes, reply_parent, anchors = _select_context(
                 chats.get(target.chat_id),
                 target,
                 lower_bound,
                 context_size,
             )
-            source = Example(context, target)
+            source = Example(context_episodes, target)
             try:
                 value = render_example(source, name, pseudonyms)
             except RenderError as error:
-                raise DataError(f"Cannot render target message: {target.id}") from error
-            examples.append(_RenderedExample(value, source))
+                raise DataError(
+                    f"Cannot render target episode: {target.first.id}"
+                ) from error
+            examples.append(_RenderedExample(value, source, reply_parent, anchors))
         result[split] = tuple(examples)
         if targets:
-            lower_bound = _message_key(targets[-1])
+            lower_bound = _message_key(targets[-1].last)
     return result
 
 
-def _chat_timeline(
-    ordered: Sequence[Message],
-) -> dict[ChatId, tuple[list[tuple[datetime, str]], list[datetime], list[Message]]]:
-    """Group ordered messages into per-chat keys, send times, and messages."""
-    chats: dict[
-        ChatId,
-        tuple[list[tuple[datetime, str]], list[datetime], list[Message]],
-    ] = {}
-    for message in ordered:
-        keys, times, entries = chats.setdefault(message.chat_id, ([], [], []))
-        keys.append(_message_key(message))
-        times.append(message.sent_at)
-        entries.append(message)
-    return chats
-
-
-def _context_window(
-    timeline: tuple[list[tuple[datetime, str]], list[datetime], list[Message]] | None,
-    target: Message,
+def _select_context(
+    chat: _ChatTimeline | None,
+    target: ResponseEpisode,
     lower_bound: tuple[datetime, str] | None,
     context_size: int,
-) -> tuple[Message, ...]:
-    """Return the newest available messages that precede one target."""
-    if timeline is None or context_size < 1:
-        return ()
-    keys, times, entries = timeline
-    end = bisect.bisect_left(times, target.sent_at)
-    start = (
-        0
-        if lower_bound is None
-        else bisect.bisect_right(keys, lower_bound)
-    )
-    selected: list[Message] = []
-    for index in range(end - 1, start - 1, -1):
-        if len(selected) == context_size:
+) -> tuple[tuple[ResponseEpisode, ...], MessageId | None, tuple[MessageId, ...]]:
+    """Select the causal context episodes for one target episode.
+
+    The recency window keeps whole recent episodes totaling at most
+    ``context_size`` messages. Native reply ancestors stay anchored beyond
+    that window: the full ancestry of the target episode and, for every
+    ancestor, its own direct reply antecedent bypass the message budget so a
+    delayed reply never loses its discourse parent.
+    """
+    if chat is None or context_size < 1:
+        return (), target.first.reply_to, ()
+
+    def eligible(episode: ResponseEpisode) -> bool:
+        """Return true when the whole episode is causal and unpurged."""
+        if lower_bound is not None and _episode_key(episode) <= lower_bound:
+            return False
+        if episode.end_at >= target.start_at:
+            return False
+        return all(
+            _available_at(message, target.start_at) for message in episode.messages
+        )
+
+    eligible_episodes = tuple(episode for episode in chat.episodes if eligible(episode))
+    included: list[ResponseEpisode] = []
+    used = 0
+    for episode in reversed(eligible_episodes):
+        size = len(episode.messages)
+        if used + size > context_size:
             break
-        message = entries[index]
-        if _available_at(message, target.sent_at):
-            selected.append(message)
-    selected.reverse()
-    return tuple(selected)
+        included.append(episode)
+        used += size
+
+    anchors: list[ResponseEpisode] = []
+    chain: list[MessageId] = []
+    parent = target.first.reply_to
+    while parent is not None:
+        episode = chat.owner.get(parent)
+        if (
+            episode is None
+            or not eligible(episode)
+            or _contains(included + anchors, episode)
+        ):
+            break
+        anchors.append(episode)
+        chain.append(parent)
+        parent = episode.first.reply_to
+
+    neighbors: list[ResponseEpisode] = []
+    for anchor in anchors:
+        antecedent = chat.owner.get(anchor.first.reply_to)
+        if antecedent is None or not eligible(antecedent):
+            continue
+        if _contains(included + anchors + neighbors, antecedent):
+            continue
+        neighbors.append(antecedent)
+
+    selected = sorted(
+        (*included, *anchors, *neighbors),
+        key=_episode_key,
+    )
+    return tuple(selected), target.first.reply_to, tuple(chain)
+
+
+def _contains(episodes: Sequence[ResponseEpisode], episode: ResponseEpisode) -> bool:
+    return any(existing.key == episode.key for existing in episodes)
 
 
 def _available_at(message: Message, observed_at: datetime) -> bool:
@@ -490,6 +620,33 @@ def _pseudonyms(
 def _source_digest(messages: Sequence[Message]) -> str:
     values = [_message_value(message) for message in sorted(messages, key=_message_key)]
     return hashlib.sha256(canonical_json_bytes(values)).hexdigest()
+
+
+def _diagnostics(
+    messages: Sequence[Message],
+    episodes: Sequence[ResponseEpisode],
+    config: DataConfig,
+) -> Mapping[str, Any]:
+    samples = burst_gap_samples(messages)
+    gaps = gap_diagnostics(samples)
+    return {
+        "source_messages": len(messages),
+        "response_episodes": len(episodes),
+        "multi_message_episodes": sum(
+            1 for episode in episodes if len(episode.messages) > 1
+        ),
+        "same_author_gaps": {
+            "samples": gaps.samples,
+            "minimum_seconds": gaps.minimum_seconds,
+            "maximum_seconds": gaps.maximum_seconds,
+            "median_seconds": gaps.median_seconds,
+            "p90_seconds": gaps.p90_seconds,
+            "p99_seconds": gaps.p99_seconds,
+            "over_burst_gap": sum(
+                1 for sample in samples if sample > config.burst_gap_seconds
+            ),
+        },
+    }
 
 
 def _message_value(message: Message) -> Mapping[str, Any]:
@@ -567,13 +724,12 @@ def _existing_result(path: Path, dataset_id: DatasetId) -> BuildResult:
         recipe = value["recipe"]
         if not isinstance(recipe, dict):
             raise TypeError
-        if recipe.get("schema_version") == _SCHEMA_VERSION:
-            identity = {
-                key: value[key]
-                for key in ("recipe", "counts", "selection", "files", "pseudonyms")
-            }
-        else:
-            identity = recipe
+        if recipe.get("schema_version") != _SCHEMA_VERSION:
+            raise DataError(f"Dataset schema version is not supported: {path}")
+        identity = {
+            key: value[key]
+            for key in ("recipe", "counts", "selection", "files", "pseudonyms")
+        }
         if hashlib.sha256(canonical_json_bytes(identity)).hexdigest() != str(dataset_id):
             raise DataError(f"Dataset identity does not match its ID: {path}")
         files = value["files"]
@@ -592,9 +748,7 @@ def _existing_result(path: Path, dataset_id: DatasetId) -> BuildResult:
             if actual != expected:
                 raise DataError(f"Dataset file does not match its manifest: {file_path}")
         raw_counts = value["counts"]
-        if not isinstance(raw_counts, dict):
-            raise TypeError
-        if recipe.get("schema_version") == _SCHEMA_VERSION and any(
+        if not isinstance(raw_counts, dict) or any(
             not isinstance(count, int) or isinstance(count, bool)
             for count in raw_counts.values()
         ):
@@ -603,26 +757,25 @@ def _existing_result(path: Path, dataset_id: DatasetId) -> BuildResult:
         if any(count < 0 for count in counts.values()):
             raise TypeError
         raw_target_id = recipe["target_id"]
-        if recipe.get("schema_version") == _SCHEMA_VERSION:
-            if set(counts) != set(Split):
-                raise TypeError
-            for split, expected in counts.items():
-                split_path = path / f"{split.value}.jsonl"
-                if (expected > 0) != split_path.is_file():
-                    raise DataError(
-                        f"Dataset split count does not match its file: {split_path}"
-                    )
-                if expected > 0 and len(
-                    split_path.read_text(encoding="utf-8").splitlines()
-                ) != expected:
-                    raise DataError(
-                        f"Dataset split count does not match its file: {split_path}"
-                    )
-                if expected > 0:
-                    _validate_split_rows(split_path)
-            _validate_selection(value["selection"], counts)
-            _validate_pseudonyms(value["pseudonyms"], target_id=raw_target_id)
-            _validate_index(path / "index.jsonl", counts)
+        if set(counts) != set(Split):
+            raise TypeError
+        for split, expected in counts.items():
+            split_path = path / f"{split.value}.jsonl"
+            if (expected > 0) != split_path.is_file():
+                raise DataError(
+                    f"Dataset split count does not match its file: {split_path}"
+                )
+            if expected > 0 and len(
+                split_path.read_text(encoding="utf-8").splitlines()
+            ) != expected:
+                raise DataError(
+                    f"Dataset split count does not match its file: {split_path}"
+                )
+            if expected > 0:
+                _validate_split_rows(split_path)
+        _validate_selection(value["selection"], counts)
+        _validate_pseudonyms(value["pseudonyms"], target_id=raw_target_id)
+        _validate_index(path / "index.jsonl", counts)
         created_at = datetime.fromisoformat(value["created_at"])
         if created_at.utcoffset() is None:
             raise TypeError
@@ -636,6 +789,10 @@ def _existing_result(path: Path, dataset_id: DatasetId) -> BuildResult:
 
 def _message_key(message: Message) -> tuple[datetime, str]:
     return message.sent_at, str(message.id)
+
+
+def _episode_key(episode: ResponseEpisode) -> tuple[datetime, str]:
+    return episode.key
 
 
 def _jsonl_bytes(examples: Sequence[_RenderedExample]) -> bytes:
@@ -660,17 +817,34 @@ def _index_jsonl_bytes(
                 "split": split.value,
                 "index": index,
                 "chat_id": str(source.target.chat_id),
-                "target_message_id": str(source.target.id),
-                "target_sent_at": source.target.sent_at.isoformat(),
-                "context_message_ids": [str(message.id) for message in source.context],
+                "episode_id": str(source.target.first.id),
+                "target_message_ids": [
+                    str(message_id) for message_id in source.target.message_ids
+                ],
+                "target_sent_at": source.target.start_at.isoformat(),
+                "target_end_sent_at": source.target.end_at.isoformat(),
+                "reply_parent_message_id": (
+                    str(example.reply_parent)
+                    if example.reply_parent is not None
+                    else None
+                ),
+                "thread_anchor_message_ids": [
+                    str(anchor) for anchor in example.anchors
+                ],
+                "context_message_ids": [
+                    str(message.id)
+                    for episode in source.context
+                    for message in episode.messages
+                ],
                 "context_reaction_event_ids": [
                     str(reaction.event_id)
                     for reaction in sorted(
                         (
                             reaction
-                            for message in source.context
+                            for episode in source.context
+                            for message in episode.messages
                             for reaction in message.reactions
-                            if reaction.sent_at < source.target.sent_at
+                            if reaction.sent_at < source.target.start_at
                         ),
                         key=_reaction_key,
                     )
@@ -705,15 +879,19 @@ def _validate_split_rows(path: Path) -> None:
 
 
 def _validate_selection(value: Any, counts: Mapping[Split, int]) -> None:
+    reason_keys = set(_EPISODE_REASONS)
     keys = {
         "attachment",
         "deleted",
         "edited",
-        "excluded",
-        "included",
         "no_text",
         "no_visible_text",
-        "target_messages",
+        "target_episodes",
+        "included",
+        "unusable_episodes",
+        "authored_messages",
+        "episode_messages_included",
+        "episode_messages_excluded",
     }
     if (
         not isinstance(value, dict)
@@ -723,9 +901,10 @@ def _validate_selection(value: Any, counts: Mapping[Split, int]) -> None:
             for count in value.values()
         )
         or value["included"] != sum(counts.values())
-        or value["target_messages"] != value["included"] + value["excluded"]
-        or value["excluded"]
-        != sum(value[key] for key in keys - {"target_messages", "included", "excluded"})
+        or value["unusable_episodes"] > value["target_episodes"]
+        or value["authored_messages"]
+        != value["episode_messages_included"] + value["episode_messages_excluded"]
+        or value["episode_messages_excluded"] != sum(value[key] for key in reason_keys)
     ):
         raise DataError("Dataset target selection counts are not valid")
 
@@ -752,14 +931,18 @@ def _validate_index(path: Path, counts: Mapping[Split, int]) -> None:
     if len(rows) != len(expected):
         raise DataError(f"Dataset index count does not match its splits: {path}")
     sources: dict[Split, set[str]] = {split: set() for split in Split}
-    target_ids: set[str] = set()
-    previous_target: tuple[datetime, str] | None = None
+    episode_ids: set[str] = set()
+    previous_episode: tuple[datetime, str] | None = None
     keys = {
         "split",
         "index",
         "chat_id",
-        "target_message_id",
+        "episode_id",
+        "target_message_ids",
         "target_sent_at",
+        "target_end_sent_at",
+        "reply_parent_message_id",
+        "thread_anchor_message_ids",
         "context_message_ids",
         "context_reaction_event_ids",
     }
@@ -769,38 +952,52 @@ def _validate_index(path: Path, counts: Mapping[Split, int]) -> None:
         try:
             value = json.loads(line)
             sent_at = datetime.fromisoformat(value["target_sent_at"])
+            end_at = datetime.fromisoformat(value["target_end_sent_at"])
         except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
             raise DataError(f"Dataset index row is not valid: {path}:{line_number}") from error
         context_ids = value.get("context_message_ids")
         reaction_ids = value.get("context_reaction_event_ids")
-        target_id = value.get("target_message_id")
+        target_ids = value.get("target_message_ids")
+        anchor_ids = value.get("thread_anchor_message_ids")
+        reply_parent = value.get("reply_parent_message_id")
+        episode_id = value.get("episode_id")
         if (
             not isinstance(value, dict)
             or set(value) != keys
             or value.get("split") != expected_split.value
             or value.get("index") != expected_index
             or not isinstance(value.get("chat_id"), str)
-            or not isinstance(target_id, str)
+            or not isinstance(episode_id, str)
+            or not isinstance(target_ids, list)
+            or not all(isinstance(item, str) for item in target_ids)
+            or not target_ids
+            or episode_id != target_ids[0]
             or not isinstance(context_ids, list)
             or not all(isinstance(item, str) for item in context_ids)
             or not isinstance(reaction_ids, list)
             or not all(isinstance(item, str) for item in reaction_ids)
+            or not isinstance(anchor_ids, list)
+            or not all(isinstance(item, str) for item in anchor_ids)
+            or not (reply_parent is None or isinstance(reply_parent, str))
             or sent_at.utcoffset() is None
-            or target_id in target_ids
-            or target_id in context_ids
+            or end_at < sent_at
+            or episode_id in episode_ids
+            or set(target_ids) & set(context_ids)
+            or not set(anchor_ids) <= set(context_ids)
             or len(set(context_ids)) != len(context_ids)
             or len(set(reaction_ids)) != len(reaction_ids)
+            or len(set(target_ids)) != len(target_ids)
             or (
-                previous_target is not None
-                and (sent_at, target_id) <= previous_target
+                previous_episode is not None
+                and (sent_at, episode_id) <= previous_episode
             )
         ):
             raise DataError(f"Dataset index row is not valid: {path}:{line_number}")
-        target_ids.add(target_id)
-        sources[expected_split].add(target_id)
+        episode_ids.add(episode_id)
+        sources[expected_split].update(target_ids)
         sources[expected_split].update(context_ids)
         sources[expected_split].update(reaction_ids)
-        previous_target = sent_at, target_id
+        previous_episode = sent_at, episode_id
     for index, split in enumerate(Split):
         for other in tuple(Split)[index + 1 :]:
             if not sources[split].isdisjoint(sources[other]):

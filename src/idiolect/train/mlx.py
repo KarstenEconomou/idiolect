@@ -33,7 +33,7 @@ from idiolect.prompt import PromptError, format_row, validate_prompt_config
 from idiolect.train.base import LoadedRun
 from idiolect.types import DatasetId, DatasetRef, RunId, RunRef, Split, TrainResult
 
-_RUN_VERSION = 3
+_RUN_VERSION = 1
 _REQUIRED_TOML = frozenset(
     {
         "base_model",

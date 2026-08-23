@@ -7,6 +7,9 @@ Training is a local batch operation. It reads one immutable dataset and writes o
 LoRA receives loss only on the formatted target completion. `mask_prompt` must
 be `true`. This prevents the adapter from learning to reproduce the dataset
 instruction, other participants, and context scaffolding as output behavior.
+One training row is one target response episode, so the completion teaches both
+what the target says and how the target fragments an utterance into multiple
+Signal messages.
 
 The training objective is completion negative log-likelihood. This is the same
 quantity that the Likelihood pillar measures at evaluation time: training

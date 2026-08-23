@@ -102,6 +102,45 @@ class Message:
     quote: Quote | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class ResponseEpisode:
+    """Keep one speaker response episode of one or more messages."""
+
+    chat_id: ChatId
+    author_id: PersonId
+    messages: tuple[Message, ...]
+
+    @property
+    def first(self) -> Message:
+        """Return the first message of the episode."""
+        return self.messages[0]
+
+    @property
+    def last(self) -> Message:
+        """Return the last message of the episode."""
+        return self.messages[-1]
+
+    @property
+    def start_at(self) -> datetime:
+        """Return the first message send time."""
+        return self.first.sent_at
+
+    @property
+    def end_at(self) -> datetime:
+        """Return the last message send time."""
+        return self.last.sent_at
+
+    @property
+    def message_ids(self) -> tuple[MessageId, ...]:
+        """Return every constituent source message ID."""
+        return tuple(message.id for message in self.messages)
+
+    @property
+    def key(self) -> tuple[datetime, str]:
+        """Return the chronological ordering key of the episode start."""
+        return self.first.sent_at, str(self.first.id)
+
+
 type Record = Message | Reaction
 
 
@@ -116,10 +155,10 @@ class StoreStats:
 
 @dataclass(frozen=True, slots=True)
 class Example:
-    """Keep one model example."""
+    """Keep one model example for one target response episode."""
 
-    context: tuple[Message, ...]
-    target: Message
+    context: tuple[ResponseEpisode, ...]
+    target: ResponseEpisode
 
 
 @dataclass(frozen=True, slots=True)

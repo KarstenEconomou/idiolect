@@ -13,6 +13,7 @@ database = "idiolect.duckdb"
 [data]
 output = "var/data"
 context = 32
+burst_gap_seconds = 120
 valid_ratio = 0.1
 test_ratio = 0.1
 

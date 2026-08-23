@@ -15,8 +15,8 @@ Evaluation does not produce one fidelity score. Open conversation has many valid
 replies, and one recorded reply is not a complete reference distribution. Read
 the five pillars together:
 
-1. Likelihood: completion probability against the held-out human reply.
-2. Voice: observable style and surface-distribution fidelity.
+1. Likelihood: completion probability against the held-out human reply episode.
+2. Voice: observable style, surface-distribution, and message-fragmentation fidelity.
 3. Validity: malformed, degenerate, or unstable generation diagnostics.
 4. Memorization: training-text reproduction and leakage regression.
 5. Recognition: familiar-rater preference for target likeness.
@@ -97,6 +97,14 @@ each adapter run, and the pooled policy with the held-out evidence.
    mentions, URLs, repeated characters, and character three-grams with the
    held-out human replies.
 3. Report absolute feature differences and character three-gram JS divergence.
+
+One held-out example is one response episode. Evaluation normalizes episodes
+before comparison: it splits completions on the `[new message]` serialization
+boundary and joins the bubbles as lines. This keeps line and length features
+comparable while adding a `bubbles` feature that measures how many Signal
+messages each side fragments its response into. The bubble counts are
+fragmentation evidence for future message-pacing metrics; no gate uses them
+today.
 
 Character n-grams can measure topic as well as style. Read voice results with
 the other pillars.
@@ -202,8 +210,7 @@ are met.
 Ballot construction draws the compared run from a rater-specific random stream,
 so run identity is not paired with one generation seed across primary
 comparisons. Judgment and panel artifacts record the ballot scheme version. The
-current version is 2; older judgment artifacts do not match the current schedule
-and must be rated again.
+loader rejects artifacts whose recorded version is not the current one.
 
 ## Interpretation
 

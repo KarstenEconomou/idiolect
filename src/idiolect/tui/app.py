@@ -29,6 +29,7 @@ from idiolect.chat.storage import (
 )
 from idiolect.chat.worker import WorkerError
 from idiolect.config import ChatConfig, GenerationConfig
+from idiolect.prompt import split_bubbles
 from idiolect.tui.catalog import CatalogLayout
 from idiolect.tui.commands import CommandError, completions, parse_command
 from idiolect.tui.markdown import is_web_link
@@ -111,6 +112,23 @@ def _accent_theme_css() -> str:
 WATERMARK = _watermark()
 
 _FOOTER_GAP = "    "
+
+
+def _episode_segments(
+    name: str,
+    content: str,
+) -> tuple[tuple[str, str], ...]:
+    """Split one assistant response episode into labeled message bubbles.
+
+    Stored turn content stays exact; only the display separates the bubbles
+    of one episode. Blank serialization segments are never shown.
+    """
+    segments = tuple(
+        segment for segment in split_bubbles(content) if segment.strip()
+    )
+    if not segments:
+        return ((name, content),)
+    return tuple((name, segment) for segment in segments)
 
 
 def _telemetry_footer(
@@ -722,9 +740,14 @@ class ChatApp(App[None]):
         turns = []
         for turn in session.turns:
             name = "USER" if turn.role == "user" else self._chat_name(session)
-            turns.append((name, turn.content))
+            if turn.role == "assistant":
+                turns.extend(_episode_segments(name, turn.content))
+            else:
+                turns.append((name, turn.content))
         if partial and self._generating:
-            turns.append((self._chat_name(session), self._stream_value() or "…"))
+            turns.extend(
+                _episode_segments(self._chat_name(session), self._stream_value() or "…")
+            )
         transcript.set_turns(turns)
         if follow_latest:
             self.call_after_refresh(self._scroll_transcript_end)

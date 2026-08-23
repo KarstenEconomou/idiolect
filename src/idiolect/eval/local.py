@@ -36,6 +36,7 @@ from idiolect.prompt import (
     CONVERSATION_HEADER,
     NEXT_RESPONSE_MARKER,
     format_prompt,
+    split_bubbles,
 )
 from idiolect.train.base import LoadedRun
 from idiolect.types import (
@@ -49,7 +50,7 @@ from idiolect.types import (
     Split,
 )
 
-_ARTIFACT_VERSION = 3
+_ARTIFACT_VERSION = 1
 _SUITE = "fidelity"
 _REQUIRED_TOML = frozenset(
     {
@@ -80,6 +81,7 @@ _FEATURES = (
     "characters",
     "words",
     "lines",
+    "bubbles",
     "punctuation_density",
     "uppercase_ratio",
     "emoji_rate",
@@ -162,7 +164,7 @@ class LocalEvaluator:
         verified = load_dataset(dataset.path).dataset
         rows = _select(_load_rows(verified, Split.VALID), config.max_examples)
         train_completions = tuple(
-            row.completion for row in _load_rows(verified, Split.TRAIN)
+            _canonical(row.completion) for row in _load_rows(verified, Split.TRAIN)
         )
         effective_inference = replace(inference, max_examples=config.max_examples)
 
@@ -481,23 +483,32 @@ def _report(
     run_predictions: Sequence[Sequence[Prediction]],
     config: EvalConfig,
 ) -> tuple[Mapping[str, Any], tuple[Mapping[str, Any], ...]]:
-    reference = [row.completion for row in rows]
-    base_text = [value.text for value in base_predictions]
-    run_text = [[value.text for value in values] for values in run_predictions]
-    policy_text = [text for values in run_text for text in values]
+    reference = [_canonical(row.completion) for row in rows]
     match_index = TrainingMatchIndex.build(train, config.long_match_chars)
 
     likelihood = _likelihood_report(
         rows, runs, base_scores, run_scores, config
     )
-    reference_profile = _profile(reference)
+    reference_profile = _profile([row.completion for row in rows])
     voice: dict[str, Any] = {
         "reference": reference_profile,
-        "base": _profile_comparison(base_text, reference_profile, reference),
-        "policy": _profile_comparison(policy_text, reference_profile, reference),
+        "base": _profile_comparison(
+            [value.text for value in base_predictions],
+            reference_profile,
+            reference,
+        ),
+        "policy": _profile_comparison(
+            [value.text for values in run_predictions for value in values],
+            reference_profile,
+            reference,
+        ),
         "runs": {
-            str(run.ref.id): _profile_comparison(text, reference_profile, reference)
-            for run, text in zip(runs, run_text, strict=True)
+            str(run.ref.id): _profile_comparison(
+                [value.text for value in values],
+                reference_profile,
+                reference,
+            )
+            for run, values in zip(runs, run_predictions, strict=True)
         },
     }
     base_rates = _generation_rates(base_predictions, rows, match_index, config)
@@ -659,7 +670,7 @@ def _likelihood_report(
 
 
 def _profile(texts: Sequence[str]) -> Mapping[str, float]:
-    values = [_text_features(text) for text in texts]
+    values = [_text_features(text, _canonical(text)) for text in texts]
     return {
         name: _mean([value[name] for value in values]) for name in _FEATURES
     }
@@ -671,18 +682,26 @@ def _profile_comparison(
     reference: Sequence[str],
 ) -> Mapping[str, Any]:
     profile = _profile(texts)
+    canonical = [_canonical(text) for text in texts]
     return {
         "values": profile,
         "absolute_differences": {
             name: abs(profile[name] - reference_profile[name]) for name in _FEATURES
         },
         "character_3gram_js_divergence": _js_divergence(
-            _ngrams(texts, 3), _ngrams(reference, 3)
+            _ngrams(canonical, 3), _ngrams(reference, 3)
         ),
     }
 
 
-def _text_features(text: str) -> Mapping[str, float]:
+def _canonical(text: str) -> str:
+    """Return one response episode as boundary-free comparison text."""
+    return "\n".join(
+        bubble for bubble in (part.strip() for part in split_bubbles(text)) if bubble
+    )
+
+
+def _text_features(raw_text: str, text: str) -> Mapping[str, float]:
     stripped = text.strip()
     letters = [character for character in stripped if character.isalpha()]
     punctuation = [
@@ -693,6 +712,7 @@ def _text_features(text: str) -> Mapping[str, float]:
         "characters": float(len(stripped)),
         "words": float(len(stripped.split())),
         "lines": float(len(stripped.splitlines()) or 1),
+        "bubbles": float(max(1, len(split_bubbles(raw_text.strip())))),
         "punctuation_density": len(punctuation) / max(1, len(stripped)),
         "uppercase_ratio": sum(character.isupper() for character in letters)
         / max(1, len(letters)),
@@ -727,7 +747,8 @@ def _generation_rates(
         )
         for value in predictions
     ]
-    texts = [value.text for value in predictions]
+    texts = [_canonical(value.text) for value in predictions]
+    texts = [value for value in texts if value]
     return {
         "empty_rate": _rate(diagnostics, "empty"),
         "format_violation_rate": _rate(diagnostics, "format_violation"),
@@ -746,14 +767,16 @@ def _example_diagnostic(
     match_index: TrainingMatchIndex,
     config: EvalConfig,
 ) -> Mapping[str, Any]:
-    normalized = normalize_text(prediction.text)
-    match = match_index.longest(prediction.text)
+    episode = _canonical(prediction.text)
+    normalized = normalize_text(episode)
+    match = match_index.longest(episode)
     allowed = set(_MENTION.findall(row.prompt))
     mentions = set(_MENTION.findall(prediction.text))
     return {
         "seed": prediction.seed,
         "finish_reason": prediction.finish_reason,
-        "empty": not bool(prediction.text.strip()),
+        "empty": not bool(episode.strip()),
+        "bubbles": len(split_bubbles(prediction.text.strip())),
         "format_violation": _format_violation(prediction.text),
         "unknown_mention": bool(mentions - allowed),
         "truncated": prediction.finish_reason in {"length", "max_tokens"},
@@ -845,7 +868,7 @@ def _within_prompt_duplicate_rate(predictions: Sequence[Prediction]) -> float:
     grouped = _by_example(predictions)
     duplicated = 0
     for values in grouped.values():
-        texts = [normalize_text(value.text) for value in values]
+        texts = [normalize_text(_canonical(value.text)) for value in values]
         duplicated += len(texts) > 1 and len(set(texts)) < len(texts)
     return duplicated / len(grouped)
 

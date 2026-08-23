@@ -1,5 +1,7 @@
 """Apply the fixed model conversation and text formats."""
 
+import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -12,6 +14,11 @@ class PromptError(ValueError):
 
 CONVERSATION_HEADER = "Conversation:"
 NEXT_RESPONSE_MARKER = "next response"
+MESSAGE_BOUNDARY = "[new message]"
+BUBBLE_DELIMITER = f"\n{MESSAGE_BOUNDARY}\n"
+_BOUNDARY_LINE = re.compile(
+    rf"^\s*{re.escape(MESSAGE_BOUNDARY)}\s*$", re.MULTILINE
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,7 +48,27 @@ class ConversationEntry:
 
 def conversation_instruction(target_name: str) -> str:
     """Return the fixed target instruction."""
-    return f"You are {target_name}. Write only {target_name}'s next message."
+    return f"You are {target_name}. Write only {target_name}'s next response."
+
+
+def join_bubbles(texts: Sequence[str]) -> str:
+    """Join one response episode's message bubbles into model text."""
+    validate_bubbles(texts)
+    return BUBBLE_DELIMITER.join(texts)
+
+
+def split_bubbles(text: str) -> tuple[str, ...]:
+    """Split one serialized response episode into its message bubbles."""
+    return tuple(text.split(BUBBLE_DELIMITER))
+
+
+def validate_bubbles(texts: Sequence[str]) -> None:
+    """Verify that one episode serialization splits without ambiguity."""
+    for text in texts:
+        if _BOUNDARY_LINE.search(text):
+            raise PromptError(
+                f"Message text contains the reserved boundary: {text!r}"
+            )
 
 
 def render_conversation(

@@ -143,25 +143,6 @@ def test_snapshot_rejects_an_invalid_recorded_generation_policy(
         store.load(new_id)
 
 
-def test_snapshot_still_loads_the_previous_version(tmp_path, monkeypatch) -> None:
-    """Check that version 2 snapshots without backend versions resume."""
-    state, assistant = _state(tmp_path)
-    monkeypatch.setattr(
-        "idiolect.chat.storage.load_assistant", lambda *_args: assistant
-    )
-    store = ChatStore(tmp_path / "chat")
-    state.add_user("private")
-    saved = store.save(state, backend_versions={"mlx_version": "0.29.0"})
-
-    manifest = json.loads((saved.path / "manifest.json").read_text(encoding="utf-8"))
-    del manifest["backend_versions"]
-    manifest["version"] = 2
-    new_id = _readdress(saved.path, manifest)
-    loaded = store.load(new_id)
-
-    assert loaded.backend_versions is None
-
-
 def _readdress(path: Path, manifest: dict) -> str:
     """Rewrite one snapshot in place under its recomputed content address."""
     identity_keys = (

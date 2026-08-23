@@ -48,6 +48,7 @@ class DataConfig:
 
     output: Path | None = None
     context: int = 32
+    burst_gap_seconds: float = 120.0
     valid_ratio: float = 0.1
     test_ratio: float = 0.1
 
@@ -249,7 +250,11 @@ def load_config(
         "signal",
     )
     _check_keys(store_values, {"root", "database"}, "store")
-    _check_keys(data_values, {"output", "context", "valid_ratio", "test_ratio"}, "data")
+    _check_keys(
+        data_values,
+        {"output", "context", "burst_gap_seconds", "valid_ratio", "test_ratio"},
+        "data",
+    )
     _check_keys(
         train_values,
         {
@@ -369,6 +374,7 @@ def load_config(
     data = DataConfig(
         output=_optional_path(data_values.get("output")),
         context=_int(data_values, "context", 32),
+        burst_gap_seconds=_float(data_values, "burst_gap_seconds", 120.0),
         valid_ratio=_float(data_values, "valid_ratio", 0.1),
         test_ratio=_float(data_values, "test_ratio", 0.1),
     )

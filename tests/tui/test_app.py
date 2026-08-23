@@ -23,7 +23,7 @@ from idiolect.chat.storage import ChatStorageError, ChatStore, SavedChat
 from idiolect.chat.worker import WorkerState
 from idiolect.config import ChatConfig, GenerationConfig, TrainDataConfig
 from idiolect.model import ModelSpec
-from idiolect.tui.app import ChatApp
+from idiolect.tui.app import ChatApp, _episode_segments
 from idiolect.tui.specs import HalfCellScrollBarRender, SpecsDocument
 from idiolect.tui.widgets import (
     CommandMenu,
@@ -708,6 +708,23 @@ def test_registry_renames_trace_with_current_name_as_default(tmp_path) -> None:
             assert app._trace_blink_timer is None
 
     asyncio.run(verify())
+
+
+def test_assistant_episode_displays_as_distinct_message_bubbles() -> None:
+    """Check serving interprets serialization boundaries as new messages."""
+    segments = _episode_segments(
+        "DIXIE",
+        "first bubble\n[new message]\nsecond bubble",
+    )
+
+    assert segments == (
+        ("DIXIE", "first bubble"),
+        ("DIXIE", "second bubble"),
+    )
+    # A reply without boundaries stays one displayed message.
+    assert _episode_segments("DIXIE", "plain reply") == (("DIXIE", "plain reply"),)
+    # Blank serialization segments are never shown.
+    assert _episode_segments("DIXIE", "\n[new message]\nreal") == (("DIXIE", "real"),)
 
 
 def test_transcript_formats_markdown_and_remains_scrollable(tmp_path) -> None:

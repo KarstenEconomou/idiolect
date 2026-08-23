@@ -1,10 +1,21 @@
-"""Render target-relative chat examples."""
+"""Render target-relative chat examples.
+
+One example renders one target response episode. The context arrives as whole
+response episodes, so model text distinguishes a speaker change, a
+response-episode boundary (a new bracketed entry), and a Signal message
+boundary inside one episode (the reserved message-boundary line).
+"""
 
 import json
 from collections.abc import Mapping, Sequence
 from datetime import datetime
 
-from idiolect.prompt import ConversationEntry, render_conversation
+from idiolect.prompt import (
+    ConversationEntry,
+    PromptError,
+    join_bubbles,
+    render_conversation,
+)
 from idiolect.types import (
     ChatExample,
     Example,
@@ -13,6 +24,7 @@ from idiolect.types import (
     MessageId,
     PersonId,
     Reaction,
+    ResponseEpisode,
 )
 
 
@@ -28,11 +40,15 @@ def render_example(
     """Render one example from the target person's view."""
     name = normalize_person_name(target_name)
     target_id = example.target.author_id
-    messages = {message.id: message for message in example.context}
+    messages = {
+        message.id: message
+        for episode in example.context
+        for message in episode.messages
+    }
     entries: list[ConversationEntry] = []
     for item in _timeline(example):
-        if isinstance(item, Message):
-            rendered = _message_lines(item, target_id, name, person_names, messages)
+        if isinstance(item, ResponseEpisode):
+            rendered = _episode_lines(item, target_id, name, person_names, messages)
         else:
             rendered = _reaction_lines(item, target_id, name, person_names, messages)
         entries.append(
@@ -41,46 +57,50 @@ def render_example(
             )
         )
 
-    target_text = example.target.text
-    if target_text is None:
-        raise RenderError("The target message must contain text")
-    target_meta = ["next response"]
-    reply = _reply_text(example.target, target_id, name, person_names, messages)
-    if reply is not None:
-        target_meta.append(reply)
-    prompt = render_conversation(
-        name,
-        tuple(entries),
-        next_response=" | ".join(target_meta),
-    )
-    completion = _render_text(
-        target_text,
-        example.target.mentions,
-        target_id,
-        name,
-        person_names,
-    )
-    return ChatExample(prompt=prompt, completion=completion)
+    bubbles = []
+    for message in example.target.messages:
+        if message.text is None:
+            raise RenderError("The target episode must contain only text messages")
+        bubbles.append(
+            _render_text(message.text, message.mentions, target_id, name, person_names)
+        )
+    prompt = render_conversation(name, tuple(entries))
+    return ChatExample(prompt=prompt, completion=_join_bubbles(bubbles))
 
 
-def _message_lines(
-    message: Message,
+def _join_bubbles(texts: Sequence[str]) -> str:
+    try:
+        return join_bubbles(tuple(texts))
+    except PromptError as error:
+        raise RenderError(str(error)) from error
+
+
+def _episode_lines(
+    episode: ResponseEpisode,
     target_id: PersonId,
     target_name: str,
     person_names: Mapping[PersonId, str],
     messages: Mapping[MessageId, Message],
 ) -> tuple[str, ...]:
-    author = _person_name(message.author_id, target_id, target_name, person_names)
+    author = _person_name(episode.author_id, target_id, target_name, person_names)
     meta = [author]
-    if any(mention.person_id == target_id for mention in message.mentions):
+    mentions = [mention for item in episode.messages for mention in item.mentions]
+    if any(mention.person_id == target_id for mention in mentions):
         meta.append(f"mentions @{target_name}")
-    if message.attachments and message.text is not None:
-        label = "attachment" if len(message.attachments) == 1 else "attachments"
-        meta.append(f"{len(message.attachments)} {label}")
-    reply = _reply_text(message, target_id, target_name, person_names, messages)
+    attachments = sum(len(item.attachments) for item in episode.messages)
+    has_text = any(item.text is not None for item in episode.messages)
+    if attachments and has_text:
+        label = "attachment" if attachments == 1 else "attachments"
+        meta.append(f"{attachments} {label}")
+    reply = _reply_text(episode.first, target_id, target_name, person_names, messages)
     if reply is not None:
         meta.append(reply)
-    body = _message_text(message, target_id, target_name, person_names)
+    body = _join_bubbles(
+        [
+            _message_text(item, target_id, target_name, person_names)
+            for item in episode.messages
+        ]
+    )
     return "", f"[{' | '.join(meta)}]", body
 
 
@@ -116,23 +136,28 @@ def _reaction_lines(
     return "", f"[{author} {action} {subject}]"
 
 
-def _timeline(example: Example) -> tuple[Message | Reaction, ...]:
-    values: list[Message | Reaction] = list(example.context)
-    context_ids = {message.id for message in example.context}
-    for message in example.context:
-        values.extend(
-            reaction
-            for reaction in message.reactions
-            if reaction.message_id in context_ids
-            and reaction.sent_at < example.target.sent_at
-        )
+def _timeline(example: Example) -> tuple[ResponseEpisode | Reaction, ...]:
+    context_messages = [
+        message for episode in example.context for message in episode.messages
+    ]
+    context_ids = {message.id for message in context_messages}
+    reactions = [
+        reaction
+        for message in context_messages
+        for reaction in message.reactions
+        if reaction.message_id in context_ids
+        and reaction.sent_at < example.target.start_at
+    ]
+    values: list[ResponseEpisode | Reaction] = [*example.context, *reactions]
     return tuple(sorted(values, key=_timeline_key))
 
 
-def _timeline_key(value: Message | Reaction) -> tuple[datetime, int, str]:
-    if isinstance(value, Message):
-        return value.sent_at, 0, str(value.id)
-    return value.sent_at, 1, str(value.event_id)
+def _timeline_key(value: ResponseEpisode | Reaction) -> tuple[datetime, int, str]:
+    # One key per item orders an episode by its end so that a reaction observed
+    # during the episode renders before that whole contribution.
+    if isinstance(value, ResponseEpisode):
+        return value.end_at, 1, str(value.first.id)
+    return value.sent_at, 0, str(value.event_id)
 
 
 def _message_text(

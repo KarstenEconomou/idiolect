@@ -35,4 +35,6 @@ create raw event and identity-linked record
 write one DuckDB transaction
 ```
 
-The local `launchd` agent runs `idiolect signal collect --follow`. The agent starts at user login. The agent runs only while the Mac is on, awake, and logged in.
+Dataset construction then groups messages into response episodes, splits the
+episodes chronologically, and renders causal context. See
+[dataset build](dataset.md) for the unit definitions and rules. The local `launchd` agent runs `idiolect signal collect --follow`. The agent starts at user login. The agent runs only while the Mac is on, awake, and logged in.

@@ -11,14 +11,15 @@
 Idiolect is a local-first ML pipeline for fine-tuning models to reproduce
 individual writing styles, linguistic patterns, and conversational behavior.
 It collects whitelisted Signal group messages, preserves native mention, reply,
-attachment, and reaction context, builds causally filtered and source-audited
-immutable target-specific datasets, uses MLX-LM QLoRA to train adapters, and
-generates reproducible local predictions.
+attachment, and reaction context, groups consecutive messages into response
+episodes, builds causally filtered and source-audited immutable target-specific
+datasets, uses MLX-LM QLoRA to train adapters, and generates reproducible local
+predictions.
 
 It also provides a private multi-turn terminal chat for the configured DIXIE
 base persona and verified adapters. The chat uses the same conversation grammar
-as training, streams local replies, and
-saves only explicit immutable snapshots.
+as training, streams local replies as response episodes with their message
+boundaries intact, and saves only explicit immutable snapshots.
 
 ```text
                                   Signal

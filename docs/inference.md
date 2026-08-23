@@ -16,7 +16,7 @@ Each complete TOML configuration contains one `[inference]` table. The table sel
 
 The canonical Qwen policy uses non-thinking generation. The training format adds `/no_think` to the prompt and uses an empty thinking block as the assistant prefill. Inference uses the same format.
 
-`max_examples = 0` selects all examples. A positive value selects examples by their stable hash. It does not select the first messages in the split.
+`max_examples = 0` selects all examples. A positive value selects examples by their stable hash. It does not select the first messages in the split. One dataset row is one target response episode, so one prediction reproduces one complete episode, including the `[new message]` boundaries between generated Signal bubbles.
 
 `max_prompt_tokens` is a strict input limit after the tokenizer applies the chat template. The operation stops if an input exceeds the limit. It does not remove context or reduce the output limit.
 

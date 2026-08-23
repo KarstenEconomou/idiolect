@@ -116,7 +116,11 @@ Ctrl+C stops active generation or opens the idle quit confirmation. The composer
 remains available during generation, but a second message is not queued. Use the
 mouse wheel, or Ctrl+Up and Ctrl+Down without leaving the composer, to scroll the
 transcript. Transcript turns use `USER` and the short uppercase assistant name.
-The chat header, registry, and snapshot use the full canonical assistant
+One model invocation generates one response episode. When the reply contains the
+training serialization boundary `[new message]`, the transcript shows each bubble
+as its own labeled block under the same assistant name, both while streaming and
+after completion; blank segments are never shown. Stored turns and snapshots keep
+the exact serialized text. The chat header, registry, and snapshot use the full canonical assistant
 identity. Each displayed message line is inset one cell beneath its speaker
 label, matching the menu heading-to-action offset. Use arrow keys and Enter in an
 unsaved-change confirmation. After a generation failure, return to `REGISTRY` to
@@ -188,12 +192,17 @@ events, and records no assistant turn.
 Interactive prompts use the exact instruction, `Conversation:` header, blank
 separators, participant headers, and `[next response]` marker used by dataset
 training. The dataset target name labels assistant history. The configured
-synthetic participant labels user history.
+synthetic participant labels user history. Assistant history keeps the
+serialized `[new message]` boundaries of past episodes, which matches the
+context-episode grammar used in training.
 
 The runtime first applies the dataset's recorded context-message count. It then
 counts the complete tokenizer template and removes oldest whole messages until
 the prompt fits `inference.max_prompt_tokens`. It never splits a message or removes
 the newest user message. Input that cannot fit by itself is rejected.
+
+The model generates one response episode per invocation and receives no reply-target
+oracle: the prompt marker is always the plain `[next response]`, matching training.
 
 ## Worker and telemetry
 
@@ -232,15 +241,14 @@ var/chat/CHAT_ID/
 └── turns.jsonl
 ```
 
-The content identity includes assistant digests, chat and generation policies,
-title, parent snapshot, turns, attempts, finish reasons, seeds, telemetry, and
-the recorded MLX and MLX-LM runtime versions. Creation time is not part of the
-ID. Saving an unchanged transcript with its
+The content identity includes the snapshot schema version, assistant digests,
+chat and generation policies, title, parent snapshot, turns, attempts, finish
+reasons, seeds, telemetry, and the recorded MLX and MLX-LM runtime versions.
+Creation time is not part of the ID. Saving an unchanged transcript with its
 current name returns its existing artifact. A resumed transcript saves as a
 child. The chooser presents verified lineage leaves and preserves every older
-snapshot on disk.
-The loader accepts the previous snapshot version without recorded runtime
-versions and verifies the numeric sampling ranges of the saved generation
-policy.
+snapshot on disk. The loader rejects snapshots whose recorded version is not
+the current one and verifies the numeric sampling ranges of the saved
+generation policy.
 If a confirmation save fails, the requested navigation or exit is cancelled and
 the memory-only transcript stays open.

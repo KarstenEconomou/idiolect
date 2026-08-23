@@ -27,7 +27,7 @@ from idiolect.inference.base import TargetMode
 from idiolect.model import ModelSpec
 from idiolect.prompt import validate_prompt_config
 
-_SNAPSHOT_VERSION = 3
+_SNAPSHOT_VERSION = 1
 _ASSISTANT_KEYS = {
     "name",
     "target_name",
@@ -193,15 +193,11 @@ class ChatStore:
             if not isinstance(manifest, dict) or manifest.get("chat_id") != path.name:
                 raise ChatStorageError(f"Chat manifest does not match its path: {path}")
             version = manifest.get("version")
-            if version == _SNAPSHOT_VERSION:
-                identity_keys = (*_IDENTITY_KEYS, "backend_versions")
-            elif version == _SNAPSHOT_VERSION - 1:
-                # Version 2 snapshots recorded no backend runtime versions.
-                identity_keys = _IDENTITY_KEYS
-            else:
+            if version != _SNAPSHOT_VERSION:
                 raise ChatStorageError(
                     f"Chat snapshot version is not supported: {path}"
                 )
+            identity_keys = (*_IDENTITY_KEYS, "backend_versions")
             if set(manifest) != set(identity_keys) | {"chat_id", "created_at"}:
                 raise ChatStorageError(f"Chat manifest does not match its path: {path}")
             identity = {key: manifest[key] for key in identity_keys}
@@ -258,10 +254,7 @@ class ChatStore:
                 raise ChatStorageError(
                     f"Saved chat generation policy is not valid: {error}"
                 ) from error
-            if version == _SNAPSHOT_VERSION:
-                backend_versions = _backend_versions(manifest["backend_versions"])
-            else:
-                backend_versions = None
+            backend_versions = _backend_versions(manifest["backend_versions"])
             created_at = datetime.fromisoformat(manifest["created_at"])
             if created_at.utcoffset() is None:
                 raise TypeError

@@ -43,8 +43,8 @@ from idiolect.types import (
     Split,
 )
 
-_JUDGMENT_VERSION = 2
-_PANEL_VERSION = 2
+_JUDGMENT_VERSION = 1
+_PANEL_VERSION = 1
 _DIMENSIONS = (
     ("target_likeness", "Which reply would the target be more likely to send here?"),
     ("voice", "Which reply sounds more like the target?"),

@@ -4,7 +4,7 @@ import hashlib
 import json
 import shutil
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -409,27 +409,73 @@ def _dataset(tmp_path: Path) -> DatasetRef:
     recipe = {
         "schema_version": 1,
         "target_id": "target",
+        "target_name": "TARGET",
+        "context": 4,
+        "burst_gap_seconds": 120.0,
+        "unit": "response-episode-v1",
         "source_digest": "synthetic",
     }
-    dataset_id = hashlib.sha256(_json_bytes(recipe)).hexdigest()
-    path = tmp_path / "data" / dataset_id
-    path.mkdir(parents=True)
-    rows = [
-        {"prompt": f"private prompt {index}", "completion": "expected reply"}
-        for index in range(4)
-    ]
     content = "".join(
         f"{json.dumps(row, ensure_ascii=False, separators=(',', ':'))}\n"
-        for row in rows
+        for row in (
+            {"prompt": f"private prompt {index}", "completion": "expected reply"}
+            for index in range(4)
+        )
     )
+    index_content = "".join(
+        f"{json.dumps(row, ensure_ascii=False, separators=(',', ':'))}\n"
+        for number, index in enumerate(range(4))
+        for row in [
+            {
+                "split": "test",
+                "index": index,
+                "chat_id": "chat",
+                "episode_id": f"message-{number:02d}",
+                "target_message_ids": [f"message-{number:02d}"],
+                "target_sent_at": (_NOW + timedelta(minutes=number)).isoformat(),
+                "target_end_sent_at": (_NOW + timedelta(minutes=number)).isoformat(),
+                "reply_parent_message_id": None,
+                "thread_anchor_message_ids": [],
+                "context_message_ids": [],
+                "context_reaction_event_ids": [],
+            }
+        ]
+    )
+    counts = {"train": 0, "valid": 0, "test": 4}
+    total = sum(counts.values())
+    selection = {
+        "attachment": 0,
+        "deleted": 0,
+        "edited": 0,
+        "no_text": 0,
+        "no_visible_text": 0,
+        "target_episodes": total,
+        "included": total,
+        "unusable_episodes": 0,
+        "authored_messages": total,
+        "episode_messages_included": total,
+        "episode_messages_excluded": 0,
+    }
+    files = {
+        "test.jsonl": hashlib.sha256(content.encode()).hexdigest(),
+        "index.jsonl": hashlib.sha256(index_content.encode()).hexdigest(),
+    }
+    identity = {
+        "recipe": recipe,
+        "counts": counts,
+        "selection": selection,
+        "files": files,
+        "pseudonyms": {},
+    }
+    dataset_id = hashlib.sha256(_json_bytes(identity)).hexdigest()
+    path = tmp_path / "data" / dataset_id
+    path.mkdir(parents=True)
     (path / "test.jsonl").write_text(content, encoding="utf-8")
+    (path / "index.jsonl").write_text(index_content, encoding="utf-8")
     manifest = {
         "dataset_id": dataset_id,
         "created_at": _NOW.isoformat(),
-        "recipe": recipe,
-        "counts": {"test": 4},
-        "files": {"test.jsonl": hashlib.sha256(content.encode()).hexdigest()},
-        "pseudonyms": {},
+        **identity,
     }
     (path / "manifest.json").write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n",

@@ -5,7 +5,7 @@ import json
 import math
 import shutil
 from dataclasses import asdict, replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -239,7 +239,7 @@ def test_policy_evaluation_is_paired_private_and_content_addressed(
     assert all(session.closed for session in scorer.sessions)
     report = json.loads((first.path / "metrics.json").read_text(encoding="utf-8"))
     manifest = json.loads((first.path / "manifest.json").read_text(encoding="utf-8"))
-    assert manifest["recipe"]["version"] == 3
+    assert manifest["recipe"]["version"] == 1
     assert manifest["recipe"]["inference_config"]["backend"] == "mlx-lm"
     assert (
         report["likelihood"]["policy"]["delta_macro_mean_nll"]["value"]
@@ -261,6 +261,45 @@ def test_policy_evaluation_is_paired_private_and_content_addressed(
     (first.path / "metrics.json").write_text("changed\n", encoding="utf-8")
     with pytest.raises(EvaluationError, match="does not match its manifest"):
         load_evaluation(first.path)
+
+
+def test_evaluation_measures_multi_bubble_episodes_as_episodes(tmp_path: Path) -> None:
+    """Check episode normalization and fragmentation evidence."""
+    dataset = _dataset(
+        tmp_path,
+        valid_completions=[
+            f"human reply {index}\n[new message]\nsecond part {index}"
+            for index in range(2)
+        ],
+    )
+    evaluator = LocalEvaluator(
+        FakeScoreBackend(),
+        FakeInferencer(tmp_path / "inference"),
+        target_loader=_target,
+        clock=lambda: _NOW,
+    )
+
+    result = evaluator.evaluate(
+        _runs(tmp_path, dataset),
+        dataset,
+        _eval_config(tmp_path),
+        _inference_config(tmp_path),
+    )
+
+    assert result.eligible is True
+    report = json.loads((result.path / "metrics.json").read_text(encoding="utf-8"))
+    assert report["voice"]["reference"]["bubbles"] == 2.0
+    assert report["voice"]["base"]["values"]["bubbles"] == 1.0
+    assert report["voice"]["policy"]["values"]["bubbles"] == 1.0
+    examples = [
+        json.loads(line)
+        for line in (result.path / "examples.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert all(output["bubbles"] == 1 for row in examples for output in row["run_outputs"]["run-17"])
+    # Boundary markers never leak into the memorization comparison text.
+    assert report["memorization"]["reference"] == 0.0
 
 
 def test_behavior_gates_apply_to_each_run_separately(tmp_path: Path) -> None:
@@ -428,11 +467,18 @@ def test_panel_rejects_a_self_consistent_judgment_off_schedule(
         create_panel(evaluation.path, (forged,), config, clock=lambda: _NOW)
 
 
-def _dataset(tmp_path: Path) -> DatasetRef:
-    recipe = {"schema_version": 1, "target_id": "target", "source": "synthetic"}
-    dataset_id = hashlib.sha256(_json_bytes(recipe)).hexdigest()
-    path = tmp_path / "data" / dataset_id
-    path.mkdir(parents=True)
+def _dataset(tmp_path: Path, valid_completions: list[str] | None = None) -> DatasetRef:
+    if valid_completions is None:
+        valid_completions = [f"human reply {index}" for index in range(2)]
+    recipe = {
+        "schema_version": 1,
+        "target_id": "target",
+        "target_name": "TARGET",
+        "context": 4,
+        "burst_gap_seconds": 120.0,
+        "unit": "response-episode-v1",
+        "source": "synthetic",
+    }
     split_rows = {
         "train": [
             {
@@ -443,23 +489,72 @@ def _dataset(tmp_path: Path) -> DatasetRef:
         "valid": [
             {
                 "prompt": f"private validation prompt {index}",
-                "completion": f"human reply {index}",
+                "completion": completion,
             }
-            for index in range(2)
+            for index, completion in enumerate(valid_completions)
         ],
     }
-    files = {}
-    for name, rows in split_rows.items():
-        content = "".join(f"{json.dumps(row, separators=(',', ':'))}\n" for row in rows)
-        (path / f"{name}.jsonl").write_text(content, encoding="utf-8")
-        files[f"{name}.jsonl"] = hashlib.sha256(content.encode()).hexdigest()
+    contents = {
+        f"{name}.jsonl": "".join(
+            f"{json.dumps(row, separators=(',', ':'))}\n" for row in rows
+        )
+        for name, rows in split_rows.items()
+    }
+    counts = {"train": 1, "valid": len(valid_completions), "test": 0}
+    total = sum(counts.values())
+    selection = {
+        "attachment": 0,
+        "deleted": 0,
+        "edited": 0,
+        "no_text": 0,
+        "no_visible_text": 0,
+        "target_episodes": total,
+        "included": total,
+        "unusable_episodes": 0,
+        "authored_messages": total,
+        "episode_messages_included": total,
+        "episode_messages_excluded": 0,
+    }
+    placements = [(Split.TRAIN, 0), *[(Split.VALID, i) for i in range(counts["valid"])]]
+    contents["index.jsonl"] = "".join(
+        f"{json.dumps(row, separators=(',', ':'))}\n"
+        for number, (split, index) in enumerate(placements)
+        for row in [
+            {
+                "split": split.value,
+                "index": index,
+                "chat_id": "chat",
+                "episode_id": f"message-{number:02d}",
+                "target_message_ids": [f"message-{number:02d}"],
+                "target_sent_at": (_NOW + timedelta(minutes=number)).isoformat(),
+                "target_end_sent_at": (_NOW + timedelta(minutes=number)).isoformat(),
+                "reply_parent_message_id": None,
+                "thread_anchor_message_ids": [],
+                "context_message_ids": [],
+                "context_reaction_event_ids": [],
+            }
+        ]
+    )
+    files = {
+        name: hashlib.sha256(content.encode()).hexdigest()
+        for name, content in contents.items()
+    }
+    identity = {
+        "recipe": recipe,
+        "counts": counts,
+        "selection": selection,
+        "files": files,
+        "pseudonyms": {},
+    }
+    dataset_id = hashlib.sha256(_json_bytes(identity)).hexdigest()
+    path = tmp_path / "data" / dataset_id
+    path.mkdir(parents=True)
+    for name, content in contents.items():
+        (path / name).write_text(content, encoding="utf-8")
     manifest = {
         "dataset_id": dataset_id,
         "created_at": _NOW.isoformat(),
-        "recipe": recipe,
-        "counts": {"train": 1, "valid": 2, "test": 0},
-        "files": files,
-        "pseudonyms": {},
+        **identity,
     }
     (path / "manifest.json").write_text(
         json.dumps(manifest, indent=2, sort_keys=True) + "\n",
