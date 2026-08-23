@@ -631,16 +631,17 @@ def _cluster_interval(
             )
         elif attempts >= config.bootstrap_samples * 20:
             break
+    method = "two-way-cluster-bootstrap"
     if not estimates:
+        # Every resample was empty. Record the degenerate interval honestly.
+        method = "single-point-fallback"
         estimates.append(
             sum(value["choice"] == positive for value in decisive) / len(decisive)
         )
     estimates.sort()
     tail = (1.0 - config.confidence_level) / 2
-    lower = estimates[min(len(estimates) - 1, int(tail * len(estimates)))]
-    upper = estimates[
-        min(len(estimates) - 1, int((1.0 - tail) * len(estimates)))
-    ]
+    lower = quantile(estimates, tail)
+    upper = quantile(estimates, 1.0 - tail)
     result: dict[str, Any] = asdict(
         Interval(
             sum(value["choice"] == positive for value in decisive) / len(decisive),
@@ -648,7 +649,7 @@ def _cluster_interval(
             upper,
         )
     )
-    result["method"] = "two-way-cluster-bootstrap"
+    result["method"] = method
     result["example_clusters"] = len(examples)
     result["rater_clusters"] = len(raters)
     return result

@@ -802,8 +802,8 @@ def _interval_value(values: Sequence[float], config: EvalConfig) -> Mapping[str,
         estimates.append(_mean(sample))
     estimates.sort()
     tail = (1.0 - config.confidence_level) / 2
-    lower = estimates[min(len(estimates) - 1, int(tail * len(estimates)))]
-    upper = estimates[min(len(estimates) - 1, int((1.0 - tail) * len(estimates)))]
+    lower = quantile(estimates, tail)
+    upper = quantile(estimates, 1.0 - tail)
     return asdict(Interval(_mean(values), lower, upper))
 
 
