@@ -133,8 +133,11 @@ def collect_judgments(
                 "judgments.jsonl": hashlib.sha256(judgment_path.read_bytes()).hexdigest()
             },
         }
-        _write_json(temporary / "manifest.json", manifest_value)
+        write_json(temporary / "manifest.json", manifest_value)
         temporary.rename(destination)
+    except KeyboardInterrupt:
+        shutil.rmtree(temporary, ignore_errors=True)
+        raise
     except (OSError, TypeError, ValueError) as error:
         shutil.rmtree(temporary, ignore_errors=True)
         raise EvaluationError(f"Cannot create judgment artifact: {destination}") from error
@@ -227,8 +230,11 @@ def create_panel(
                 "panel.json": hashlib.sha256(report_path.read_bytes()).hexdigest()
             },
         }
-        _write_json(temporary / "manifest.json", manifest)
+        write_json(temporary / "manifest.json", manifest)
         temporary.rename(destination)
+    except KeyboardInterrupt:
+        shutil.rmtree(temporary, ignore_errors=True)
+        raise
     except (OSError, TypeError, ValueError) as error:
         shutil.rmtree(temporary, ignore_errors=True)
         raise EvaluationError(f"Cannot create panel artifact: {destination}") from error
@@ -685,9 +691,9 @@ def _verify_simple_artifact(
     try:
         value = _read_manifest(path)
         identifier = _required_text(value[id_key])
-        if path.name != identifier or not _is_digest(identifier):
+        if path.name != identifier or not is_digest(identifier):
             raise EvaluationError(f"{label} manifest does not match its path: {path}")
-        if hashlib.sha256(_json_bytes(value["recipe"])).hexdigest() != identifier:
+        if hashlib.sha256(canonical_json_bytes(value["recipe"])).hexdigest() != identifier:
             raise EvaluationError(f"{label} recipe does not match its ID: {path}")
         files = value["files"]
         if not isinstance(files, dict):
@@ -706,9 +712,7 @@ def _verify_simple_artifact(
             if hashlib.sha256(file_path.read_bytes()).hexdigest() != expected:
                 raise EvaluationError(f"{label} file does not match its manifest: {file_path}")
         return value
-    except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError) as error:
-        if isinstance(error, EvaluationError):
-            raise
+    except (KeyError, OSError, TypeError, ValueError) as error:
         raise EvaluationError(f"Cannot read {label.casefold()} artifact: {path}") from error
 
 

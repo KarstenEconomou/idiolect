@@ -10,6 +10,10 @@ class PromptError(ValueError):
     """Report an invalid model text format."""
 
 
+CONVERSATION_HEADER = "Conversation:"
+NEXT_RESPONSE_MARKER = "next response"
+
+
 @dataclass(frozen=True, slots=True)
 class Turn:
     """Keep one model chat turn."""
@@ -44,10 +48,10 @@ def render_conversation(
     target_name: str,
     entries: tuple[ConversationEntry, ...],
     *,
-    next_response: str = "next response",
+    next_response: str = NEXT_RESPONSE_MARKER,
 ) -> str:
     """Render entries with the fixed training conversation grammar."""
-    lines = [conversation_instruction(target_name), "", "Conversation:"]
+    lines = [conversation_instruction(target_name), "", CONVERSATION_HEADER]
     for entry in entries:
         lines.extend(("", f"[{entry.header}]"))
         if entry.content is not None:

@@ -32,7 +32,11 @@ from idiolect.eval.text import TrainingMatchIndex, normalize_text
 from idiolect.inference.base import ModelTarget, Prediction
 from idiolect.inference.local import RecordedTargetResolver, load_inference
 from idiolect.model import directory_digest
-from idiolect.prompt import format_prompt
+from idiolect.prompt import (
+    CONVERSATION_HEADER,
+    NEXT_RESPONSE_MARKER,
+    format_prompt,
+)
 from idiolect.train.base import LoadedRun
 from idiolect.types import (
     DatasetRef,
@@ -324,9 +328,7 @@ def load_evaluation(path: Path) -> EvaluationRef:
             raise EvaluationError(
                 f"Evaluation result does not match its manifest: {path}"
             )
-    except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError) as error:
-        if isinstance(error, EvaluationError):
-            raise
+    except (KeyError, OSError, TypeError, ValueError) as error:
         raise EvaluationError(f"Cannot read evaluation artifact: {path}") from error
     return EvaluationRef(evaluation_id, path, created_at, eligible)
 
@@ -436,7 +438,7 @@ def _load_predictions(path: Path) -> tuple[Prediction, ...]:
         for line in (path / "pred.jsonl").read_text(encoding="utf-8").splitlines():
             value = json.loads(line)
             result.append(Prediction(**value))
-    except (OSError, TypeError, ValueError, json.JSONDecodeError) as error:
+    except (OSError, TypeError, ValueError) as error:
         raise EvaluationError(f"Cannot read inference predictions: {path}") from error
     return tuple(result)
 
@@ -601,6 +603,7 @@ def _likelihood_report(
         policy_values[index] - base_values[index] for index in range(len(rows))
     ]
     result_runs = {}
+    run_delta_means = []
     for run, scores, values in zip(runs, run_scores, run_values, strict=True):
         deltas = [value - baseline for value, baseline in zip(values, base_values, strict=True)]
         corpus_mean_nll = _corpus_mean_nll(scores)
@@ -612,6 +615,7 @@ def _likelihood_report(
             "delta_macro_mean_nll": _interval_value(deltas, config),
             "examples_improved_rate": sum(value < 0 for value in deltas) / len(deltas),
         }
+        run_delta_means.append(_mean(deltas))
     policy_scores = tuple(value for values in run_scores for value in values)
     return {
         "base": {
@@ -626,10 +630,7 @@ def _likelihood_report(
             "delta_macro_mean_nll": _interval_value(policy_delta, config),
             "examples_improved_rate": sum(value < 0 for value in policy_delta)
             / len(policy_delta),
-            "run_delta_range": [
-                min(_mean([v - b for v, b in zip(values, base_values, strict=True)]) for values in run_values),
-                max(_mean([v - b for v, b in zip(values, base_values, strict=True)]) for values in run_values),
-            ],
+            "run_delta_range": [min(run_delta_means), max(run_delta_means)],
         },
         "runs": result_runs,
     }
@@ -746,8 +747,8 @@ def _format_violation(text: str) -> bool:
         _ROLE.search(text)
         or "<think>" in lowered
         or "</think>" in lowered
-        or "[next response]" in lowered
-        or "conversation:" in lowered
+        or f"[{NEXT_RESPONSE_MARKER}]" in lowered
+        or CONVERSATION_HEADER.casefold() in lowered
     )
 
 
@@ -761,14 +762,10 @@ def _memorization_rate(
     ) / len(texts)
 
 
-def _normalize(text: str) -> str:
-    return normalize_text(text)
-
-
 def _ngrams(texts: Sequence[str], size: int) -> Counter[str]:
     result: Counter[str] = Counter()
     for text in texts:
-        normalized = _normalize(text)
+        normalized = normalize_text(text)
         result.update(
             normalized[index : index + size]
             for index in range(max(0, len(normalized) - size + 1))
@@ -933,14 +930,6 @@ def _required_output(config: EvalConfig) -> Path:
     return config.output.expanduser().resolve()
 
 
-def _file_hashes(root: Path) -> Mapping[str, str]:
-    return {
-        path.relative_to(root).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
-        for path in sorted(root.rglob("*"))
-        if path.is_file()
-    }
-
-
 def _artifact_file(root: Path, name: object) -> Path:
     if not isinstance(name, str):
         raise TypeError
@@ -952,36 +941,11 @@ def _artifact_file(root: Path, name: object) -> Path:
 
 
 def _valid_digest(value: str, label: str) -> None:
-    if len(value) != 64 or any(character not in "0123456789abcdef" for character in value):
+    if not is_digest(value):
         raise EvaluationError(f"{label} path does not contain an ID")
-
-
-def _write_json(path: Path, value: Mapping[str, Any]) -> None:
-    with path.open("x", encoding="utf-8") as stream:
-        json.dump(value, stream, ensure_ascii=False, indent=2, sort_keys=True)
-        stream.write("\n")
-    os.chmod(path, 0o600)
-
-
-def _write_jsonl(path: Path, rows: Sequence[Mapping[str, Any]]) -> None:
-    with path.open("x", encoding="utf-8") as stream:
-        for row in rows:
-            json.dump(row, stream, ensure_ascii=False, separators=(",", ":"))
-            stream.write("\n")
-    os.chmod(path, 0o600)
 
 
 def _write_text(path: Path, value: str) -> None:
     with path.open("x", encoding="utf-8") as stream:
         stream.write(value)
     os.chmod(path, 0o600)
-
-
-def _json_bytes(value: Any) -> bytes:
-    return json.dumps(
-        value, ensure_ascii=False, separators=(",", ":"), sort_keys=True
-    ).encode()
-
-
-def _utc_now() -> datetime:
-    return datetime.now(UTC)
