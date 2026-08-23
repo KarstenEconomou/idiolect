@@ -1,6 +1,7 @@
 """Coordinate chat state with the supervised model worker."""
 
-from collections.abc import Callable, Iterator
+import time
+from collections.abc import Callable, Generator
 from dataclasses import dataclass, replace
 
 from idiolect.chat.discovery import Assistant
@@ -178,7 +179,7 @@ class ChatRuntime:
         self,
         attempt: int = 0,
         prompt_progress: Callable[[int, int], None] | None = None,
-    ) -> Iterator[str]:
+    ) -> Generator[str]:
         """Yield one reply and commit its final measured turn."""
         if self.worker is None or self.session is None:
             raise ChatError("Select an assistant before generation")
@@ -225,15 +226,38 @@ class ChatRuntime:
                         attempt=attempt,
                     )
                     return
-        except BaseException:
+        except ChatError:
             self.session.generating = False
             self.state = WorkerState.FAILED
+            raise
+        except BaseException:
+            # The consumer abandoned or interrupted this reply. Stop the worker
+            # and drain its events so a later reply cannot consume them.
+            self.session.generating = False
+            self._abandon_reply()
             raise
 
     def cancel(self) -> None:
         """Request cancellation of the active reply."""
         if self.worker is not None:
             self.worker.cancel()
+
+    def _abandon_reply(self, timeout: float = 30.0) -> None:
+        """Cancel the active reply and drain leftover worker events."""
+        if self.worker is None:
+            return
+        self.worker.cancel()
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            event = self.worker.receive(1.0)
+            if isinstance(event, CompleteEvent):
+                self.state = WorkerState.CANCELLED
+                return
+            if isinstance(event, FailureEvent):
+                break
+            if event is None and not self.worker.alive:
+                break
+        self.state = WorkerState.FAILED
 
     def reload(self) -> None:
         """Restart and reload the selected assistant after failure."""

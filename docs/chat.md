@@ -180,7 +180,8 @@ links, tables, rules, strikethrough, HTML, Setext headings, unmatched delimiters
 and Rich markup literal. Markdown has no configured standalone underline syntax.
 Formatting changes presentation only; prompts and saved turns retain the exact
 source text. A stopped partial reply remains an assistant turn with finish
-reason `cancelled`.
+reason `cancelled`. An abandoned reply cancels the worker, drains its remaining
+events, and records no assistant turn.
 
 ## Prompt and context policy
 
