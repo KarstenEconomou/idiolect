@@ -15,7 +15,7 @@ from typing import Any, TypeGuard
 
 from idiolect.artifact import canonical_json_bytes, is_digest, write_json
 from idiolect.chat.discovery import Assistant, load_assistant, model_basename
-from idiolect.chat.state import ChatSession, ChatTurn, TurnTelemetry
+from idiolect.chat.state import ChatSession, ChatTurn, TurnTelemetry, enumerate_bubbles
 from idiolect.config import (
     ChatConfig,
     ConfigError,
@@ -25,9 +25,9 @@ from idiolect.config import (
 )
 from idiolect.inference.base import TargetMode
 from idiolect.model import ModelSpec
-from idiolect.prompt import validate_prompt_config
+from idiolect.prompt import split_bubbles, validate_prompt_config
 
-_SNAPSHOT_VERSION = 1
+_SNAPSHOT_VERSION = 2
 _ASSISTANT_KEYS = {
     "name",
     "target_name",
@@ -535,6 +535,7 @@ def _read_turns(path: Path) -> tuple[ChatTurn, ...]:
                 "finish_reason",
                 "seed",
                 "telemetry",
+                "reference",
             }:
                 raise TypeError
             telemetry_value = value["telemetry"]
@@ -550,6 +551,7 @@ def _read_turns(path: Path) -> tuple[ChatTurn, ...]:
                 value["finish_reason"],
                 value["seed"],
                 telemetry,
+                value["reference"],
             )
         except Exception as error:
             raise ChatStorageError(
@@ -564,6 +566,14 @@ def _read_turns(path: Path) -> tuple[ChatTurn, ...]:
             or turn.telemetry is not None
         ):
             raise ChatStorageError(f"Chat user turn is not valid: {path}:{number}")
+        if turn.reference is not None and (
+            not isinstance(turn.reference, int)
+            or isinstance(turn.reference, bool)
+            or turn.reference < 0
+        ):
+            raise ChatStorageError(f"Chat turn reference is not valid: {path}:{number}")
+        if turn.role == "assistant" and turn.reference is not None:
+            raise ChatStorageError(f"Chat assistant turn is not valid: {path}:{number}")
         if turn.role == "assistant" and (
             turn.finish_reason is None
             or turn.finish_reason not in {"stop", "length", "cancelled"}
@@ -582,6 +592,21 @@ def _read_turns(path: Path) -> tuple[ChatTurn, ...]:
         )
     ):
         raise ChatStorageError(f"Chat transcript order is not valid: {path}")
+    bubbles = enumerate_bubbles(turns)
+    indexes = {bubble.index for bubble in bubbles}
+    current = 0
+    for turn in turns:
+        if turn.reference is not None and (
+            turn.reference not in indexes or turn.reference >= current
+        ):
+            raise ChatStorageError(f"Chat turn reference is not valid: {path}")
+        if turn.role == "user":
+            current += 1
+        else:
+            segments = tuple(
+                segment for segment in split_bubbles(turn.content) if segment.strip()
+            )
+            current += len(segments) or 1
     return tuple(turns)
 
 

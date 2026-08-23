@@ -20,7 +20,12 @@ from textual.widgets.option_list import Option
 
 from idiolect.chat.discovery import Assistant, DiscoveryItem
 from idiolect.chat.runtime import ChatError, ChatRuntime
-from idiolect.chat.state import ChatSession, TurnTelemetry
+from idiolect.chat.state import (
+    ChatBubble,
+    ChatSession,
+    TurnTelemetry,
+    enumerate_bubbles,
+)
 from idiolect.chat.storage import (
     ChatStorageError,
     ChatStore,
@@ -40,6 +45,8 @@ from idiolect.tui.widgets import (
     ConfirmModal,
     KeyboardOptionList,
     LoadingStatus,
+    ReferenceBar,
+    ReferenceMenu,
     SpecsScroll,
     TraceMenuModal,
     TraceNameModal,
@@ -85,6 +92,8 @@ def _accent_theme_css() -> str:
         "#composer-prompt",
         ".command-action.-selected .command-name",
         ".command-action.-selected .command-description",
+        ".reference-action.-selected .reference-name",
+        ".reference-action.-selected .reference-preview",
         "#confirm-actions Button:focus",
         "#confirm-actions Button.-active",
         "#trace-actions Button:focus",
@@ -102,7 +111,10 @@ def _accent_theme_css() -> str:
         buttons = ", ".join(prefix + selector for selector in button_selectors)
         rules.append(f"{colored} {{ color: ansi_{color}; }}")
         rules.append(
-            f"{prefix}#composer-bar:focus-within "
+            f"{prefix}#composer-bar {{ border: solid ansi_{color}; }}"
+        )
+        rules.append(
+            f"{prefix}#reference-bar "
             f"{{ border: solid ansi_{color}; }}"
         )
         rules.append(f"{buttons} {{ border: tall ansi_{color}; }}")
@@ -137,6 +149,7 @@ def _telemetry_footer(
     available_width: int,
 ) -> str:
     """Format the measured values that fit in the footer."""
+    max_prompt_tokens = max(1, max_prompt_tokens)
     pressure = 100 * telemetry.prompt_tokens / max_prompt_tokens
     context = (
         "CTX "
@@ -206,7 +219,7 @@ class ChatApp(App[None]):
     #identity-rule { height: 1; margin: 0; padding: 0 2; color: $metadata; }
     #transcript-scroll { height: 1fr; padding: 1 2; background: $terminal; scrollbar-size: 0 0; }
     #transcript { width: 100%; height: auto; background: $terminal; }
-    #composer-bar { height: auto; min-height: 3; max-height: 10; border: solid $metadata; margin: 0 1; padding: 0 1; background: $terminal; scrollbar-size: 0 0; }
+    #composer-bar { height: auto; min-height: 3; max-height: 10; border: solid $accent; margin: 0 1; padding: 0 1; background: $terminal; scrollbar-size: 0 0; }
     #composer-bar:focus-within { border: solid $accent; }
     #composer-prompt { width: 1; height: 1; color: $accent; }
     #composer { width: 1fr; min-width: 0; height: auto; min-height: 1; max-height: 10; border: none; margin: 0; padding: 0 1; background: $terminal; scrollbar-size: 0 0; }
@@ -223,6 +236,15 @@ class ChatApp(App[None]):
     .command-action.-selected .command-description { color: $accent; text-style: dim; }
     .command-action.-disabled .command-name, .command-action.-disabled .command-description { color: $failure; text-style: dim; }
     .command-action.-save-disabled .command-name, .command-action.-save-disabled .command-description { color: $metadata; text-style: dim; }
+    #reference-menu { display: none; height: auto; max-height: 4; margin: 0 1; padding: 0 1; background: $terminal; }
+    #reference-message { height: 1; color: ansi_white; text-style: bold; }
+    #reference-actions { height: auto; max-height: 3; }
+    .reference-action { height: 1; }
+    .reference-name { width: 12; height: 1; padding: 0 1; color: $terminal; }
+    .reference-preview { width: 1fr; height: 1; color: $metadata; }
+    .reference-action.-selected .reference-name { color: $accent; text-style: bold; }
+    .reference-action.-selected .reference-preview { color: $accent; text-style: dim; }
+    #reference-bar { display: none; height: auto; min-height: 3; margin: 0 1; padding: 0 1; border: solid $accent; background: $terminal; }
     #status { display: none; height: 1; color: $metadata; background: $terminal; padding: 0 2; }
     #confirm-dialog { width: 100%; height: 2; padding: 0 1; background: $terminal; border: none; }
     #confirm-message { height: 1; color: ansi_white; text-style: bold; }
@@ -293,6 +315,12 @@ class ChatApp(App[None]):
         self._command_matches: tuple[str, ...] = ()
         self._command_index = 0
         self._dismissed_command_text: str | None = None
+        self._reference_bubbles: tuple[ChatBubble, ...] = ()
+        self._reference_index: int | None = None
+        self._reference_menu_index: int | None = None
+        self._reference_token_span: tuple[int, int] | None = None
+        self._reference_selected = False
+        self._dismissed_reference_text: str | None = None
         self._confirmation_open = False
         self._trace_name_open = False
         self._trace_menu_id: str | None = None
@@ -353,8 +381,10 @@ class ChatApp(App[None]):
             with VerticalScroll(id="transcript-scroll"):
                 yield Transcript(id="transcript")
             yield CommandMenu(id="command-menu")
+            yield ReferenceMenu(id="reference-menu")
             yield LoadingStatus(id="status")
             yield LoadingStatus(id="chat-alert")
+            yield ReferenceBar(id="reference-bar")
             with Horizontal(id="composer-bar"):
                 yield Static(">", markup=False, id="composer-prompt")
                 yield Composer(id="composer", language=None)
@@ -396,8 +426,25 @@ class ChatApp(App[None]):
             self.call_after_refresh(self._fill_chooser)
         elif self.query_one("#chat").display:
             self.call_after_refresh(self._update_footer)
+            self.call_after_refresh(self._update_reference_menu)
+            self.call_after_refresh(self._render_reference)
         elif self.query_one("#specs").display:
             self.call_after_refresh(self._render_specs)
+
+    def on_key(self, event: events.Key) -> None:
+        """Keep Escape reference behavior consistent with app bindings."""
+        if (
+            event.key == "escape"
+            and (
+                self._reference_selected
+                or self.query_one("#reference-bar", ReferenceBar).display
+            )
+            and not self.query_one("#command-menu", CommandMenu).display
+            and not self.query_one("#reference-menu", ReferenceMenu).display
+        ):
+            self._escape_reference()
+            event.prevent_default()
+            event.stop()
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         """Open the selected assistant or saved chat."""
@@ -460,6 +507,7 @@ class ChatApp(App[None]):
         self.add_class(f"-accent-{name}")
         self.query_one("#watermark", Static).update(_watermark(color))
         self.query_one("#transcript", Transcript).set_accent(color)
+        self.query_one("#reference-bar", ReferenceBar).set_accent(color)
         if self._selected_catalog_key is not None:
             self._refresh_catalog_prompts(self._selected_catalog_key)
 
@@ -556,15 +604,128 @@ class ChatApp(App[None]):
         )
 
     def on_text_area_changed(self, event: TextArea.Changed) -> None:
-        """Show matching commands for one slash prefix."""
+        """Update slash and reference controls for one composer value."""
         value = event.text_area.text
-        if value != self._dismissed_command_text:
+        command_value = self._composer_value(value)
+        command_dismissed = command_value == self._dismissed_command_text
+        reference_dismissed = value == self._dismissed_reference_text
+        if not command_dismissed:
             self._dismissed_command_text = None
+        if not reference_dismissed:
+            self._dismissed_reference_text = None
         self._command_matches = (
-            () if value == self._dismissed_command_text else completions(value)
+            ()
+            if command_dismissed
+            else completions(self._command_query(command_value))
         )
         self._command_index = 0
         self._update_command_menu()
+        self._update_reference_menu()
+        self._render_reference()
+
+    def on_text_area_selection_changed(
+        self,
+        event: TextArea.SelectionChanged,
+    ) -> None:
+        """Update menus when the composer cursor moves."""
+        if event.text_area is not self.query_one(Composer):
+            return
+        self._update_command_menu()
+        self._update_reference_menu()
+
+    def on_composer_reference_moved(self, event: Composer.ReferenceMoved) -> None:
+        """Move the highlighted reference with wrapping navigation."""
+        if not self._reference_bubbles:
+            return
+        indexes = [bubble.index for bubble in self._reference_bubbles]
+        current_index = (
+            self._reference_menu_index
+            if self._reference_selected
+            else self._reference_index
+        )
+        current = (
+            indexes.index(current_index)
+            if current_index in indexes
+            else len(indexes) - 1
+        )
+        selected = indexes[(current + event.offset) % len(indexes)]
+        if self._reference_selected:
+            self._reference_menu_index = selected
+        else:
+            self._reference_index = selected
+        self._update_reference_menu()
+
+    def on_composer_reference_dismissed(
+        self,
+        event: Composer.ReferenceDismissed,
+    ) -> None:
+        """Hide the reference menu until the composer changes."""
+        del event
+        self._dismissed_reference_text = self.query_one(Composer).text
+        self._reference_token_span = None
+        self._reference_bubbles = ()
+        if self._reference_selected:
+            self._reference_menu_index = None
+        else:
+            self._reference_index = None
+        self._update_reference_menu()
+
+    def on_composer_reference_selected(
+        self,
+        event: Composer.ReferenceSelected,
+    ) -> None:
+        """Keep the highlighted bubble as the composer reference."""
+        del event
+        selected_index = (
+            self._reference_menu_index
+            if self._reference_selected
+            else self._reference_index
+        )
+        if selected_index is None:
+            return
+        composer = self.query_one(Composer)
+        token_span = self._reference_token_span
+        if token_span is None:
+            return
+        value = composer.text
+        cursor_offset = self._cursor_offset(value, composer.cursor_location)
+        start, end = token_span
+        replacement = self._remove_reference_token(value, start, end)
+        replacement_offset = self._reference_cursor_offset(
+            value,
+            start,
+            end,
+            cursor_offset,
+            len(replacement),
+        )
+        self._reference_index = selected_index
+        self._reference_selected = True
+        self._reference_menu_index = None
+        self._reference_token_span = None
+        self._dismissed_reference_text = None
+        composer.load_text(replacement)
+        composer.move_cursor(self._cursor_location(replacement, replacement_offset))
+        self._update_reference_menu()
+        self._render_reference()
+        self._update_footer()
+
+    def on_composer_reference_escaped(
+        self,
+        event: Composer.ReferenceEscaped,
+    ) -> None:
+        """Turn the selected reference into literal composer text."""
+        del event
+        self._escape_reference()
+
+    def _escape_reference(self) -> None:
+        """Keep the editable reference token as literal prompt text."""
+        self._reference_selected = False
+        self._reference_index = None
+        self._reference_menu_index = None
+        self._reference_token_span = None
+        self._render_reference()
+        self._update_reference_menu()
+        self._update_footer()
 
     def on_composer_command_moved(self, event: Composer.CommandMoved) -> None:
         """Move the command highlight with wrapping navigation."""
@@ -581,7 +742,7 @@ class ChatApp(App[None]):
 
     def on_composer_command_dismissed(self, event: Composer.CommandDismissed) -> None:
         """Hide the command menu until the composer value changes."""
-        self._dismissed_command_text = self.query_one(Composer).text
+        self._dismissed_command_text = self._composer_value(self.query_one(Composer).text)
         self._command_matches = ()
         self._update_command_menu()
 
@@ -591,12 +752,14 @@ class ChatApp(App[None]):
         if selected is None:
             return
         composer = self.query_one(Composer)
-        composer.clear()
-        composer.insert(f"{selected} ")
+        value = f"{selected} "
+        self._dismissed_command_text = f"{selected} "
+        composer.load_text(value)
+        composer.move_cursor((0, len(value)))
 
     def on_composer_submitted(self, event: Composer.Submitted) -> None:
         """Run one command or start one user turn."""
-        value = event.value
+        value = self._composer_value(event.value)
         if not value.strip():
             return
         if self._loading:
@@ -612,8 +775,13 @@ class ChatApp(App[None]):
             if self._generating:
                 return
             session = self._session()
-            session.add_user(value)
+            reference = self._reference_index if self._reference_selected else None
+            session.add_user(value, reference)
+            self._reference_selected = False
+            self._reference_index = None
             composer.clear()
+            self._render_reference()
+            self._update_reference_menu()
             self._render_transcript()
             self._start_generation(0)
         except (
@@ -634,6 +802,15 @@ class ChatApp(App[None]):
                 self._show_registry()
         elif self._generating:
             self.runtime.cancel()
+        elif (
+            (
+                self._reference_selected
+                or self.query_one("#reference-bar", ReferenceBar).display
+            )
+            and not self.query_one("#command-menu", CommandMenu).display
+            and not self.query_one("#reference-menu", ReferenceMenu).display
+        ):
+            self._escape_reference()
 
     def action_interrupt(self) -> None:
         """Stop active work or open the idle quit confirmation."""
@@ -728,6 +905,8 @@ class ChatApp(App[None]):
         self.query_one("#chat").display = True
         self.query_one("#identity", Static).update(session.assistant.name)
         self._render_transcript()
+        self._render_reference()
+        self._update_reference_menu()
         self._update_status()
         self._update_footer()
         self.query_one(Composer).focus()
@@ -740,6 +919,12 @@ class ChatApp(App[None]):
         turns = []
         for turn in session.turns:
             name = "USER" if turn.role == "user" else self._chat_name(session)
+            if turn.role == "user" and turn.reference is not None:
+                referenced = self._reference_bubble(turn.reference)
+                if referenced is not None:
+                    name += (
+                        f" [@{self._reference_name(referenced)}:{turn.reference:02d}]"
+                    )
             if turn.role == "assistant":
                 turns.extend(_episode_segments(name, turn.content))
             else:
@@ -759,6 +944,244 @@ class ChatApp(App[None]):
     def _chat_name(session: ChatSession) -> str:
         return session.assistant.target_name.upper()
 
+    def _reference_bubble(self, index: int) -> ChatBubble | None:
+        """Return one stored bubble by its stable transcript index."""
+        session = self.runtime.session
+        if session is None:
+            return None
+        return next(
+            (bubble for bubble in enumerate_bubbles(session.turns) if bubble.index == index),
+            None,
+        )
+
+    def _available_references(self) -> tuple[ChatBubble, ...]:
+        """Return all stored bubbles that can receive a reply."""
+        session = self.runtime.session
+        return () if session is None else enumerate_bubbles(session.turns)
+
+    def _reference_name(self, bubble: ChatBubble) -> str:
+        """Return the display identity for one reference bubble."""
+        if bubble.role == "user":
+            return "USER"
+        session = self.runtime.session
+        return "ASSISTANT" if session is None else session.assistant.target_name.upper()
+
+    def _reference_preview(self, content: str) -> str:
+        """Flatten and width-limit one reference preview."""
+        value = " ".join(content.split())
+        width = max(8, self.size.width - 22)
+        if len(value) <= width:
+            return value
+        return value[: max(1, width - 3)].rstrip() + "..."
+
+    def _matching_references(self, query: str) -> tuple[ChatBubble, ...]:
+        """Return references that match one editable at-sign query."""
+        query = query.casefold()
+        bubbles = self._available_references()
+        if not query:
+            return bubbles
+        return tuple(
+            bubble
+            for bubble in bubbles
+            if (
+                self._reference_search_text(bubble).startswith(query)
+                or (
+                    f"{self._reference_name(bubble)}:{bubble.index}"
+                    .casefold()
+                    .startswith(query)
+                )
+                or f"{bubble.index:02d}".startswith(query)
+                or str(bubble.index).startswith(query)
+            )
+        )
+
+    def _reference_search_text(self, bubble: ChatBubble) -> str:
+        """Return the searchable identity for one reference."""
+        return f"{self._reference_name(bubble)}:{bubble.index:02d}".casefold()
+
+    @staticmethod
+    def _cursor_offset(value: str, location: tuple[int, int]) -> int:
+        """Return one text offset for a TextArea cursor location."""
+        row, column = location
+        lines = value.split("\n")
+        return sum(len(line) + 1 for line in lines[:row]) + min(
+            column,
+            len(lines[row]) if row < len(lines) else 0,
+        )
+
+    @staticmethod
+    def _cursor_location(value: str, offset: int) -> tuple[int, int]:
+        """Return a TextArea cursor location for one text offset."""
+        remaining = max(0, min(offset, len(value)))
+        lines = value.split("\n")
+        for row, line in enumerate(lines):
+            if remaining <= len(line):
+                return row, remaining
+            remaining -= len(line) + 1
+        return len(lines) - 1, len(lines[-1])
+
+    @staticmethod
+    def _remove_reference_token(value: str, start: int, end: int) -> str:
+        """Remove one reference token while keeping surrounding prompt text."""
+        result = value[:start] + value[end:]
+        if start == 0:
+            return result.lstrip()
+        if (
+            start > 0
+            and start < len(result)
+            and result[start - 1].isspace()
+            and result[start].isspace()
+        ):
+            result = result[:start] + result[start + 1 :]
+        return result
+
+    @staticmethod
+    def _reference_cursor_offset(
+        value: str,
+        start: int,
+        end: int,
+        cursor_offset: int,
+        replacement_length: int,
+    ) -> int:
+        """Map the cursor through removal of one reference token."""
+        if cursor_offset <= start:
+            return cursor_offset
+        if start == 0:
+            trailing = value[end:]
+            trimmed = len(trailing) - len(trailing.lstrip())
+            if cursor_offset <= end + trimmed:
+                return 0
+            return min(
+                cursor_offset - (end - start) - trimmed,
+                replacement_length,
+            )
+        if cursor_offset <= end:
+            return start
+        base = value[:start] + value[end:]
+        extra = int(
+            start < len(base)
+            and base[start - 1].isspace()
+            and base[start].isspace()
+        )
+        return min(
+            cursor_offset - (end - start) - extra,
+            replacement_length,
+        )
+
+    def _reference_token_at_cursor(
+        self,
+        value: str,
+        location: tuple[int, int],
+        allow_embedded: bool = False,
+    ) -> tuple[int, int, str] | None:
+        """Return the at-sign token under the composer cursor."""
+        row, column = location
+        lines = value.split("\n")
+        if row < 0 or row >= len(lines):
+            return None
+        line = lines[row]
+        column = min(max(column, 0), len(line))
+        line_start = sum(len(item) + 1 for item in lines[:row])
+        for marker in range(min(column, len(line)), -1, -1):
+            if marker >= len(line) or line[marker] != "@":
+                continue
+            if (
+                not allow_embedded
+                and marker
+                and not line[marker - 1].isspace()
+            ):
+                continue
+            end = next(
+                (
+                    index
+                    for index, character in enumerate(line[marker + 1 :], marker + 1)
+                    if character.isspace()
+                ),
+                len(line),
+            )
+            delimiter_end = end + 1 if end < len(line) else end
+            if marker <= column <= delimiter_end:
+                return line_start + marker, line_start + end, line[marker + 1 : end]
+        return None
+
+    def _composer_value(self, value: str) -> str:
+        """Return the prompt text, which excludes the selected reference."""
+        return value
+
+    def _render_reference(self) -> None:
+        """Refresh the selected reference bar."""
+        bar = self.query_one("#reference-bar", ReferenceBar)
+        bubble = (
+            self._reference_bubble(self._reference_index)
+            if self._reference_selected and self._reference_index is not None
+            else None
+        )
+        if bubble is None:
+            bar.display = False
+            return
+        name = self._reference_name(bubble)
+        bar.set_reference(name, bubble.index, self._reference_preview(bubble.content))
+        bar.display = True
+
+    def _update_reference_menu(self) -> None:
+        """Refresh the leading-@ reference selector."""
+        composer = self.query_one(Composer)
+        menu = self.query_one("#reference-menu", ReferenceMenu)
+        token = self._reference_token_at_cursor(
+            composer.text,
+            composer.cursor_location,
+            allow_embedded=self._reference_selected,
+        )
+        token_allowed = token is not None and (
+            self._reference_selected or token[0] == 0
+        )
+        self._reference_token_span = token[:2] if token_allowed else None
+        self._reference_bubbles = (
+            self._matching_references(token[2])
+            if token_allowed and token is not None
+            else ()
+        )
+        active = (
+            token_allowed
+            and composer.text != self._dismissed_reference_text
+            and bool(self._reference_bubbles)
+        )
+        if active:
+            indexes = [bubble.index for bubble in self._reference_bubbles]
+            if self._reference_selected:
+                if self._reference_menu_index not in indexes:
+                    self._reference_menu_index = indexes[-1]
+                selected_index = indexes.index(self._reference_menu_index)
+            else:
+                if self._reference_index not in indexes:
+                    self._reference_index = indexes[-1]
+                selected_index = indexes.index(self._reference_index)
+            start = min(
+                max(selected_index - 2, 0),
+                max(len(self._reference_bubbles) - 3, 0),
+            )
+            visible = self._reference_bubbles[start : start + 3]
+            rows = tuple(
+                (
+                    f"{self._reference_name(bubble)}:{bubble.index:02d}",
+                    self._reference_preview(bubble.content),
+                )
+                for bubble in visible
+            )
+            menu.set_references(rows, selected_index - start)
+        else:
+            if self._reference_selected:
+                self._reference_menu_index = None
+            else:
+                self._reference_index = None
+            menu.set_references((), None)
+        composer.reference_menu_active = active
+        composer.reference_menu_escape_enabled = active
+        composer.reference_selected = self._reference_selected
+        self._update_footer()
+        if active:
+            self.call_after_refresh(self._scroll_transcript_end)
+
     def _update_footer(self) -> None:
         if self._confirmation_open:
             self._set_footer(
@@ -766,6 +1189,9 @@ class ChatApp(App[None]):
                 if self._trace_name_open
                 else "←→ MOVE    ENTER SELECT    ESC RESUME"
             )
+            return
+        if self.query_one("#reference-menu", ReferenceMenu).display:
+            self._set_footer("↑↓ MOVE    ENTER REF    ESC CLOSE")
             return
         if self._command_matches:
             self._set_footer(
@@ -855,7 +1281,47 @@ class ChatApp(App[None]):
             and (command != "/save" or self._save_enabled())
         )
 
+    @staticmethod
+    def _command_query(value: str) -> str:
+        """Return the leading slash token used for command filtering."""
+        if not value.startswith("/"):
+            return ""
+        remainder = value.removeprefix("/")
+        if not remainder or remainder[0].isspace():
+            return "/"
+        return value.split(maxsplit=1)[0]
+
+    @staticmethod
+    def _cursor_in_leading_block(
+        value: str,
+        column: int,
+        marker: str,
+    ) -> bool:
+        """Return whether a cursor column belongs to one leading token."""
+        if not value.startswith(marker) or column < 0 or column > len(value):
+            return False
+        delimiter = next(
+            (
+                index
+                for index, character in enumerate(value[len(marker) :], len(marker))
+                if character.isspace()
+            ),
+            None,
+        )
+        end = len(value) if delimiter is None else delimiter + 1
+        return column <= end
+
+    def _command_cursor_in_block(self, composer: Composer) -> bool:
+        """Return whether the composer cursor is inside its slash token."""
+        row, column = composer.cursor_location
+        if row != 0:
+            return False
+        value = composer.text
+        return self._cursor_in_leading_block(value, column, "/")
+
     def _selected_command(self) -> str | None:
+        if not self._command_cursor_in_block(self.query_one(Composer)):
+            return None
         if (
             not self._command_matches
             or self._command_index not in self._enabled_command_indexes()
@@ -864,6 +1330,12 @@ class ChatApp(App[None]):
         return self._command_matches[self._command_index]
 
     def _update_command_menu(self) -> None:
+        composer = self.query_one(Composer)
+        visible_matches = (
+            self._command_matches
+            if self._command_cursor_in_block(composer)
+            else ()
+        )
         enabled = self._enabled_command_indexes()
         if enabled and self._command_index not in enabled:
             self._command_index = enabled[0]
@@ -871,16 +1343,16 @@ class ChatApp(App[None]):
         menu = self.query_one("#command-menu", CommandMenu)
         was_visible = menu.display
         menu.set_commands(
-            self._command_matches,
+            visible_matches,
             selected,
             registry_enabled=not self._generating,
             save_enabled=self._save_enabled(),
         )
-        composer = self.query_one(Composer)
-        composer.command_menu_active = bool(self._command_matches)
+        composer.command_menu_active = bool(visible_matches)
         composer.command_menu_escape_enabled = not self._generating
+        composer.reference_selected = self._reference_selected
         self._update_footer()
-        if was_visible or self._command_matches:
+        if was_visible or visible_matches:
             self.call_after_refresh(self._scroll_transcript_end)
 
     def _return_to_landing(self) -> None:
@@ -953,6 +1425,8 @@ class ChatApp(App[None]):
     def _update_confirmation_spacing(self) -> None:
         scroller = self.query_one("#transcript-scroll", VerticalScroll)
         bottom = 3 if self._confirmation_open else 1
+        if self._reference_selected:
+            bottom += 2
         scroller.styles.padding = (1, 2, bottom, 2)
         self.call_after_refresh(self._scroll_transcript_end)
 

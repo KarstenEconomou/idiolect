@@ -1,5 +1,8 @@
 """Test interactive chat prompt and transcript behavior."""
 
+from dataclasses import replace
+from types import SimpleNamespace
+
 import pytest
 
 from idiolect.chat.discovery import Assistant
@@ -9,6 +12,7 @@ from idiolect.chat.state import (
     ChatTurn,
     TurnTelemetry,
     derive_seed,
+    enumerate_bubbles,
     prepare_prompt,
 )
 from idiolect.config import ChatConfig, GenerationConfig, TrainDataConfig
@@ -42,6 +46,55 @@ def test_prompt_rejects_newest_message_that_cannot_fit() -> None:
 
     with pytest.raises(ChatStateError, match="newest user message"):
         prepare_prompt(state, lambda _value: 2, 0)
+
+
+def test_reference_numbers_assistant_bubbles_and_rejects_future_targets() -> None:
+    """Check stable display numbering and backward-only references."""
+    state = _state()
+    state.add_user("first")
+    state.begin_generation()
+    state.finish_generation("one\n[new message]\ntwo", "stop", 1, TurnTelemetry(2, 1))
+
+    assert [(bubble.index, bubble.role, bubble.content) for bubble in enumerate_bubbles(state.turns)] == [
+        (0, "user", "first"),
+        (1, "assistant", "one"),
+        (2, "assistant", "two"),
+    ]
+
+    state.add_user("reply", reference=2)
+    assert state.turns[-1].reference == 2
+
+    with pytest.raises(ChatStateError, match="earlier chat bubble"):
+        ChatSession(
+            state.assistant,
+            state.chat,
+            state.generation,
+            (
+                ChatTurn("user", "first"),
+                ChatTurn("assistant", "one"),
+                ChatTurn("user", "future", reference=99),
+            ),
+        )
+
+
+def test_construct_prompt_adds_signal_reply_metadata_for_reference() -> None:
+    """Check the selected bubble becomes a quoted Signal-style header."""
+    base = _state()
+    assistant = replace(
+        base.assistant,
+        run=SimpleNamespace(data=base.assistant.data),
+        base_model=None,
+        base_data=None,
+    )
+    state = ChatSession(assistant, base.chat, base.generation)
+    state.add_user("first")
+    state.begin_generation()
+    state.finish_generation("answer", "stop", 1, TurnTelemetry(2, 1))
+    state.add_user("follow-up", reference=1)
+
+    prepared = prepare_prompt(state, lambda _value: 10, 0)
+
+    assert '[person_01 | reply to DIXIE: "answer"]' in prepared.prompt
 
 
 def test_retry_replaces_latest_reply_and_changes_attempt_seed() -> None:

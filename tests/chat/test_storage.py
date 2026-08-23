@@ -123,6 +123,24 @@ def test_snapshot_records_and_restores_backend_versions(tmp_path, monkeypatch) -
     assert loaded.backend_versions == {"mlx_version": "0.29.0"}
 
 
+def test_snapshot_round_trips_user_reference(tmp_path, monkeypatch) -> None:
+    """Check reference metadata survives an immutable snapshot round trip."""
+    state, assistant = _state(tmp_path)
+    monkeypatch.setattr(
+        "idiolect.chat.storage.load_assistant", lambda *_args: assistant
+    )
+    store = ChatStore(tmp_path / "chat")
+    state.add_user("first")
+    state.begin_generation()
+    state.finish_generation("reply", "stop", 7, TurnTelemetry(2, 1))
+    state.add_user("follow-up", reference=1)
+
+    saved = store.save(state)
+    loaded = store.load(saved.id)
+
+    assert loaded.turns[-1].reference == 1
+
+
 def test_snapshot_rejects_an_invalid_recorded_generation_policy(
     tmp_path, monkeypatch
 ) -> None:

@@ -126,15 +126,44 @@ label, matching the menu heading-to-action offset. Use arrow keys and Enter in a
 unsaved-change confirmation. After a generation failure, return to `REGISTRY` to
 start again.
 
-Type `/` to open the keyboard-driven command menu above the composer. The menu
-shows up to three command descriptions in vertical rows. Use arrow keys to move,
-Tab to complete the selected command with a trailing space, Enter to select, and
-Escape to close the menu without clearing the composer. Commands are:
+Type `/` to open the keyboard-driven command menu above the composer. The first
+word after the leading slash filters the command list in real time. A slash
+followed by a space also opens the full menu when prompt text follows it, so the
+menu can be opened at the beginning of an existing prompt. The menu shows up to
+three command descriptions in vertical rows. Use Up and Down to move, Left and
+Right to move through composer text, Tab to complete the selected command with a
+trailing space, Enter to select, and Escape to close the menu without clearing
+the composer. The menu is visible only while the cursor is inside the leading
+slash token. Commands are:
 
 - `/exit`: stop an active reply or exit when idle;
 - `/registry`: return to `REGISTRY` when no reply is active;
 - `/save`: save a TRACE checkpoint and keep the chat open;
 - `/specs`: temporarily view the active model's SPECS.
+
+Type `@` at the start of an empty composer to open the `REF` menu. It
+shows three stored chat bubbles at a time, numbered from `00` in chronological
+order, with the newest bubble selected. The first word after the leading `@`
+filters the list in real time by bubble identity and number. Text after that
+word is kept as prompt text. Use Up and Down to move the selection, while Left
+and Right move through composer text. The menu is visible only while the cursor
+is inside the leading at-sign token, or a replacement at-sign token when a
+reference is selected. Enter keeps one reference, and Escape
+closes the menu. A selected reference appears above the composer as
+`@ NAME:NN` with a short preview and is removed from the composer prompt.
+While a reference is selected, typing another at-sign token anywhere in the
+prompt opens the selector and replaces the current reference when selected.
+Escape in the composer removes the selected reference. If a filter has no
+matches, editing it back to a matching query reopens the selector.
+
+The reference bar is removed when the prompt is sent. The transcript labels the
+user turn as `USER:`, followed by an indented dim `REF @NAME:NN` line and the
+indented user text. Adapter-backed assistants receive the
+selected bubble as Signal-style `reply to AUTHOR: "quoted text"` header
+metadata; BASE assistants remove the UI token but omit this metadata. Active
+streaming output is not referenceable until it is stored as a completed or
+cancelled turn. Alerts and confirmation dialogues remain above the reference
+bar.
 
 `/specs` uses the active session's recorded generation policy and includes full
 TRACE lineage for a resumed or newly saved snapshot. It does not change turns,

@@ -8,11 +8,14 @@ from typing import Literal
 from idiolect.artifact import canonical_json_bytes
 from idiolect.chat.discovery import Assistant
 from idiolect.config import ChatConfig, GenerationConfig
+from idiolect.inference.base import TargetMode
 from idiolect.prompt import (
     ConversationEntry,
     ModelInput,
     format_prompt,
     render_conversation,
+    reply_metadata,
+    split_bubbles,
 )
 
 
@@ -43,6 +46,16 @@ class ChatTurn:
     finish_reason: str | None = None
     seed: int | None = None
     telemetry: TurnTelemetry | None = None
+    reference: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ChatBubble:
+    """Keep one numbered message bubble in the chat transcript."""
+
+    index: int
+    role: Literal["user", "assistant"]
+    content: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,7 +104,7 @@ class ChatSession:
         value = [asdict(turn) for turn in self.turns]
         return hashlib.sha256(canonical_json_bytes(value)).hexdigest()
 
-    def add_user(self, content: str) -> None:
+    def add_user(self, content: str, reference: int | None = None) -> None:
         """Append one user message when no generation is active."""
         if self.generating:
             raise ChatStateError("A reply is already generating")
@@ -101,7 +114,16 @@ class ChatSession:
             raise ChatStateError(
                 "The pending user message requires a retry before another message"
             )
-        self.turns.append(ChatTurn("user", content))
+        if reference is not None and (
+            not isinstance(reference, int)
+            or isinstance(reference, bool)
+            or reference < 0
+            or not any(
+                bubble.index == reference for bubble in enumerate_bubbles(self.turns)
+            )
+        ):
+            raise ChatStateError("A reference must target an earlier chat bubble")
+        self.turns.append(ChatTurn("user", content, reference=reference))
 
     def begin_generation(self) -> int:
         """Start generation and return the active attempt number."""
@@ -167,13 +189,12 @@ def prepare_prompt(
     selected = state.turns[-limit:]
     dropped = len(state.turns) - len(selected)
     while selected:
+        bubbles = {bubble.index: bubble for bubble in enumerate_bubbles(state.turns)}
         prompt = render_conversation(
             state.assistant.target_name,
             tuple(
                 ConversationEntry(
-                    state.chat.participant_name
-                    if turn.role == "user"
-                    else state.assistant.target_name,
+                    _entry_header(state, turn, bubbles),
                     turn.content,
                 )
                 for turn in selected
@@ -213,6 +234,23 @@ def replace_partial(turn: ChatTurn, content: str) -> ChatTurn:
     return replace(turn, content=content)
 
 
+def enumerate_bubbles(turns: tuple[ChatTurn, ...] | list[ChatTurn]) -> tuple[ChatBubble, ...]:
+    """Return stored transcript bubbles in chronological display order."""
+    bubbles: list[ChatBubble] = []
+    for turn in turns:
+        segments = (
+            (turn.content,)
+            if turn.role == "user"
+            else tuple(segment for segment in split_bubbles(turn.content) if segment.strip())
+        )
+        if not segments:
+            segments = (turn.content,)
+        bubbles.extend(
+            ChatBubble(len(bubbles), turn.role, content) for content in segments
+        )
+    return tuple(bubbles)
+
+
 def _model_input_digest(value: ModelInput) -> str:
     payload = {
         "turns": [asdict(turn) for turn in value.turns],
@@ -232,4 +270,48 @@ def _validate_turn_order(turns: tuple[ChatTurn, ...]) -> None:
         for index, turn in enumerate(turns[1:], 1)
     ):
         raise ChatStateError("Transcript roles must alternate")
+    bubbles = enumerate_bubbles(turns)
+    indexes = {bubble.index for bubble in bubbles}
+    current = 0
+    for turn in turns:
+        if turn.role == "assistant" and turn.reference is not None:
+            raise ChatStateError("Only a user turn can contain a reference")
+        if turn.reference is not None and (
+            not isinstance(turn.reference, int)
+            or isinstance(turn.reference, bool)
+            or turn.reference not in indexes
+            or turn.reference >= current
+        ):
+            raise ChatStateError("A reference must target an earlier chat bubble")
+        if turn.role == "user":
+            current += 1
+        else:
+            segments = tuple(
+                segment for segment in split_bubbles(turn.content) if segment.strip()
+            )
+            current += len(segments) or 1
 
+
+def _entry_header(
+    state: ChatSession,
+    turn: ChatTurn,
+    bubbles: dict[int, ChatBubble],
+) -> str:
+    """Return one prompt header with optional live Signal reply metadata."""
+    author = (
+        state.chat.participant_name
+        if turn.role == "user"
+        else state.assistant.target_name
+    )
+    if (
+        turn.reference is None
+        or state.assistant.mode != TargetMode.RUN_ADAPTER
+    ):
+        return author
+    referenced = bubbles[turn.reference]
+    referenced_author = (
+        state.chat.participant_name
+        if referenced.role == "user"
+        else state.assistant.target_name
+    )
+    return f"{author} | {reply_metadata(referenced_author, referenced.content)}"

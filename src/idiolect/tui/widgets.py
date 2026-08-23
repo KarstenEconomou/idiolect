@@ -6,14 +6,18 @@ from typing import ClassVar, cast
 
 from rich.console import Group
 from rich.padding import Padding
+from rich.segment import Segment
 from rich.spinner import Spinner
+from rich.style import Style
 from rich.text import Text
 from textual import events
 from textual.app import ComposeResult, RenderResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.geometry import Region
 from textual.message import Message
 from textual.screen import ModalScreen
+from textual.strip import Strip
 from textual.widget import Widget
 from textual.widgets import Button, Input, OptionList, Static, TextArea
 
@@ -143,6 +147,9 @@ class Composer(TextArea):
 
     command_menu_active = False
     command_menu_escape_enabled = False
+    reference_menu_active = False
+    reference_menu_escape_enabled = False
+    reference_selected = False
 
     class Submitted(Message):
         """Report one submitted composer value."""
@@ -165,11 +172,40 @@ class Composer(TextArea):
     class CommandCompleted(Message):
         """Request completion of the highlighted command."""
 
-    async def _on_key(self, event: events.Key) -> None:
-        if self.command_menu_active and event.key in {"left", "right", "up", "down"}:
+    class ReferenceMoved(Message):
+        """Request a new highlighted reference."""
+
+        def __init__(self, offset: int) -> None:
+            """Set the reference selection offset."""
+            self.offset = offset
+            super().__init__()
+
+    class ReferenceDismissed(Message):
+        """Request that the visible reference menu closes."""
+
+    class ReferenceSelected(Message):
+        """Request selection of the highlighted reference."""
+
+    class ReferenceEscaped(Message):
+        """Request removal of the selected reference."""
+
+    def on_key(self, event: events.Key) -> None:
+        """Handle Escape when TextArea key bindings run first."""
+        if (
+            self.reference_selected
+            and not self.command_menu_active
+            and not self.reference_menu_active
+            and event.key == "escape"
+        ):
             event.prevent_default()
             event.stop()
-            offset = -1 if event.key in {"left", "up"} else 1
+            self.post_message(self.ReferenceEscaped())
+
+    async def _on_key(self, event: events.Key) -> None:
+        if self.command_menu_active and event.key in {"up", "down"}:
+            event.prevent_default()
+            event.stop()
+            offset = -1 if event.key == "up" else 1
             self.post_message(self.CommandMoved(offset))
             return
         if (
@@ -185,6 +221,36 @@ class Composer(TextArea):
             event.prevent_default()
             event.stop()
             self.post_message(self.CommandCompleted())
+            return
+        if self.reference_menu_active and event.key in {"up", "down"}:
+            event.prevent_default()
+            event.stop()
+            offset = -1 if event.key == "up" else 1
+            self.post_message(self.ReferenceMoved(offset))
+            return
+        if (
+            self.reference_menu_active
+            and self.reference_menu_escape_enabled
+            and event.key == "escape"
+        ):
+            event.prevent_default()
+            event.stop()
+            self.post_message(self.ReferenceDismissed())
+            return
+        if self.reference_menu_active and event.key == "enter":
+            event.prevent_default()
+            event.stop()
+            self.post_message(self.ReferenceSelected())
+            return
+        if (
+            self.reference_selected
+            and not self.command_menu_active
+            and not self.reference_menu_active
+            and event.key == "escape"
+        ):
+            event.prevent_default()
+            event.stop()
+            self.post_message(self.ReferenceEscaped())
             return
         if event.key == "enter":
             event.prevent_default()
@@ -250,6 +316,100 @@ class CommandMenu(Widget):
             )
 
 
+class ReferenceMenu(Widget):
+    """Show keyboard-controlled chat bubble references."""
+
+    def compose(self) -> ComposeResult:
+        """Create the reference heading and up to three rows."""
+        yield Static("REF", markup=False, id="reference-message")
+        with Vertical(id="reference-actions"):
+            for index in range(3):
+                with Horizontal(
+                    id=f"reference-{index}",
+                    classes="reference-action",
+                ):
+                    yield Static("", markup=False, classes="reference-name")
+                    yield Static("", markup=False, classes="reference-preview")
+
+    def set_references(
+        self,
+        rows: tuple[tuple[str, str], ...],
+        selected: int | None,
+    ) -> None:
+        """Set the visible reference rows and highlighted row."""
+        self.display = bool(rows)
+        for index in range(3):
+            action = self.query_one(f"#reference-{index}", Horizontal)
+            visible = index < len(rows)
+            action.display = visible
+            action.set_class(visible and index == selected, "-selected")
+            if not visible:
+                continue
+            name, preview = rows[index]
+            action.query_one(".reference-name", Static).update(name)
+            action.query_one(".reference-preview", Static).update(preview)
+
+
+class ReferenceBar(Static):
+    """Render the selected bubble above the composer."""
+
+    _accent = "green"
+    _reference: tuple[str, int, str] | None = None
+
+    def set_accent(self, color: str) -> None:
+        """Set the accent used by the dimmed reference border."""
+        if color != self._accent:
+            self._accent = color
+            if self._reference is None:
+                self.refresh()
+            else:
+                self.set_reference(*self._reference)
+
+    def set_reference(self, name: str, index: int, preview: str) -> None:
+        """Show one selected reference with its fixed ANSI roles."""
+        self._reference = (name, index, preview)
+        value = Text.assemble(
+            ("@ ", f"dim {self._accent}"),
+            (f"{name}:{index:02d}", f"dim {self._accent}"),
+            (f" {preview}", "bright_black"),
+        )
+        self.update(value)
+
+    def render_lines(self, crop: Region) -> list[Strip]:
+        """Dim the accent border while keeping the reference content bright."""
+        strips = super().render_lines(crop)
+        if not strips:
+            return strips
+        dim = Style(color=self._accent, dim=True)
+
+        def border_style(strip: Strip) -> Strip:
+            """Apply the border style over Textual's default foreground."""
+            return Strip(
+                [
+                    Segment(segment.text, dim, segment.control)
+                    for segment in strip
+                ],
+                strip.cell_length,
+            )
+
+        height = self.region.height
+        rendered: list[Strip] = []
+        for offset, strip in enumerate(strips):
+            row = crop.y + offset
+            if row in {0, height - 1} or strip.cell_length <= 2:
+                rendered.append(border_style(strip))
+                continue
+            left, middle, right = strip.divide(
+                [1, strip.cell_length - 1, strip.cell_length]
+            )
+            rendered.append(
+                Strip.join(
+                    (border_style(left), middle, border_style(right))
+                )
+            )
+        return rendered
+
+
 class Transcript(Static):
     """Render transcript labels and focused Markdown message blocks."""
 
@@ -278,14 +438,36 @@ class Transcript(Static):
         for index, ((name, message), rendered) in enumerate(zip(current, messages)):
             if index:
                 renderables.append(Text(""))
-            renderables.append(Text(f"{name}:", style=self._accent))
+            renderables.append(self._speaker_label(name))
             renderables.append(Padding(rendered, (0, 0, 0, 1)))
             displayed = message.replace("\n", "\n ")
-            plain_blocks.append(f"{name}:\n {displayed}")
+            plain_blocks.append(self._plain_block(name, displayed))
         self._cached_turns = current
         self._cached_messages = messages
         self.plain = "\n\n".join(plain_blocks)
         self.update(Group(*renderables))
+
+    @staticmethod
+    def _plain_block(name: str, displayed: str) -> str:
+        """Return one transcript block in its plain-text layout."""
+        marker = name.find(" [@")
+        if marker < 0:
+            return f"{name}:\n {displayed}"
+        speaker = name[:marker]
+        reference = name[marker + 2 : -1]
+        return f"{speaker}:\n REF {reference}\n {displayed}"
+
+    def _speaker_label(self, name: str) -> Text:
+        """Render a speaker label with a dim reference annotation."""
+        marker = name.find(" [@")
+        if marker < 0:
+            return Text(f"{name}:", style=self._accent)
+        speaker = name[:marker]
+        reference = name[marker + 2 : -1]
+        return Text.assemble(
+            (f"{speaker}:", self._accent),
+            (f"\n REF {reference}", f"dim {self._accent}"),
+        )
 
 
 class LoadingStatus(Widget):
@@ -345,11 +527,13 @@ class ConfirmModal(ModalScreen[str]):
 
     def _place_dialog(self) -> None:
         composer_bar = self.app.query_one("#composer-bar", Horizontal)
+        anchor = self.app.query_one("#reference-bar", ReferenceBar)
         dialog = self.query_one("#confirm-dialog", Vertical)
         dialog.styles.width = composer_bar.region.width
         dialog.styles.offset = (
             composer_bar.region.x,
-            composer_bar.region.y - dialog.region.height,
+            (anchor.region.y if anchor.display else composer_bar.region.y)
+            - dialog.region.height,
         )
 
     def on_key(self, event: events.Key) -> None:
@@ -399,9 +583,12 @@ class TraceNameModal(ModalScreen[str | None]):
         self.call_after_refresh(self._place_dialog)
 
     def _place_dialog(self) -> None:
-        anchor = self.app.query_one(
-            "#catalog-hints" if self.registry else "#composer-bar"
-        )
+        if self.registry:
+            anchor = self.app.query_one("#catalog-hints")
+        else:
+            composer_bar = self.app.query_one("#composer-bar", Horizontal)
+            reference_bar = self.app.query_one("#reference-bar", ReferenceBar)
+            anchor = reference_bar if reference_bar.display else composer_bar
         dialog = self.query_one("#trace-name-dialog", Vertical)
         inset = 1 if self.registry else 0
         dialog.styles.width = anchor.region.width - (2 * inset)

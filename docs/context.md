@@ -92,6 +92,12 @@ can make reply selection part of the predicted action; the dataset index
 already records `reply_parent_message_id` per episode so that extension does
 not need another destructive redesign.
 
+Interactive chat references use the same header grammar for the user's next
+context entry. The UI number is local to the chat transcript and is not sent to
+the model. Adapter-backed chat renders the referenced author and full quoted
+bubble as `reply to AUTHOR: "text"`; BASE chat removes the UI token and sends
+no reply metadata.
+
 Supply a stable pseudonym for every other person across one dataset. The renderer rejects a missing pseudonym. Do not put Signal UUIDs, phone numbers, or hashed database IDs into model text.
 
 ## Reindex

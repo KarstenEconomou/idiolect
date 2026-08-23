@@ -30,6 +30,8 @@ from idiolect.tui.widgets import (
     Composer,
     KeyboardButton,
     LoadingStatus,
+    ReferenceBar,
+    ReferenceMenu,
     SpecsScroll,
     Transcript,
 )
@@ -1227,6 +1229,30 @@ def test_command_menu_filters_navigates_and_returns_to_registry(tmp_path) -> Non
             assert menu.display is False
             assert composer.text == "/"
             assert str(app.query_one("#footer", Static).content) == ""
+
+            composer.clear()
+            composer.insert("prompt")
+            composer.move_cursor((0, 0))
+            composer.insert("/ ")
+            await pilot.pause()
+            assert menu.display
+            assert composer.cursor_location == (0, 2)
+            await pilot.press("right")
+            await pilot.pause()
+            assert composer.cursor_location == (0, 3)
+            assert not menu.display
+            await pilot.press("left")
+            await pilot.pause()
+            assert composer.cursor_location == (0, 2)
+            assert menu.display
+            await pilot.press("escape")
+            await pilot.pause()
+            assert menu.display is False
+            assert composer.text == "/ prompt"
+
+            composer.clear()
+            composer.insert("/")
+            await pilot.pause()
             composer.insert("r")
             await pilot.pause()
             assert exit_button.display is False
@@ -1240,6 +1266,182 @@ def test_command_menu_filters_navigates_and_returns_to_registry(tmp_path) -> Non
             await pilot.pause()
             assert app.query_one("#landing").display
             assert composer.text == ""
+
+    asyncio.run(verify())
+
+
+def test_reference_menu_selects_bubble_and_escape_clears_reference(tmp_path) -> None:
+    """Check reference selection, replacement, and Escape semantics."""
+    chat = ChatConfig(output=tmp_path)
+    generation = GenerationConfig()
+    runtime = ImmediateRuntime(chat, generation)
+    app = ChatApp(
+        chat,
+        generation,
+        runtime_factory=cast(Callable[..., ChatRuntime], lambda *_args: runtime),
+        initial_assistant=_assistant(),
+    )
+
+    async def verify() -> None:
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_chat(app, pilot)
+            assert runtime.session is not None
+            runtime.session.add_user("first")
+            runtime.session.begin_generation()
+            runtime.session.finish_generation(
+                "one\n[new message]\ntwo",
+                "stop",
+                1,
+                TurnTelemetry(2, 1),
+            )
+            app._render_transcript()
+
+            composer = app.query_one(Composer)
+            composer.insert("@")
+            await pilot.pause()
+
+            menu = app.query_one("#reference-menu", ReferenceMenu)
+            assert menu.display
+            assert str(app.query_one("#reference-message", Static).content) == "REF"
+            assert str(menu.query_one("#reference-2 .reference-name", Static).content) == "DIXIE:02"
+            assert menu.query_one("#reference-2").has_class("-selected")
+            assert str(app.query_one("#footer", Static).content) == (
+                "↑↓ MOVE    ENTER REF    ESC CLOSE"
+            )
+
+            composer_bar = app.query_one("#composer-bar", Horizontal)
+            before_geometry = (
+                composer_bar.region.x,
+                composer_bar.region.width,
+                app.query_one("#composer-prompt", Static).region.x,
+                composer.region.x,
+                composer_bar.styles.border_top,
+            )
+            assert composer_bar.styles.border_top[1] == (
+                app.query_one("#composer-prompt", Static).styles.color
+            )
+            await pilot.press("up", "enter")
+            await pilot.pause()
+            bar = app.query_one("#reference-bar", ReferenceBar)
+            assert bar.display
+            assert isinstance(bar.content, Text)
+            assert "@ DIXIE:01" in bar.content.plain
+            at_style = bar.content.get_style_at_offset(Console(), 0)
+            assert at_style.dim
+            assert at_style.color is not None
+            assert at_style.color.name == "green"
+            assert bar.region.y + bar.region.height == composer_bar.region.y
+            assert bar.styles.border_top[1].ansi == (
+                app.query_one("#composer-prompt", Static).styles.color.ansi
+            )
+            border_style = bar.get_style_at(1, 0)
+            assert border_style.dim
+            assert border_style.color is not None
+            assert border_style.color.name == "green"
+            bottom_border_style = bar.get_style_at(1, bar.size.height - 1)
+            assert bottom_border_style.dim
+            assert bottom_border_style.color is not None
+            assert bottom_border_style.color.name == "green"
+            assert bar.get_style_at(0, 1).dim
+            assert composer.text == ""
+            reference_style = bar.content.get_style_at_offset(Console(), 2)
+            assert reference_style.dim
+            assert reference_style.color is not None
+            assert reference_style.color.name == "green"
+            assert (
+                composer_bar.region.x,
+                composer_bar.region.width,
+                app.query_one("#composer-prompt", Static).region.x,
+                composer.region.x,
+                composer_bar.styles.border_top,
+            ) == before_geometry
+
+            composer.insert("follow-up")
+            await pilot.pause()
+            assert app._reference_selected
+            assert composer.reference_selected
+            assert composer.has_focus
+            assert not composer.command_menu_active
+            assert not composer.reference_menu_active
+            await pilot.press("escape")
+            await pilot.pause()
+            assert not bar.display
+            assert composer.text == "follow-up"
+
+            composer.clear()
+            composer.insert("@D")
+            await pilot.pause()
+            assert menu.display
+            assert str(menu.query_one("#reference-0 .reference-name", Static).content) == "DIXIE:01"
+            assert str(menu.query_one("#reference-1 .reference-name", Static).content) == "DIXIE:02"
+            assert menu.query_one("#reference-2").display is False
+            await pilot.press("enter")
+            await pilot.pause()
+            assert composer.text == ""
+
+            composer.insert("prompt")
+            composer.insert("@U")
+            await pilot.pause()
+            assert menu.display
+            assert str(menu.query_one("#reference-0 .reference-name", Static).content) == "USER:00"
+            await pilot.press("enter")
+            await pilot.pause()
+            assert composer.text == "prompt"
+            assert "@ USER:00" in bar.content.plain
+            assert app._reference_selected
+
+            composer.clear()
+            composer.insert("@first")
+            await pilot.pause()
+            assert not menu.display
+
+            composer.insert("x")
+            await pilot.pause()
+            assert not menu.display
+            await pilot.press("backspace")
+            await pilot.pause()
+            assert not menu.display
+
+            composer.clear()
+            composer.insert("prompt")
+            composer.move_cursor((0, 0))
+            composer.insert("@ ")
+            await pilot.pause()
+            assert menu.display
+            assert str(menu.query_one("#reference-2 .reference-name", Static).content) == "DIXIE:02"
+            assert composer.cursor_location == (0, 2)
+            await pilot.press("right")
+            await pilot.pause()
+            assert composer.cursor_location == (0, 3)
+            assert not menu.display
+            await pilot.press("left")
+            await pilot.pause()
+            assert composer.cursor_location == (0, 2)
+            assert menu.display
+            await pilot.press("enter")
+            await pilot.pause()
+            assert composer.text == "prompt"
+            assert app._reference_selected
+
+            runtime.session.add_user("sent", reference=2)
+            app._render_transcript()
+            transcript = app.query_one(Transcript)
+            assert "USER:\n REF @DIXIE:02\n sent" in transcript.plain
+            segments = tuple(
+                Console().render(cast(RenderableType, transcript.content))
+            )
+            annotation = next(
+                segment for segment in segments if "REF @DIXIE:02" in segment.text
+            )
+            assert annotation.style is not None
+            assert annotation.style.dim
+            assert annotation.style.color is not None
+            assert annotation.style.color.name == "green"
+            speaker = next(segment for segment in segments if segment.text == "USER:")
+            assert speaker.style is not None
+            assert not speaker.style.dim
+            assert speaker.style.color is not None
+            assert speaker.style.color.name == "green"
 
     asyncio.run(verify())
 

@@ -15,6 +15,7 @@ from idiolect.prompt import (
     PromptError,
     join_bubbles,
     render_conversation,
+    reply_metadata,
 )
 from idiolect.types import (
     ChatExample,
@@ -194,11 +195,11 @@ def _reply_text(
     author_id = message.quote.author_id if message.quote is not None else None
     if author_id is None and original is not None:
         author_id = original.author_id
-    if author_id is None:
-        value = "reply to an earlier message"
-    else:
-        author = _person_name(author_id, target_id, target_name, person_names)
-        value = f"reply to {author}"
+    author = (
+        "an earlier message"
+        if author_id is None
+        else _person_name(author_id, target_id, target_name, person_names)
+    )
 
     quote_text = message.quote.text if message.quote is not None else None
     quote_mentions = message.quote.mentions if message.quote is not None else ()
@@ -213,8 +214,8 @@ def _reply_text(
             target_name,
             person_names,
         )
-        value = f"{value}: {json.dumps(rendered, ensure_ascii=False)}"
-    return value
+        return reply_metadata(author, rendered)
+    return f"reply to {author}"
 
 
 def _render_text(

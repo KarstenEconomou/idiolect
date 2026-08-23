@@ -1,5 +1,6 @@
 """Apply the fixed model conversation and text formats."""
 
+import json
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -85,6 +86,11 @@ def render_conversation(
             lines.append(entry.content)
     lines.extend(("", f"[{next_response}]"))
     return "\n".join(lines)
+
+
+def reply_metadata(author: str, content: str) -> str:
+    """Return the fixed Signal-style reply header metadata."""
+    return f"reply to {author}: {json.dumps(content, ensure_ascii=False)}"
 
 
 def format_prompt(prompt: str, config: TrainDataConfig) -> ModelInput:
