@@ -150,6 +150,7 @@ class Composer(TextArea):
     reference_menu_active = False
     reference_menu_escape_enabled = False
     reference_selected = False
+    command_selected = False
 
     class Submitted(Message):
         """Report one submitted composer value."""
@@ -169,8 +170,8 @@ class Composer(TextArea):
     class CommandDismissed(Message):
         """Request that the visible command menu closes."""
 
-    class CommandCompleted(Message):
-        """Request completion of the highlighted command."""
+    class CommandEscaped(Message):
+        """Request removal of the selected command."""
 
     class ReferenceMoved(Message):
         """Request a new highlighted reference."""
@@ -192,14 +193,18 @@ class Composer(TextArea):
     def on_key(self, event: events.Key) -> None:
         """Handle Escape when TextArea key bindings run first."""
         if (
-            self.reference_selected
+            (self.command_selected or self.reference_selected)
             and not self.command_menu_active
             and not self.reference_menu_active
             and event.key == "escape"
         ):
             event.prevent_default()
             event.stop()
-            self.post_message(self.ReferenceEscaped())
+            self.post_message(
+                self.CommandEscaped()
+                if self.command_selected
+                else self.ReferenceEscaped()
+            )
 
     async def _on_key(self, event: events.Key) -> None:
         if self.command_menu_active and event.key in {"up", "down"}:
@@ -207,6 +212,10 @@ class Composer(TextArea):
             event.stop()
             offset = -1 if event.key == "up" else 1
             self.post_message(self.CommandMoved(offset))
+            return
+        if self.command_menu_active and event.key == "tab":
+            event.prevent_default()
+            event.stop()
             return
         if (
             self.command_menu_active
@@ -216,11 +225,6 @@ class Composer(TextArea):
             event.prevent_default()
             event.stop()
             self.post_message(self.CommandDismissed())
-            return
-        if self.command_menu_active and event.key == "tab":
-            event.prevent_default()
-            event.stop()
-            self.post_message(self.CommandCompleted())
             return
         if self.reference_menu_active and event.key in {"up", "down"}:
             event.prevent_default()
@@ -243,14 +247,18 @@ class Composer(TextArea):
             self.post_message(self.ReferenceSelected())
             return
         if (
-            self.reference_selected
+            (self.command_selected or self.reference_selected)
             and not self.command_menu_active
             and not self.reference_menu_active
             and event.key == "escape"
         ):
             event.prevent_default()
             event.stop()
-            self.post_message(self.ReferenceEscaped())
+            self.post_message(
+                self.CommandEscaped()
+                if self.command_selected
+                else self.ReferenceEscaped()
+            )
             return
         if event.key == "enter":
             event.prevent_default()
@@ -314,6 +322,63 @@ class CommandMenu(Widget):
                 command == "/save" and not save_enabled,
                 "-save-disabled",
             )
+
+
+class CommandBar(Static):
+    """Render one selected argument command above the composer."""
+
+    _accent = "green"
+    _command: tuple[str, str] | None = None
+
+    def set_accent(self, color: str) -> None:
+        """Set the accent used by the dimmed command border."""
+        if color != self._accent:
+            self._accent = color
+            if self._command is None:
+                self.refresh()
+            else:
+                self.set_command(*self._command)
+
+    def set_command(self, name: str, description: str) -> None:
+        """Show one selected command and its description."""
+        self._command = (name, description)
+        value = Text.assemble(
+            (f"/ {name.upper()}", f"dim {self._accent}"),
+            (f" {description}", "bright_black"),
+        )
+        self.update(value)
+
+    def render_lines(self, crop: Region) -> list[Strip]:
+        """Dim the command border while keeping its roles explicit."""
+        strips = super().render_lines(crop)
+        if not strips:
+            return strips
+        dim = Style(color=self._accent, dim=True)
+
+        def border_style(strip: Strip) -> Strip:
+            """Apply the dimmed accent over Textual's default border style."""
+            return Strip(
+                [
+                    Segment(segment.text, dim, segment.control)
+                    for segment in strip
+                ],
+                strip.cell_length,
+            )
+
+        height = self.region.height
+        rendered: list[Strip] = []
+        for offset, strip in enumerate(strips):
+            row = crop.y + offset
+            if row in {0, height - 1} or strip.cell_length <= 2:
+                rendered.append(border_style(strip))
+                continue
+            left, middle, right = strip.divide(
+                [1, strip.cell_length - 1, strip.cell_length]
+            )
+            rendered.append(
+                Strip.join((border_style(left), middle, border_style(right)))
+            )
+        return rendered
 
 
 class ReferenceMenu(Widget):
@@ -414,7 +479,7 @@ class Transcript(Static):
     """Render transcript labels and focused Markdown message blocks."""
 
     plain = ""
-    _cached_turns: tuple[tuple[str, str], ...] = ()
+    _cached_turns: tuple[tuple[str, str, bool], ...] = ()
     _cached_messages: tuple[ChatMarkdown, ...] = ()
     _accent = "green"
 
@@ -424,9 +489,15 @@ class Transcript(Static):
             self._accent = color
             self.set_turns(self._cached_turns)
 
-    def set_turns(self, turns: Sequence[tuple[str, str]]) -> None:
+    def set_turns(
+        self,
+        turns: Sequence[tuple[str, str] | tuple[str, str, bool]],
+    ) -> None:
         """Set labeled turns without changing their stored message text."""
-        current = tuple(turns)
+        current = tuple(
+            (turn[0], turn[1], turn[2] if len(turn) == 3 else False)
+            for turn in turns
+        )
         messages = tuple(
             self._cached_messages[index]
             if index < len(self._cached_turns) and turn == self._cached_turns[index]
@@ -435,11 +506,14 @@ class Transcript(Static):
         )
         renderables: list[Text | Padding] = []
         plain_blocks = []
-        for index, ((name, message), rendered) in enumerate(zip(current, messages)):
+        for index, ((name, message, dimmed), rendered) in enumerate(
+            zip(current, messages)
+        ):
             if index:
                 renderables.append(Text(""))
-            renderables.append(self._speaker_label(name))
-            renderables.append(Padding(rendered, (0, 0, 0, 1)))
+            renderables.append(self._speaker_label(name, dimmed=dimmed))
+            body = _Dimmed(rendered) if dimmed else rendered
+            renderables.append(Padding(body, (0, 0, 0, 1)))
             displayed = message.replace("\n", "\n ")
             plain_blocks.append(self._plain_block(name, displayed))
         self._cached_turns = current
@@ -457,17 +531,37 @@ class Transcript(Static):
         reference = name[marker + 2 : -1]
         return f"{speaker}:\n REF {reference}\n {displayed}"
 
-    def _speaker_label(self, name: str) -> Text:
+    def _speaker_label(self, name: str, *, dimmed: bool = False) -> Text:
         """Render a speaker label with a dim reference annotation."""
         marker = name.find(" [@")
         if marker < 0:
-            return Text(f"{name}:", style=self._accent)
+            style = (
+                Style(color=self._accent, dim=True)
+                if dimmed
+                else self._accent
+            )
+            return Text(f"{name}:", style=style)
         speaker = name[:marker]
         reference = name[marker + 2 : -1]
         return Text.assemble(
             (f"{speaker}:", self._accent),
             (f"\n REF {reference}", f"dim {self._accent}"),
         )
+
+
+class _Dimmed:
+    """Apply metadata color and dim styling to one Rich renderable."""
+
+    def __init__(self, renderable: object) -> None:
+        """Keep the original renderable for delegated rendering."""
+        self.renderable = renderable
+
+    def __rich_console__(self, console, options):
+        """Render child segments with the metadata style."""
+        metadata = Style(color="bright_black", dim=True)
+        for segment in console.render(self.renderable, options):
+            style = metadata if segment.style is None else segment.style + metadata
+            yield Segment(segment.text, style, segment.control)
 
 
 class LoadingStatus(Widget):
@@ -527,7 +621,9 @@ class ConfirmModal(ModalScreen[str]):
 
     def _place_dialog(self) -> None:
         composer_bar = self.app.query_one("#composer-bar", Horizontal)
-        anchor = self.app.query_one("#reference-bar", ReferenceBar)
+        command_bar = self.app.query_one("#command-bar", CommandBar)
+        reference_bar = self.app.query_one("#reference-bar", ReferenceBar)
+        anchor = command_bar if command_bar.display else reference_bar
         dialog = self.query_one("#confirm-dialog", Vertical)
         dialog.styles.width = composer_bar.region.width
         dialog.styles.offset = (
@@ -587,8 +683,15 @@ class TraceNameModal(ModalScreen[str | None]):
             anchor = self.app.query_one("#catalog-hints")
         else:
             composer_bar = self.app.query_one("#composer-bar", Horizontal)
+            command_bar = self.app.query_one("#command-bar", CommandBar)
             reference_bar = self.app.query_one("#reference-bar", ReferenceBar)
-            anchor = reference_bar if reference_bar.display else composer_bar
+            anchor = (
+                command_bar
+                if command_bar.display
+                else reference_bar
+                if reference_bar.display
+                else composer_bar
+            )
         dialog = self.query_one("#trace-name-dialog", Vertical)
         inset = 1 if self.registry else 0
         dialog.styles.width = anchor.region.width - (2 * inset)

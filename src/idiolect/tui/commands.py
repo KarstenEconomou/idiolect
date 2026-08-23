@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 COMMANDS = (
     "/exit",
+    "/echo",
     "/registry",
     "/save",
     "/specs",
@@ -11,10 +12,13 @@ COMMANDS = (
 
 COMMAND_DESCRIPTIONS = {
     "/exit": "Exit IDIOLECT.",
+    "/echo": "ENV echo.",
     "/registry": "Return to REGISTRY.",
     "/save": "Save TRACE.",
     "/specs": "View MODEL SPECS.",
 }
+
+COMMAND_ARGUMENTS = frozenset({"/echo"})
 
 
 class CommandError(ValueError):
@@ -26,19 +30,27 @@ class Command:
     """Keep one parsed slash command."""
 
     name: str
+    arguments: str = ""
+
+    @property
+    def accepts_arguments(self) -> bool:
+        """Return whether this command consumes composer text."""
+        return f"/{self.name}" in COMMAND_ARGUMENTS
 
 
 def parse_command(value: str) -> Command | None:
     """Parse a composer value when it starts with a slash."""
     if not value.startswith("/"):
         return None
-    parts = value.split()
+    parts = value.split(maxsplit=1)
     if not parts or parts[0] not in COMMANDS:
         raise CommandError("Unknown chat command")
-    name = parts[0][1:]
-    if len(parts) != 1:
+    command_name = parts[0]
+    name = command_name[1:]
+    arguments = parts[1] if len(parts) == 2 else ""
+    if command_name not in COMMAND_ARGUMENTS and arguments.strip():
         raise CommandError(f"/{name} does not accept an argument")
-    return Command(name)
+    return Command(name, arguments)
 
 
 def completions(value: str) -> tuple[str, ...]:

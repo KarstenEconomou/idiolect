@@ -131,15 +131,26 @@ word after the leading slash filters the command list in real time. A slash
 followed by a space also opens the full menu when prompt text follows it, so the
 menu can be opened at the beginning of an existing prompt. The menu shows up to
 three command descriptions in vertical rows. Use Up and Down to move, Left and
-Right to move through composer text, Tab to complete the selected command with a
-trailing space, Enter to select, and Escape to close the menu without clearing
-the composer. The menu is visible only while the cursor is inside the leading
-slash token. Commands are:
+Right to move through composer text, Enter to activate the selected command, and
+Escape to close the menu without clearing the composer. There is no Tab
+completion. The menu is visible only while the cursor is inside a slash token
+that starts at the beginning of a word. Commands are:
 
 - `/exit`: stop an active reply or exit when idle;
+- `/echo <text>`: show `<text>` as a dimmed `ENV` turn without adding it to model context;
 - `/registry`: return to `REGISTRY` when no reply is active;
 - `/save`: save a TRACE checkpoint and keep the chat open;
 - `/specs`: temporarily view the active model's SPECS.
+
+Commands with arguments remove their slash token from the composer and show a
+dimmed command bar above it. The command description follows the command in the
+metadata color. Type arguments in the composer and press Enter to run the
+command. Escape removes the active command. A command always replaces a
+selected reference, and the reference menu stays closed while a command bar is
+active.
+
+`/echo` appends an `ENV` turn. Its name and message use the metadata color. ENV
+turns are kept for display and snapshots, but are excluded from model context.
 
 Type `@` at the start of an empty composer to open the `REF` menu. It
 shows three stored chat bubbles at a time, numbered from `00` in chronological

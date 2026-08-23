@@ -1193,7 +1193,7 @@ def test_command_menu_filters_navigates_and_returns_to_registry(tmp_path) -> Non
             assert save_button.query_one(".command-name", Static).styles.color == (
                 app.query_one("#catalog-subtitle").styles.color
             )
-            assert registry_button.region.y == exit_button.region.y + 1
+            assert registry_button.region.y == exit_button.region.y + 2
             assert exit_button.has_class("-selected")
             assert registry_button.has_class("-selected") is False
             selected_name = exit_button.query_one(".command-name", Static)
@@ -1205,9 +1205,13 @@ def test_command_menu_filters_navigates_and_returns_to_registry(tmp_path) -> Non
             assert not selected_description.styles.text_style.bold
             assert composer.has_focus
             assert str(app.query_one("#footer", Static).content) == (
-                "↑↓ MOVE    TAB COMPLETE    ENTER SELECT    ESC CLOSE"
+                "↑↓ MOVE    ENTER COMMAND    ESC CLOSE"
             )
 
+            await pilot.press("down")
+            assert menu.query_one("#command-echo", Horizontal).has_class(
+                "-selected"
+            )
             await pilot.press("down")
             assert registry_button.has_class("-selected")
             await pilot.press("down")
@@ -1260,12 +1264,153 @@ def test_command_menu_filters_navigates_and_returns_to_registry(tmp_path) -> Non
 
             await pilot.press("tab")
             await pilot.pause()
-            assert composer.text == "/registry "
-            assert menu.display is False
+            assert composer.text == "/r"
+            assert menu.display
+            assert registry_button.has_class("-selected")
             await pilot.press("enter")
             await pilot.pause()
             assert app.query_one("#landing").display
             assert composer.text == ""
+
+    asyncio.run(verify())
+
+
+def test_echo_command_uses_an_env_turn_and_argument_bar(tmp_path) -> None:
+    """Check argument commands activate a bar and stay out of model context."""
+    chat = ChatConfig(output=tmp_path)
+    generation = GenerationConfig()
+    runtime = ImmediateRuntime(chat, generation)
+    app = ChatApp(
+        chat,
+        generation,
+        runtime_factory=cast(Callable[..., ChatRuntime], lambda *_args: runtime),
+        initial_assistant=_assistant(),
+    )
+
+    async def verify() -> None:
+        async with app.run_test() as pilot:
+            await _wait_for_chat(app, pilot)
+            composer = app.query_one(Composer)
+            composer.insert("/echo")
+            await pilot.pause()
+
+            menu = app.query_one("#command-menu", CommandMenu)
+            assert menu.display
+            assert menu.query_one("#command-echo", Horizontal).has_class(
+                "-selected"
+            )
+            await pilot.press("enter")
+            await pilot.pause()
+
+            command_bar = app.query_one("#command-bar", Static)
+            assert app._command_selected
+            assert command_bar.display
+            assert isinstance(command_bar.content, Text)
+            assert command_bar.content.plain == "/ ECHO ENV echo."
+            command_style = command_bar.content.get_style_at_offset(Console(), 0)
+            description_style = command_bar.content.get_style_at_offset(
+                Console(), command_bar.content.plain.index("ENV")
+            )
+            assert command_style.dim
+            assert command_style.color is not None
+            assert command_style.color.name == "green"
+            assert description_style.color is not None
+            assert description_style.color.name == "bright_black"
+            assert composer.text == ""
+            composer.insert("@")
+            await pilot.pause()
+            assert not app.query_one("#reference-menu", ReferenceMenu).display
+
+            composer.insert("hello")
+            await pilot.press("enter")
+            await pilot.pause()
+
+            assert not command_bar.display
+            assert runtime.session is not None
+            assert runtime.session.turns[-1].role == "env"
+            assert runtime.session.turns[-1].content == "@hello"
+            transcript = app.query_one(Transcript)
+            assert "ENV:\n @hello" in transcript.plain
+            segments = tuple(
+                Console().render(cast(RenderableType, transcript.content))
+            )
+            env_label = next(segment for segment in segments if segment.text == "ENV:")
+            env_text = next(segment for segment in segments if "@hello" in segment.text)
+            assert env_label.style is not None and env_label.style.dim
+            assert env_label.style.color is not None
+            assert env_label.style.color.name == "green"
+            assert env_text.style is not None and env_text.style.dim
+            assert env_text.style.color is not None
+            assert env_text.style.color.name == "bright_black"
+
+            runtime.session.add_user("next")
+            assert [turn.role for turn in runtime.session.turns] == ["env", "user"]
+
+    asyncio.run(verify())
+
+
+def test_echo_command_can_be_selected_after_prefilled_arguments(tmp_path) -> None:
+    """Check slash-token selection still works when the cursor follows args."""
+    chat = ChatConfig(output=tmp_path)
+    generation = GenerationConfig()
+    runtime = ImmediateRuntime(chat, generation)
+    app = ChatApp(
+        chat,
+        generation,
+        runtime_factory=cast(Callable[..., ChatRuntime], lambda *_args: runtime),
+        initial_assistant=_assistant(),
+    )
+
+    async def verify() -> None:
+        async with app.run_test() as pilot:
+            await _wait_for_chat(app, pilot)
+            composer = app.query_one(Composer)
+            composer.insert("/echo hello")
+            await pilot.press("enter")
+            await pilot.pause()
+
+            assert app._command_selected
+            assert composer.text == "hello"
+            assert app.query_one("#command-bar", Static).display
+
+            await pilot.press("enter")
+            await pilot.pause()
+            assert runtime.session is not None
+            assert runtime.session.turns[-1].content == "hello"
+
+    asyncio.run(verify())
+
+
+def test_slash_command_menu_opens_for_a_token_inside_prompt(tmp_path) -> None:
+    """Check slash commands are discoverable away from prompt offset zero."""
+    chat = ChatConfig(output=tmp_path)
+    generation = GenerationConfig()
+    runtime = ImmediateRuntime(chat, generation)
+    app = ChatApp(
+        chat,
+        generation,
+        runtime_factory=cast(Callable[..., ChatRuntime], lambda *_args: runtime),
+        initial_assistant=_assistant(),
+    )
+
+    async def verify() -> None:
+        async with app.run_test() as pilot:
+            await _wait_for_chat(app, pilot)
+            composer = app.query_one(Composer)
+            composer.insert("prompt /ec")
+            await pilot.pause()
+
+            menu = app.query_one("#command-menu", CommandMenu)
+            assert menu.display
+            assert menu.query_one("#command-echo", Horizontal).has_class(
+                "-selected"
+            )
+            await pilot.press("enter")
+            await pilot.pause()
+
+            assert app._command_selected
+            assert composer.text == "prompt "
+            assert app.query_one("#command-bar", Static).display
 
     asyncio.run(verify())
 

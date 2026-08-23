@@ -78,6 +78,20 @@ def test_base_snapshot_restores_system_persona_and_model_digest(tmp_path) -> Non
     assert resumed.assistant.data.system_prompt == "Be concise."
 
 
+def test_snapshot_round_trips_env_turns(tmp_path) -> None:
+    """Check ENV output survives a private snapshot without model metadata."""
+    state, _assistant = _base_state(tmp_path)
+    store = ChatStore(tmp_path / "chat")
+    state.add_env("local diagnostic")
+
+    saved = store.save(state)
+    loaded = store.load(saved.id)
+
+    assert loaded.turns[0].role == "env"
+    assert loaded.turns[0].content == "local diagnostic"
+    assert loaded.turns[0].telemetry is None
+
+
 def test_erase_removes_only_a_verified_lineage_leaf(tmp_path, monkeypatch) -> None:
     """Check safe leaf erasure and parent reappearance."""
     state, assistant = _state(tmp_path)

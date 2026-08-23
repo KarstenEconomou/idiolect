@@ -17,6 +17,16 @@ def test_known_command_is_parsed_without_arguments(value: str) -> None:
     assert command.name == value.split()[0][1:]
 
 
+def test_echo_command_keeps_its_argument_text() -> None:
+    """Check the one command that consumes composer arguments."""
+    command = parse_command("/echo hello world")
+
+    assert command is not None
+    assert command.name == "echo"
+    assert command.arguments == "hello world"
+    assert command.accepts_arguments
+
+
 @pytest.mark.parametrize(
     ("value", "message"),
     [
@@ -37,10 +47,11 @@ def test_unknown_commands_and_arguments_are_rejected(
 
 def test_command_completion_requires_one_command_prefix() -> None:
     """Check command matching for composer prefixes."""
-    assert completions("/") == ("/exit", "/registry", "/save", "/specs")
+    assert completions("/") == ("/exit", "/echo", "/registry", "/save", "/specs")
     assert completions("/re") == ("/registry",)
     assert completions("/sa") == ("/save",)
     assert completions("/sp") == ("/specs",)
+    assert completions("/ec") == ("/echo",)
     assert completions("message") == ()
     assert completions("/exit now") == ()
 

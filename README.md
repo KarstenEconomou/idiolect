@@ -167,8 +167,12 @@ just chat resume CHAT_ID
 In chat, type `/` for control commands or a leading `@` to reference one of
 the numbered stored message bubbles. Continue typing the reference identity
 after `@` to filter the list; `/ ` and `@ ` also open their menus before existing
-prompt text. A selected reference is shown above the composer and is encoded as
-Signal-style reply metadata for adapter-backed assistants. See
+prompt text. Enter activates a selected slash command; Tab does not autocomplete.
+`/echo <text>` shows a dimmed ENV turn without adding it to model context.
+Commands with arguments use a command bar above the composer, and a command
+replaces any selected reference. A selected reference is shown above the
+composer and is encoded as Signal-style reply metadata for adapter-backed
+assistants. See
 [docs/chat.md](docs/chat.md) for the keyboard controls.
 
 Then collect private familiar-rater judgments and build a panel report. See

@@ -557,23 +557,25 @@ def _read_turns(path: Path) -> tuple[ChatTurn, ...]:
             raise ChatStorageError(
                 f"Chat turn is not valid: {path}:{number}"
             ) from error
-        if turn.role not in {"user", "assistant"} or not isinstance(turn.content, str):
+        if turn.role not in {"user", "assistant", "env"} or not isinstance(turn.content, str):
             raise ChatStorageError(f"Chat turn is not valid: {path}:{number}")
-        if turn.role == "user" and (
+        if turn.role in {"user", "env"} and (
             turn.attempt != 0
             or turn.finish_reason is not None
             or turn.seed is not None
             or turn.telemetry is not None
         ):
-            raise ChatStorageError(f"Chat user turn is not valid: {path}:{number}")
+            label = "user" if turn.role == "user" else "ENV"
+            raise ChatStorageError(f"Chat {label} turn is not valid: {path}:{number}")
         if turn.reference is not None and (
             not isinstance(turn.reference, int)
             or isinstance(turn.reference, bool)
             or turn.reference < 0
         ):
             raise ChatStorageError(f"Chat turn reference is not valid: {path}:{number}")
-        if turn.role == "assistant" and turn.reference is not None:
-            raise ChatStorageError(f"Chat assistant turn is not valid: {path}:{number}")
+        if turn.role != "user" and turn.reference is not None:
+            label = "assistant" if turn.role == "assistant" else "ENV"
+            raise ChatStorageError(f"Chat {label} turn is not valid: {path}:{number}")
         if turn.role == "assistant" and (
             turn.finish_reason is None
             or turn.finish_reason not in {"stop", "length", "cancelled"}
@@ -582,13 +584,26 @@ def _read_turns(path: Path) -> tuple[ChatTurn, ...]:
             or not _valid_telemetry(turn.telemetry)
         ):
             raise ChatStorageError(f"Chat assistant turn is not valid: {path}:{number}")
+        if turn.role == "env":
+            previous = next(
+                (
+                    item
+                    for item in reversed(turns)
+                    if item.role != "env"
+                ),
+                None,
+            )
+            if previous is not None and previous.role == "user":
+                raise ChatStorageError(
+                    f"Chat ENV turn is not valid: {path}:{number}"
+                )
         turns.append(turn)
+    model_turns = tuple(turn for turn in turns if turn.role != "env")
     if (
-        not turns
-        or turns[0].role != "user"
+        (model_turns and model_turns[0].role != "user")
         or any(
-            turn.role == turns[index - 1].role
-            for index, turn in enumerate(turns[1:], 1)
+            turn.role == model_turns[index - 1].role
+            for index, turn in enumerate(model_turns[1:], 1)
         )
     ):
         raise ChatStorageError(f"Chat transcript order is not valid: {path}")
@@ -602,7 +617,7 @@ def _read_turns(path: Path) -> tuple[ChatTurn, ...]:
             raise ChatStorageError(f"Chat turn reference is not valid: {path}")
         if turn.role == "user":
             current += 1
-        else:
+        elif turn.role == "assistant":
             segments = tuple(
                 segment for segment in split_bubbles(turn.content) if segment.strip()
             )

@@ -40,7 +40,7 @@ class TurnTelemetry:
 class ChatTurn:
     """Keep one literal transcript turn."""
 
-    role: Literal["user", "assistant"]
+    role: Literal["user", "assistant", "env"]
     content: str
     attempt: int = 0
     finish_reason: str | None = None
@@ -110,7 +110,8 @@ class ChatSession:
             raise ChatStateError("A reply is already generating")
         if not content.strip():
             raise ChatStateError("A message must contain text")
-        if self.turns and self.turns[-1].role != "assistant":
+        previous = _last_model_turn(self.turns)
+        if previous is not None and previous.role != "assistant":
             raise ChatStateError(
                 "The pending user message requires a retry before another message"
             )
@@ -125,11 +126,25 @@ class ChatSession:
             raise ChatStateError("A reference must target an earlier chat bubble")
         self.turns.append(ChatTurn("user", content, reference=reference))
 
+    def add_env(self, content: str) -> None:
+        """Append one local environment message outside model context."""
+        if self.generating:
+            raise ChatStateError("A reply is already generating")
+        if not content.strip():
+            raise ChatStateError("An ENV message must contain text")
+        previous = _last_model_turn(self.turns)
+        if previous is not None and previous.role == "user":
+            raise ChatStateError(
+                "The pending user message requires a reply before ENV output"
+            )
+        self.turns.append(ChatTurn("env", content))
+
     def begin_generation(self) -> int:
         """Start generation and return the active attempt number."""
         if self.generating:
             raise ChatStateError("A reply is already generating")
-        if not self.turns or self.turns[-1].role != "user":
+        previous = _last_model_turn(self.turns)
+        if previous is None or previous.role != "user":
             raise ChatStateError("A reply requires a newest user message")
         self.generating = True
         return 0
@@ -186,8 +201,9 @@ def prepare_prompt(
     limit = state.assistant.context_messages
     if limit < 1:
         raise ChatStateError("The recorded context window is empty")
-    selected = state.turns[-limit:]
-    dropped = len(state.turns) - len(selected)
+    model_turns = tuple(turn for turn in state.turns if turn.role != "env")
+    selected = model_turns[-limit:]
+    dropped = len(model_turns) - len(selected)
     while selected:
         bubbles = {bubble.index: bubble for bubble in enumerate_bubbles(state.turns)}
         prompt = render_conversation(
@@ -238,6 +254,8 @@ def enumerate_bubbles(turns: tuple[ChatTurn, ...] | list[ChatTurn]) -> tuple[Cha
     """Return stored transcript bubbles in chronological display order."""
     bubbles: list[ChatBubble] = []
     for turn in turns:
+        if turn.role == "env":
+            continue
         segments = (
             (turn.content,)
             if turn.role == "user"
@@ -261,19 +279,35 @@ def _model_input_digest(value: ModelInput) -> str:
 
 
 def _validate_turn_order(turns: tuple[ChatTurn, ...]) -> None:
-    if any(turn.role not in {"user", "assistant"} for turn in turns):
+    if any(turn.role not in {"user", "assistant", "env"} for turn in turns):
         raise ChatStateError("A transcript contains an invalid role")
-    if turns and turns[0].role != "user":
+    model_turns = tuple(turn for turn in turns if turn.role != "env")
+    if model_turns and model_turns[0].role != "user":
         raise ChatStateError("A transcript must start with a user message")
     if any(
-        turn.role == turns[index - 1].role
-        for index, turn in enumerate(turns[1:], 1)
+        turn.role == model_turns[index - 1].role
+        for index, turn in enumerate(model_turns[1:], 1)
     ):
         raise ChatStateError("Transcript roles must alternate")
     bubbles = enumerate_bubbles(turns)
     indexes = {bubble.index for bubble in bubbles}
     current = 0
-    for turn in turns:
+    for index, turn in enumerate(turns):
+        if turn.role == "env":
+            previous = _last_model_turn(turns[:index])
+            if previous is not None and previous.role == "user":
+                raise ChatStateError(
+                    "An ENV turn cannot follow a pending user message"
+                )
+            if (
+                turn.attempt != 0
+                or turn.finish_reason is not None
+                or turn.seed is not None
+                or turn.telemetry is not None
+                or turn.reference is not None
+            ):
+                raise ChatStateError("An ENV turn cannot contain model metadata")
+            continue
         if turn.role == "assistant" and turn.reference is not None:
             raise ChatStateError("Only a user turn can contain a reference")
         if turn.reference is not None and (
@@ -290,6 +324,11 @@ def _validate_turn_order(turns: tuple[ChatTurn, ...]) -> None:
                 segment for segment in split_bubbles(turn.content) if segment.strip()
             )
             current += len(segments) or 1
+
+
+def _last_model_turn(turns: list[ChatTurn] | tuple[ChatTurn, ...]) -> ChatTurn | None:
+    """Return the newest user or assistant turn."""
+    return next((turn for turn in reversed(turns) if turn.role != "env"), None)
 
 
 def _entry_header(

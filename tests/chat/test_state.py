@@ -48,6 +48,21 @@ def test_prompt_rejects_newest_message_that_cannot_fit() -> None:
         prepare_prompt(state, lambda _value: 2, 0)
 
 
+def test_env_turns_are_display_only_and_do_not_enter_prompt() -> None:
+    """Check local ENV output leaves model context and user ordering intact."""
+    state = _state()
+    state.add_env("local diagnostic")
+    state.add_user("next")
+
+    prepared = prepare_prompt(state, lambda _value: 10, 0)
+
+    assert "local diagnostic" not in prepared.prompt
+    assert "next" in prepared.prompt
+    assert [bubble.content for bubble in enumerate_bubbles(state.turns)] == [
+        "next"
+    ]
+
+
 def test_reference_numbers_assistant_bubbles_and_rejects_future_targets() -> None:
     """Check stable display numbering and backward-only references."""
     state = _state()
