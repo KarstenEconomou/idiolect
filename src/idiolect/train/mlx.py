@@ -98,6 +98,14 @@ class ModelResolver(Protocol):
         ...
 
 
+class DatasetLoader(Protocol):
+    """Load and verify one immutable dataset."""
+
+    def __call__(self, path: Path, /) -> BuildResult:
+        """Return the verified dataset reference."""
+        ...
+
+
 class Tokenizer(Protocol):
     """Format model messages as token identifiers."""
 
@@ -124,6 +132,7 @@ class MlxTrainer:
         runner: CommandRunner | None = None,
         resolver: ModelResolver | None = None,
         tokenizer_loader: TokenizerLoader | None = None,
+        loader: DatasetLoader | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         """Set the external boundaries for model training."""
@@ -132,6 +141,7 @@ class MlxTrainer:
         self._tokenizer_loader = (
             _load_tokenizer if tokenizer_loader is None else tokenizer_loader
         )
+        self._loader = load_dataset if loader is None else loader
         self._clock = _utc_now if clock is None else clock
 
     def train(self, dataset: DatasetRef, config: TrainConfig) -> TrainResult:
@@ -154,6 +164,15 @@ class MlxTrainer:
             raise TrainError(f"Cannot load training tokenizer: {location}") from error
         if not tokenizer.has_chat_template:
             raise TrainError("Training tokenizer does not have a chat template")
+        try:
+            verified = self._loader(dataset.path)
+        except DataError as error:
+            raise TrainError(str(error)) from error
+        if verified.dataset.id != dataset.id:
+            raise TrainError(
+                "Dataset identity does not match the requested dataset: "
+                f"{dataset.path}"
+            )
         dataset_digest = directory_digest(dataset.path)
         prepared = _prepare_data(dataset.path, config, tokenizer)
         runs = tuple(

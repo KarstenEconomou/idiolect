@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from idiolect.config import LoraConfig, TrainConfig, TrainDataConfig
+from idiolect.data.local import BuildResult, DataError
 from idiolect.train.mlx import MlxTrainer, TrainError, load_run
 from idiolect.types import DatasetId, DatasetRef, PersonId
 
@@ -46,6 +47,18 @@ class FakeTokenizer:
         return list(range(size))
 
 
+class FakeDatasetLoader:
+    """Return one verified synthetic dataset reference."""
+
+    def __init__(self, ref: DatasetRef) -> None:
+        """Set the verified dataset reference."""
+        self.ref = ref
+
+    def __call__(self, _path: Path) -> BuildResult:
+        """Return the fixed verified result."""
+        return BuildResult(self.ref, {})
+
+
 def test_trainer_builds_fixed_qwen_runs_without_changing_source_data(
     tmp_path: Path,
 ) -> None:
@@ -59,6 +72,7 @@ def test_trainer_builds_fixed_qwen_runs_without_changing_source_data(
         runner=runner,
         resolver=lambda _config: model,
         tokenizer_loader=lambda _path, _trust: FakeTokenizer(),
+        loader=FakeDatasetLoader(dataset),
         clock=lambda: _NOW,
     )
 
@@ -156,9 +170,46 @@ def test_trainer_rejects_rows_that_mlx_lm_would_truncate(tmp_path: Path) -> None
             runner=runner,
             resolver=lambda _config: model,
             tokenizer_loader=lambda _path, _trust: FakeTokenizer(),
+            loader=FakeDatasetLoader(dataset),
         ).train(dataset, config)
 
     assert runner.commands == []
+
+
+def test_trainer_verifies_the_dataset_before_use(tmp_path: Path) -> None:
+    """Check that training refuses a dataset that fails verification."""
+
+    def failing_loader(_path: Path) -> BuildResult:
+        raise DataError("Dataset file does not match its manifest")
+
+    model = tmp_path / "model"
+    model.mkdir()
+    with pytest.raises(TrainError, match="does not match its manifest"):
+        MlxTrainer(
+            resolver=lambda _config: model,
+            tokenizer_loader=lambda _path, _trust: FakeTokenizer(),
+            loader=failing_loader,
+        ).train(_dataset(tmp_path), _config(tmp_path))
+
+
+def test_trainer_rejects_a_mismatched_dataset_identity(tmp_path: Path) -> None:
+    """Check that the verified dataset is the requested dataset."""
+    other = DatasetRef(
+        DatasetId("b" * 64),
+        PersonId("target"),
+        tmp_path / ("b" * 64),
+        _NOW,
+    )
+    dataset = _dataset(tmp_path)
+    model = tmp_path / "model"
+    model.mkdir()
+
+    with pytest.raises(TrainError, match="does not match the requested dataset"):
+        MlxTrainer(
+            resolver=lambda _config: model,
+            tokenizer_loader=lambda _path, _trust: FakeTokenizer(),
+            loader=FakeDatasetLoader(other),
+        ).train(dataset, _config(tmp_path))
 
 
 def test_trainer_does_not_fill_an_omitted_toml_choice(tmp_path: Path) -> None:

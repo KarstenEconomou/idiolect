@@ -64,7 +64,7 @@ The principal values are:
 
 The canonical configuration uses Qwen non-thinking text. It adds `/no_think` to each prompt and an empty thinking block before each completion. This change occurs only in the private run copy. The immutable canonical dataset does not change.
 
-Before model work, the trainer loads only the recorded model tokenizer and
+Before model work, the trainer verifies the dataset manifest, split files, and digests with the same loader that evaluation and inference use. It then loads only the recorded model tokenizer and
 formats every train, validation, and test row exactly as MLX-LM will. It rejects
 a row when the full token sequence exceeds `max_seq_length` or the completion
 does not contain supervised tokens. This check is strict because MLX-LM
