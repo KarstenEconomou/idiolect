@@ -103,9 +103,16 @@ class DuckRepository:
         try:
             with duckdb.connect(str(self._path)) as connection:
                 connection.execute(_SCHEMA)
-            os.chmod(self._path, 0o600)
+            self._restrict()
         except (duckdb.Error, OSError) as error:
             raise StoreError(f"Cannot open local store: {self._path}") from error
+
+    def _restrict(self) -> None:
+        """Keep the database and its write-ahead log private."""
+        os.chmod(self._path, 0o600)
+        wal = self._path.with_name(f"{self._path.name}.wal")
+        if wal.exists():
+            os.chmod(wal, 0o600)
 
     @property
     def path(self) -> Path:
@@ -136,6 +143,7 @@ class DuckRepository:
                     elif isinstance(record, Reaction):
                         self._save_reaction(connection, record)
                 connection.commit()
+            self._restrict()
         except duckdb.Error as error:
             raise StoreError(f"Cannot save event: {event.id}") from error
         return True
@@ -186,6 +194,7 @@ class DuckRepository:
                     elif isinstance(record, Reaction):
                         self._save_reaction(connection, record)
                 connection.commit()
+            self._restrict()
         except duckdb.Error as error:
             raise StoreError(f"Cannot replace event records: {event.id}") from error
 
