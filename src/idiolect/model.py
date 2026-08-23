@@ -63,7 +63,8 @@ def resolve_model(spec: ModelSpec) -> Path:
             cache_dir=spec.cache.expanduser().resolve(),
         )
     except Exception as error:
-        raise ModelError(f"Cannot resolve model: {spec.name}") from error
+        detail = str(error).strip() or type(error).__name__
+        raise ModelError(f"Cannot resolve model {spec.name}: {detail}") from error
     return Path(path)
 
 
