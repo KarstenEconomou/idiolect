@@ -20,7 +20,6 @@ from idiolect.chat.storage import SavedChat
 from idiolect.config import GenerationConfig
 from idiolect.types import Split
 
-_METRIC_TRAILING_WIDTH = 23
 _ABBREVIATIONS = {
     "CONTEXT": "CTX",
     "EVALUATION": "EVAL",
@@ -135,7 +134,6 @@ def render_specs(
     assistant: Assistant,
     generation: GenerationConfig,
     kind: str,
-    width: int,
     trace: SavedChat | None = None,
 ) -> SpecsDocument:
     """Return one responsive model specification document."""
@@ -194,11 +192,8 @@ def render_specs(
         _field(document, key, value)
 
     _section(document, "EVALUATION")
-    if kind == "BASE" and assistant.target_name.upper() == "DIXIE":
-        _synthetic_evaluation(document, width)
-    else:
-        _field(document, "STATUS", "NOT EVALUATED")
-        _note(document, "No recorded evaluation was supplied to this registry.")
+    _field(document, "STATUS", "NOT EVALUATED")
+    _note(document, "No recorded evaluation was supplied to this registry.")
     return document
 
 
@@ -305,43 +300,3 @@ def _split_counts(assistant: Assistant) -> str:
         f"{split.value.upper()} {assistant.counts.get(split, 0):,}"
         for split in (Split.TRAIN, Split.VALID, Split.TEST)
     )
-
-
-def _synthetic_evaluation(document: SpecsDocument, width: int) -> None:
-    """Append the deterministic DIXIE base-model scorecard."""
-    _field(document, "STATUS", "SYNTHETIC // UI FIXTURE")
-    _field(document, "SUITE", "FIDELITY")
-    _field(document, "SAMPLE", "128 VALID REPLIES    3 GEN SEEDS")
-    _field(document, "MACRO MEAN NLL", 2.10)
-    _field(document, "CORPUS PERPLEXITY", 8.21)
-    _field(document, "VOICE 3-GRAM JSD", 0.118)
-    document.append_line()
-    bar_width = max(8, min(24, width - _METRIC_TRAILING_WIDTH - 1))
-    for label, value, limit in (
-        ("EMPTY OUTPUT", 0.000, 0.020),
-        ("FORMAT VIOLATION", 0.004, 0.020),
-        ("TRUNCATION", 0.013, 0.030),
-        ("MEMORIZATION", 0.005, 0.020),
-    ):
-        _metric(document, label, value, limit, bar_width)
-    _note(document, "Fixture values demonstrate the scorecard layout only.")
-
-
-def _metric(
-    document: SpecsDocument,
-    label: str,
-    value: float,
-    limit: float,
-    width: int,
-) -> None:
-    """Append one bounded evaluation metric bar."""
-    passed = value <= limit
-    filled = min(width, round(width * value / limit)) if limit else width
-    line = Text("█" * filled, style=_DESCRIPTION if passed else "red")
-    line.append("░" * (width - filled), style=_MUTED_DESCRIPTION)
-    line.append(f"  {value:>5.1%} / {limit:.1%}  ", style=_DESCRIPTION)
-    line.append(
-        "PASS" if passed else "FAIL",
-        style=_DESCRIPTION if passed else "bold red",
-    )
-    document.append_inset(Text(label, style=_FIELD_NAME), line)

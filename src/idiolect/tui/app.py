@@ -1188,7 +1188,6 @@ class ChatApp(App[None]):
             assistant,
             generation,
             kind,
-            max(24, self.size.width - 4),
             trace,
         )
         self.query_one("#specs-body", Static).update(body)

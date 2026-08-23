@@ -32,7 +32,6 @@ def test_construct_specs_show_verified_lineage_and_no_invented_evaluation(
         assistant,
         GenerationConfig(backend="mlx-lm", max_prompt_tokens=1920),
         "CONSTRUCT",
-        80,
     )
 
     assert _RUN_ID in document.plain
@@ -65,7 +64,6 @@ def test_trace_specs_add_snapshot_lineage_to_the_underlying_model(
         assistant,
         trace.generation,
         "TRACE",
-        80,
         trace,
     )
 
@@ -95,48 +93,6 @@ def test_trace_specs_add_snapshot_lineage_to_the_underlying_model(
         assert "".join(line[1:] for line in value_lines) == str(value)
 
 
-def test_dixie_fixture_bars_follow_width_and_visual_language(tmp_path: Path) -> None:
-    """Check responsive synthetic bars and the approved terminal styles."""
-    assistant = _base(tmp_path)
-
-    narrow = render_specs(assistant, GenerationConfig(), "BASE", 36)
-    wide = render_specs(assistant, GenerationConfig(), "BASE", 100)
-    narrow_bar = _bar_cells(narrow.plain, "TRUNCATION")
-    wide_bar = _bar_cells(wide.plain, "TRUNCATION")
-    console = Console()
-    heading = wide.get_style_at_offset(console, wide.plain.index("EVAL"))
-    fixture = wide.get_style_at_offset(
-        console,
-        wide.plain.index("SYNTHETIC // UI FIXTURE"),
-    )
-    model_value = wide.get_style_at_offset(
-        console,
-        wide.plain.index("example/M"),
-    )
-    bar = wide.get_style_at_offset(console, wide.plain.index("█"))
-    empty_bar = wide.get_style_at_offset(console, wide.plain.index("░"))
-    passed = wide.get_style_at_offset(console, wide.plain.index("PASS"))
-
-    assert narrow_bar == 12
-    assert wide_bar == 24
-    assert "TYPE\n BASE\n" in wide.plain
-    assert "STATUS\n SYNTHETIC // UI FIXTURE\n" in wide.plain
-    assert "TRUNCATION\n " in wide.plain
-    assert heading.bold
-    assert heading.color is not None and heading.color.number == 7
-    assert fixture.color is not None and fixture.color.number == 8
-    assert model_value.color is not None and model_value.color.number == 8
-    assert bar.color is not None and bar.color.number == 8
-    assert empty_bar.color is not None and empty_bar.color.number == 8
-    assert empty_bar.dim
-    assert passed.color is not None and passed.color.number == 8
-    for label in ("NAME", "SYSTEM PROMPT", "TRUNCATION"):
-        field_name = wide.get_style_at_offset(console, wide.plain.index(label))
-        assert field_name.color is None
-        assert not field_name.dim
-        assert not field_name.bold
-
-
 def test_specs_abbreviate_telemetry_and_align_prompt_format_blocks(
     tmp_path: Path,
 ) -> None:
@@ -149,7 +105,6 @@ def test_specs_abbreviate_telemetry_and_align_prompt_format_blocks(
             repetition_context_size=20,
         ),
         "BASE",
-        80,
     )
 
     assert "CTX MESSAGES" in document.plain
@@ -184,7 +139,7 @@ def test_prompt_blocks_drop_trailing_system_blank(
         system_prompt="First line.\n\nSecond line.\n",
     )
 
-    document = render_specs(assistant, GenerationConfig(), "BASE", 28)
+    document = render_specs(assistant, GenerationConfig(), "BASE")
     system_block = document.plain.split("SYSTEM PROMPT\n", 1)[1].split(
         "PROMPT ROLE",
         1,
@@ -209,13 +164,6 @@ def test_specs_scrollbar_uses_a_half_cell_thumb() -> None:
         and segment.style.meta.get("@mouse.down") == "grab"
         for segment in thumb
     )
-
-
-def _bar_cells(document: str, label: str) -> int:
-    lines = document.splitlines()
-    label_index = lines.index(label)
-    line = lines[label_index + 1]
-    return line.count("█") + line.count("░")
 
 
 def _base(
