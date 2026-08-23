@@ -36,8 +36,7 @@ from idiolect.inference.local import (
     recorded_target,
 )
 from idiolect.inference.mlx import MlxBackend
-from idiolect.ingest import harvest
-from idiolect.ingest.harvest import reindex
+from idiolect.ingest.harvest import harvest, reindex
 from idiolect.ingest.signal import (
     SignalError,
     SignalFileSource,
@@ -191,6 +190,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             state = "complete" if result.complete else "incomplete"
             print(f"panel={result.id} state={state} path={result.path}")
             return 0
+        if arguments.command != "signal":
+            parser.error(f"Unhandled command: {arguments.command}")
         if arguments.signal_command == "groups":
             source = SignalSource(config.signal)
             for group in source.groups():
@@ -223,13 +224,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             source = SignalFileSource(arguments.path)
         else:
             timeout = -1 if arguments.follow else arguments.timeout
-            max_messages = (
-                arguments.max_messages
-                if arguments.max_messages is not None
-                else None
-                if arguments.follow
-                else config.signal.max_messages
-            )
+            if arguments.max_messages is not None:
+                max_messages: int | None = arguments.max_messages
+            elif arguments.follow:
+                max_messages = None
+            else:
+                max_messages = config.signal.max_messages
             signal = replace(
                 config.signal,
                 timeout=config.signal.timeout if timeout is None else timeout,
