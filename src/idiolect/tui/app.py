@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import threading
 import time
+import traceback
 from collections.abc import Callable, Iterable
 from typing import Any, ClassVar, cast
 
@@ -268,6 +270,7 @@ class ChatApp(App[None]):
         self._trace_details_expanded = True
         self._generating = False
         self._loading = False
+        self._stream_lock = threading.Lock()
         self._streaming_text = ""
         self._command_matches: tuple[str, ...] = ()
         self._command_index = 0
@@ -644,7 +647,7 @@ class ChatApp(App[None]):
 
     def _start_generation(self, attempt: int) -> None:
         self._generating = True
-        self._streaming_text = ""
+        self._stream_reset()
         self._set_status("generating")
         self._update_command_menu()
         self._generate_thread(attempt)
@@ -654,20 +657,37 @@ class ChatApp(App[None]):
         last_render = 0.0
         try:
             for delta in self.runtime.generate(attempt, self._report_prefill):
-                if not self._streaming_text:
+                if self._stream_append(delta):
                     self.call_from_thread(self._set_status, "generating")
-                self._streaming_text += delta
                 now = time.monotonic()
                 if now - last_render >= 1 / 12:
                     self.call_from_thread(self._render_transcript, True)
                     last_render = now
             self.call_from_thread(self._generation_done)
         except Exception as error:  # noqa: BLE001
+            self.log(traceback.format_exc())
             self.call_from_thread(self._generation_failed, str(error))
+
+    def _stream_append(self, delta: str) -> bool:
+        """Append one delta and return true when the reply just started."""
+        with self._stream_lock:
+            empty = not self._streaming_text
+            self._streaming_text += delta
+        return empty
+
+    def _stream_value(self) -> str:
+        """Return one snapshot of the streaming reply text."""
+        with self._stream_lock:
+            return self._streaming_text
+
+    def _stream_reset(self) -> None:
+        """Clear the streaming reply buffer."""
+        with self._stream_lock:
+            self._streaming_text = ""
 
     def _generation_done(self) -> None:
         self._generating = False
-        self._streaming_text = ""
+        self._stream_reset()
         self._render_transcript()
         self._update_status()
         self._update_footer()
@@ -704,7 +724,7 @@ class ChatApp(App[None]):
             name = "USER" if turn.role == "user" else self._chat_name(session)
             turns.append((name, turn.content))
         if partial and self._generating:
-            turns.append((self._chat_name(session), self._streaming_text or "…"))
+            turns.append((self._chat_name(session), self._stream_value() or "…"))
         transcript.set_turns(turns)
         if follow_latest:
             self.call_after_refresh(self._scroll_transcript_end)
@@ -955,6 +975,7 @@ class ChatApp(App[None]):
         try:
             self.runtime.ensure_worker()
         except Exception as error:  # noqa: BLE001
+            self.log(traceback.format_exc())
             self._load_failed(str(error))
             return False
         return True
@@ -964,6 +985,7 @@ class ChatApp(App[None]):
         try:
             self.runtime.select(assistant)
         except Exception as error:  # noqa: BLE001
+            self.log(traceback.format_exc())
             self.call_from_thread(self._load_failed, str(error))
             return
         self.call_from_thread(self._load_done)
@@ -976,6 +998,7 @@ class ChatApp(App[None]):
         try:
             self.runtime.attach(session)
         except Exception as error:  # noqa: BLE001
+            self.log(traceback.format_exc())
             self.call_from_thread(self._load_failed, str(error))
             return
         self.call_from_thread(self._load_done)
