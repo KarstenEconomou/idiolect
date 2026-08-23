@@ -165,7 +165,7 @@ def _state(context: int = 4, prompt_limit: int = 500) -> ChatSession:
         completion_prefix="<think>\n\n</think>\n\n",
     )
     assistant = Assistant(
-        "IDIOLECT // DIXIE@BASE [Qwen]",
+        "IDIOLECT // DIXIE::BASE [Qwen]",
         "DIXIE",
         "Qwen",
         None,

@@ -48,6 +48,11 @@ class Assistant:
         )
 
     @property
+    def target_run(self) -> str:
+        """Return the display target and short run identity."""
+        return _target_run(self.target_name, self.run_id)
+
+    @property
     def data(self) -> TrainDataConfig:
         """Return the model prompt policy for this assistant."""
         if self.run is not None:
@@ -122,9 +127,16 @@ def model_basename(value: str) -> str:
 
 def canonical_name(target_name: str, run_id: str, model_name: str) -> str:
     """Return one canonical local assistant name."""
+    target_run = _target_run(target_name, run_id)
     return (
-        f"IDIOLECT // {target_name.upper()}@{run_id[:8]} [{model_basename(model_name)}]"
+        f"IDIOLECT // {target_run} [{model_basename(model_name)}]"
     )
+
+
+def _target_run(target_name: str, run_id: str | None) -> str:
+    """Return the compact target and run identity used by chat views."""
+    run = "BASE" if run_id is None else run_id[:8]
+    return f"{target_name.upper()}::{run}"
 
 
 def default_assistant(train: TrainConfig, chat: ChatConfig) -> Assistant:
@@ -139,7 +151,7 @@ def default_assistant(train: TrainConfig, chat: ChatConfig) -> Assistant:
     data = replace(train.data, system_prompt=chat.default_system_prompt)
     basename = model_basename(model.name)
     return Assistant(
-        f"IDIOLECT // {chat.default_name.upper()}@BASE [{basename}]",
+        f"IDIOLECT // {_target_run(chat.default_name, None)} [{basename}]",
         chat.default_name.upper(),
         basename,
         None,
@@ -241,4 +253,3 @@ def _recorded_dataset_id(path: Path) -> str | None:
     except OSError, TypeError, ValueError, json.JSONDecodeError:
         return None
     return value if isinstance(value, str) and is_digest(value) else None
-

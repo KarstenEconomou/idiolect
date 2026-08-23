@@ -20,10 +20,10 @@ These instructions apply to `src/idiolect/chat/`. Read
   grammar. Display the local user as `USER`, but serialize the configured
   participant name in prompts. Do not change recorded adapter target-name casing
   inside model prompts.
-- Format adapters as `IDIOLECT // NAME@run [MODEL]`, where `NAME` is the uppercase
+- Format adapters as `IDIOLECT // NAME::run [BASE]`, where `NAME` is the uppercase
   display of the recorded target name, `run` is a unique eight-character run
-  prefix, and `MODEL` is the last model repository or path component. Format the
-  configured base as `IDIOLECT // NAME@BASE [MODEL]`.
+  prefix, and `BASE` is the last model repository or path component. Format the
+  configured base as `IDIOLECT // NAME::BASE [BASE]`.
 - Use uppercase `NAME` for assistant transcript labels. Use the full canonical
   identity in discovery, headers, snapshots, and every non-transcript view.
 - Validate chat policy only at the chat boundary so other stages can use a

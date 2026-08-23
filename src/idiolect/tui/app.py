@@ -1789,7 +1789,7 @@ class ChatApp(App[None]):
         saved_chats = () if self.store is None else self.store.leaves()
         layout = CatalogLayout.for_terminal(self.size.width)
         self.query_one("#catalog-columns", Static).update(
-            layout.line("MODEL", "TYPE", "ENTRY")
+            layout.line("CONSTRUCT", "BASE", "TYPE", "ENTRY")
         )
         for index, row in enumerate(self.assistants):
             if row.available and row.assistant is not None:
@@ -1799,13 +1799,15 @@ class ChatApp(App[None]):
                 else:
                     kind = "CONSTRUCT"
                 text = layout.text(
-                    row.label,
+                    assistant.target_run,
+                    assistant.model_basename,
                     kind,
                     "READY",
                 )
             else:
                 text = layout.text(
                     row.label,
+                    "",
                     "—",
                     "FAULT",
                     failed=True,
@@ -1815,7 +1817,8 @@ class ChatApp(App[None]):
             options.append(Option(text, id=key, disabled=not row.available))
         for saved in saved_chats:
             text = layout.text(
-                saved.assistant.name,
+                saved.assistant.target_run,
+                saved.assistant.model_basename,
                 "TRACE",
                 "READY",
                 trace_name=(
@@ -1944,16 +1947,24 @@ class ChatApp(App[None]):
                     assistant = row.assistant
                     kind = "BASE" if assistant.run is None else "CONSTRUCT"
                     prompt = layout.text(
-                        row.label,
+                        assistant.target_run,
+                        assistant.model_basename,
                         kind,
                         "READY",
                         selected=option.id == selected_key,
                     )
                 else:
-                    prompt = layout.text(row.label, "—", "FAULT", failed=True)
+                    prompt = layout.text(
+                        row.label,
+                        "",
+                        "—",
+                        "FAULT",
+                        failed=True,
+                    )
             elif isinstance(row, SavedChat):
                 prompt = layout.text(
-                    row.assistant.name,
+                    row.assistant.target_run,
+                    row.assistant.model_basename,
                     "TRACE",
                     "READY",
                     selected=option.id == selected_key,

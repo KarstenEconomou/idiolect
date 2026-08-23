@@ -75,6 +75,9 @@ def test_registry_opens_highlighted_assistant_from_keyboard(tmp_path) -> None:
                 "Connect to a BASE, CONSTRUCT, or TRACE."
             )
             assert app.query_one("#catalog-columns", Static).styles.color.ansi == 7
+            columns = str(app.query_one("#catalog-columns", Static).content)
+            assert "CONSTRUCT" in columns
+            assert "BASE" in columns
             assert "TYPE" in str(app.query_one("#catalog-columns", Static).content)
             assert len(app.query("#catalog-summary")) == 0
             assert len(app.query("#search")) == 0
@@ -87,6 +90,8 @@ def test_registry_opens_highlighted_assistant_from_keyboard(tmp_path) -> None:
             assert chooser.has_focus
             prompt = chooser.get_option_at_index(1).prompt
             assert isinstance(prompt, Text)
+            assert "DIXIE::BASE" in prompt.plain
+            assert "M" in prompt.plain
             assert "READY" in prompt.plain
             assert str(app.query_one("#catalog-hints", Static).content) == (
                 "↑↓ MOVE    ENTER CONNECT    S SPECS    CTRL+C QUIT"
@@ -264,7 +269,7 @@ def test_specs_side_arrows_cycle_available_registry_rows(tmp_path) -> None:
     assert first_model is not None
     second = replace(
         first,
-        name="IDIOLECT // MARGO@BASE [N]",
+        name="IDIOLECT // MARGO::BASE [N]",
         target_name="MARGO",
         model_basename="N",
         base_model=replace(first_model, name="example/N"),
@@ -503,7 +508,9 @@ def test_registry_expands_and_collapses_trace_names(tmp_path) -> None:
             chooser = app.query_one("#chooser", OptionList)
             trace = chooser.get_option_at_index(1).prompt
             assert isinstance(trace, Text)
-            assert trace.plain.startswith(f"{assistant.name} Night session")
+            assert trace.plain.startswith(
+                f"{assistant.target_run} Night session"
+            )
             assert "\n" not in trace.plain
             second_trace = chooser.get_option_at_index(2).prompt
             assert isinstance(second_trace, Text)
@@ -634,7 +641,7 @@ def test_registry_confirms_trace_erasure(tmp_path) -> None:
             assert isinstance(hidden_subject, Text)
             assert "Night session" not in hidden_subject.plain
             assert "\n" not in hidden_subject.plain
-            assert hidden_subject.plain.startswith(saved.assistant.name)
+            assert hidden_subject.plain.startswith(saved.assistant.target_run)
             assert hidden_subject.plain.endswith("READY")
             app._trace_blink_visible = True
             app._refresh_catalog_prompts(f"saved-{saved.id}")
@@ -783,7 +790,7 @@ def test_transcript_formats_markdown_and_remains_scrollable(tmp_path) -> None:
                 for segment in segments
             )
             assert str(app.query_one("#identity", Static).content) == (
-                "IDIOLECT // DIXIE@BASE [M]"
+                "IDIOLECT // DIXIE::BASE [M]"
             )
             assert str(app.query_one("#footer", Static).content) == (
                 "CTX 500/1,000 (50%)    GEN 64 TOK @ 12.3 TOK/S"
@@ -2094,7 +2101,7 @@ class RegistryStore:
 
 def _assistant() -> Assistant:
     return Assistant(
-        name="IDIOLECT // DIXIE@BASE [M]",
+        name="IDIOLECT // DIXIE::BASE [M]",
         target_name="DIXIE",
         model_basename="M",
         run=None,

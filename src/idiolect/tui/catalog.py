@@ -15,9 +15,15 @@ _UNAVAILABLE = Style(color="bright_black", dim=True, bold=False)
 class CatalogLayout:
     """Keep the visible registry column widths."""
 
-    model: int
+    target_run: int
+    base: int
     kind: int
     status: int
+
+    @property
+    def model(self) -> int:
+        """Return the primary target/run width for compatibility."""
+        return self.target_run
 
     @classmethod
     def for_terminal(cls, terminal_width: int) -> CatalogLayout:
@@ -25,19 +31,44 @@ class CatalogLayout:
         content_width = max(24, terminal_width - 4)
         status_width = 5
         kind_width = (16 if content_width >= 100 else 10) if content_width >= 70 else 0
-        visible_separators = sum(width > 0 for width in (kind_width, status_width))
-        model_width = max(
+        base_width = (
+            24
+            if content_width >= 100
+            else 18
+            if content_width >= 70
+            else 12
+            if content_width >= 50
+            else 0
+        )
+        visible_separators = sum(
+            width > 0 for width in (base_width, kind_width, status_width)
+        )
+        target_run_width = max(
             8,
             content_width
+            - base_width
             - kind_width
             - status_width
             - visible_separators,
         )
-        return cls(model_width, kind_width, status_width)
+        return cls(target_run_width, base_width, kind_width, status_width)
 
-    def line(self, model: str, kind: str, status: str) -> str:
+    def line(
+        self,
+        target_run: str,
+        base: str,
+        kind: str,
+        status: str | None = None,
+    ) -> str:
         """Return one plain registry line."""
-        values = [set_cell_size(model, self.model)]
+        legacy = status is None
+        if legacy:
+            status = kind
+            kind = base
+            base = ""
+        values = [set_cell_size(target_run, self.target_run)]
+        if self.base and not legacy:
+            values.append(set_cell_size(base, self.base))
         if self.kind:
             values.append(set_cell_size(kind, self.kind))
         values.append(set_cell_size(status, self.status))
@@ -45,9 +76,10 @@ class CatalogLayout:
 
     def text(
         self,
-        model: str,
+        target_run: str,
+        base: str,
         kind: str,
-        status: str,
+        status: str | None = None,
         *,
         failed: bool = False,
         selected: bool = False,
@@ -56,6 +88,11 @@ class CatalogLayout:
         trace_visible: bool = True,
     ) -> Text:
         """Return one styled registry entry and optional inline trace name."""
+        legacy = status is None
+        if legacy:
+            status = kind
+            kind = base
+            base = ""
         description_style = (
             _UNAVAILABLE
             if failed
@@ -66,13 +103,19 @@ class CatalogLayout:
         trace_style = (
             _SELECTED_DESCRIPTION if selected or trace_active else _DESCRIPTION
         )
-        value = self._model_text(
-            model,
+        value = self._target_run_text(
+            target_run,
             trace_name,
             trace_visible=trace_visible,
             model_style=_UNAVAILABLE if failed else None,
             trace_style=trace_style,
         )
+        if self.base and not legacy:
+            value.append(" ", style=description_style)
+            value.append(
+                set_cell_size(base, self.base),
+                style=description_style,
+            )
         if self.kind:
             value.append(" ", style=description_style)
             value.append(
@@ -86,29 +129,29 @@ class CatalogLayout:
         )
         return value
 
-    def _model_text(
+    def _target_run_text(
         self,
-        model: str,
+        target_run: str,
         trace_name: str | None,
         *,
         trace_visible: bool,
         model_style: Style | None,
         trace_style: Style,
     ) -> Text:
-        """Return the fixed-width MODEL cell with optional TRACE metadata."""
-        model_width = cell_len(model)
-        if trace_name is None or model_width >= self.model - 1:
-            text = set_cell_size(model, self.model)
+        """Return the fixed-width target/run cell with optional TRACE metadata."""
+        target_run_width = cell_len(target_run)
+        if trace_name is None or target_run_width >= self.target_run - 1:
+            text = set_cell_size(target_run, self.target_run)
             return (
                 Text(text)
                 if model_style is None
                 else Text(text, style=model_style)
             )
-        trace_width = self.model - model_width - 1
+        trace_width = self.target_run - target_run_width - 1
         value = (
-            Text(model)
+            Text(target_run)
             if model_style is None
-            else Text(model, style=model_style)
+            else Text(target_run, style=model_style)
         )
         value.append(" ", style=trace_style)
         visible_name = trace_name if trace_visible else ""

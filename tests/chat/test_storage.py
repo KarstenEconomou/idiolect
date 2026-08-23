@@ -231,7 +231,7 @@ def _state(tmp_path):
         {},
     )
     assistant = Assistant(
-        "IDIOLECT // DIXIE@aaaaaaaa [Qwen3-14B-4bit]",
+        "IDIOLECT // DIXIE::aaaaaaaa [Qwen3-14B-4bit]",
         "DIXIE",
         "Qwen3-14B-4bit",
         run,
@@ -250,7 +250,7 @@ def _base_state(tmp_path):
         completion_role="assistant",
     )
     assistant = Assistant(
-        "IDIOLECT // DIXIE@BASE [Qwen3-14B-4bit]",
+        "IDIOLECT // DIXIE::BASE [Qwen3-14B-4bit]",
         "DIXIE",
         "Qwen3-14B-4bit",
         None,

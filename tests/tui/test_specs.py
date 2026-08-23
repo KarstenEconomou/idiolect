@@ -37,6 +37,10 @@ def test_construct_specs_show_verified_lineage_and_no_invented_evaluation(
     assert _RUN_ID in document.plain
     assert _DATASET_ID in document.plain
     assert _ADAPTER_DIGEST in document.plain
+    assert "CONSTRUCT" in document.plain
+    assert "DIXIE::aaaaaaaa" in document.plain
+    assert "CONSTRUCT\n DIXIE::aaaaaaaa" in document.plain
+    assert "BASE" in document.plain
     assert "TRAIN 90    VALID 10    TEST 5" in document.plain
     assert "LORA RANK" in document.plain
     assert "NOT EVALUATED" in document.plain
@@ -172,7 +176,7 @@ def _base(
     system_prompt: str = "First line.\n\nSecond line.",
 ) -> Assistant:
     return Assistant(
-        "IDIOLECT // DIXIE@BASE [M]",
+        "IDIOLECT // DIXIE::BASE [M]",
         "DIXIE",
         "M",
         None,
@@ -226,7 +230,7 @@ def _construct(tmp_path: Path) -> Assistant:
         {Split.TRAIN: 90, Split.VALID: 10, Split.TEST: 5},
     )
     return Assistant(
-        "IDIOLECT // DIXIE@aaaaaaaa [M]",
+        "IDIOLECT // DIXIE::aaaaaaaa [M]",
         "DIXIE",
         "M",
         run,

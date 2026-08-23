@@ -19,7 +19,7 @@ def test_assistant_name_uses_requested_identity_and_final_model_component() -> N
     assert model_basename("mlx-community/Qwen3-14B-4bit") == "Qwen3-14B-4bit"
     assert model_basename("/models/local-model/") == "local-model"
     assert canonical_name("target", "7f3a91c2" + "0" * 56, "org/Qwen") == (
-        "IDIOLECT // TARGET@7f3a91c2 [Qwen]"
+        "IDIOLECT // TARGET::7f3a91c2 [Qwen]"
     )
 
 
@@ -43,7 +43,7 @@ def test_default_assistant_uses_configured_base_and_system_persona() -> None:
         ),
     )
 
-    assert assistant.name == "IDIOLECT // DIXIE@BASE [Qwen3-14B-4bit]"
+    assert assistant.name == "IDIOLECT // DIXIE::BASE [Qwen3-14B-4bit]"
     assert assistant.run is None
     assert assistant.dataset is None
     assert assistant.data.system_prompt == "Use terse technical language."
@@ -66,7 +66,7 @@ def test_discovery_disables_every_colliding_short_run_id(tmp_path, monkeypatch) 
 
     def fake_load(run_path, _dataset_path):
         assistant = SimpleNamespace(
-            name=f"IDIOLECT // K@{run_path.name[:8]} [M]",
+            name=f"IDIOLECT // K::{run_path.name[:8]} [M]",
             run_id=run_path.name,
             dataset_id=dataset_id,
             run=SimpleNamespace(ref=SimpleNamespace(id=run_path.name)),

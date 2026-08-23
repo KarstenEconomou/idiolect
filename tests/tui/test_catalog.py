@@ -8,13 +8,21 @@ from idiolect.tui.catalog import CatalogLayout
 
 def test_catalog_columns_follow_terminal_width() -> None:
     """Check the fields that fit at each supported width."""
-    narrow = CatalogLayout.for_terminal(45).line("MODEL", "TYPE", "ENTRY")
-    medium = CatalogLayout.for_terminal(62).line("MODEL", "TYPE", "ENTRY")
-    wide = CatalogLayout.for_terminal(100).line("MODEL", "TYPE", "ENTRY")
+    narrow = CatalogLayout.for_terminal(45).line(
+        "CONSTRUCT", "BASE", "TYPE", "ENTRY"
+    )
+    medium = CatalogLayout.for_terminal(62).line(
+        "CONSTRUCT", "BASE", "TYPE", "ENTRY"
+    )
+    wide = CatalogLayout.for_terminal(100).line(
+        "CONSTRUCT", "BASE", "TYPE", "ENTRY"
+    )
 
     assert "TYPE" not in narrow
     assert "TYPE" not in medium
     assert "TYPE" in wide
+    assert "BASE" not in narrow
+    assert "BASE" in medium
     assert all("ENTRY" in line for line in (narrow, medium, wide))
 
 
@@ -22,11 +30,11 @@ def test_catalog_row_has_a_stable_cell_width_for_unicode_names() -> None:
     """Check terminal-cell alignment for a non-ASCII assistant name."""
     layout = CatalogLayout.for_terminal(80)
 
-    row = layout.text("IDIOLECT // 模型@BASE [LOCAL]", "BASE", "READY")
+    row = layout.text("模型::BASE", "LOCAL", "BASE", "READY")
 
     assert cell_len(row.plain) == sum(
-        (layout.model, layout.kind, layout.status)
-    ) + 2
+        (layout.target_run, layout.base, layout.kind, layout.status)
+    ) + 3
     assert row.plain.rstrip().endswith("READY")
 
 
@@ -35,7 +43,7 @@ def test_catalog_status_labels_fill_the_right_edge() -> None:
     layout = CatalogLayout.for_terminal(80)
 
     rows = {
-        status: layout.text("MODEL", "TYPE", status).plain
+        status: layout.text("TARGET::RUN", "BASE", "TYPE", status).plain
         for status in ("READY", "FAULT")
     }
 
@@ -49,11 +57,16 @@ def test_catalog_metadata_columns_leave_room_for_values() -> None:
     """Check registry metadata columns have deliberate breathing room."""
     layout = CatalogLayout.for_terminal(80)
 
-    assert (layout.model, layout.kind, layout.status) == (59, 10, 5)
+    assert (layout.target_run, layout.base, layout.kind, layout.status) == (
+        40,
+        18,
+        10,
+        5,
+    )
 
-    line = layout.line("MODEL", "CONSTRUCT", "ENTRY")
-    kind_gap = line.index("ENTRY") - (line.index("CONSTRUCT") + len("CONSTRUCT"))
-    assert kind_gap == 2
+    line = layout.line("TARGET::RUN", "QWEN", "CONSTRUCT", "ENTRY")
+    base_gap = line.index("CONSTRUCT") - (line.index("QWEN") + len("QWEN"))
+    assert base_gap == 15
 
 
 def test_catalog_type_labels_identify_entry_lineage() -> None:
@@ -61,7 +74,7 @@ def test_catalog_type_labels_identify_entry_lineage() -> None:
     layout = CatalogLayout.for_terminal(80)
 
     rows = {
-        kind: layout.text("MODEL", kind, "READY").plain
+        kind: layout.text("TARGET::RUN", "BASE", kind, "READY").plain
         for kind in ("BASE", "CONSTRUCT", "TRACE")
     }
 
@@ -71,8 +84,10 @@ def test_catalog_type_labels_identify_entry_lineage() -> None:
 def test_catalog_type_and_entry_follow_description_selection_style() -> None:
     """Check TYPE and ENTRY use the same slash-description styling."""
     layout = CatalogLayout.for_terminal(80)
-    unselected = layout.text("MODEL", "BASE", "READY")
-    selected = layout.text("MODEL", "BASE", "READY", selected=True)
+    unselected = layout.text("TARGET::RUN", "BASE", "BASE", "READY")
+    selected = layout.text(
+        "TARGET::RUN", "BASE", "BASE", "READY", selected=True
+    )
     console = Console()
 
     type_style = unselected.get_style_at_offset(
@@ -102,6 +117,7 @@ def test_catalog_fault_matches_an_unavailable_slash_command() -> None:
     """Check every unavailable row field is muted and dimmed."""
     row = CatalogLayout.for_terminal(80).text(
         "Unavailable model",
+        "",
         "—",
         "FAULT",
         failed=True,
@@ -119,7 +135,8 @@ def test_catalog_trace_places_metadata_name_after_model() -> None:
     """Check inline trace metadata and its selected description style."""
     layout = CatalogLayout.for_terminal(80)
     row = layout.text(
-        "IDIOLECT // DIXIE@BASE [M]",
+        "DIXIE::BASE",
+        "M",
         "TRACE",
         "READY",
         trace_name="Night session",
@@ -129,13 +146,14 @@ def test_catalog_trace_places_metadata_name_after_model() -> None:
     )
 
     assert "\n" not in row.plain
-    assert row.plain.startswith("IDIOLECT // DIXIE@BASE [M] Night session")
+    assert row.plain.startswith("DIXIE::BASE Night session")
     assert row.plain.index("Night session") < row.plain.index("TRACE")
     assert trace_style.color is not None
     assert trace_style.color.number == 8
 
     selected = layout.text(
-        "IDIOLECT // DIXIE@BASE [M]",
+        "DIXIE::BASE",
+        "M",
         "TRACE",
         "READY",
         selected=True,
@@ -151,15 +169,16 @@ def test_catalog_trace_places_metadata_name_after_model() -> None:
 def test_catalog_ellipsizes_only_the_inline_trace_name() -> None:
     """Check a long trace name yields before the canonical model identity."""
     layout = CatalogLayout.for_terminal(80)
-    model = "IDIOLECT // DIXIE@BASE [M]"
+    model = "DIXIE::BASE"
     row = layout.text(
         model,
+        "M",
         "TRACE",
         "READY",
         trace_name="A trace name that is much too long for the remaining model column",
     )
 
-    model_cell = row.plain[: layout.model]
+    model_cell = row.plain[: layout.target_run]
     assert model_cell.startswith(f"{model} ")
     assert model_cell.endswith("…")
     assert "much too long" not in model_cell

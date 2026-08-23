@@ -146,7 +146,7 @@ class ReadyWorker:
 
 def _assistant() -> Assistant:
     return Assistant(
-        "IDIOLECT // DIXIE@BASE [model]",
+        "IDIOLECT // DIXIE::BASE [model]",
         "DIXIE",
         "model",
         None,

@@ -373,7 +373,7 @@ default_system_prompt = "Speak with terse technical precision."
     assert len(seen) == 1
     assistants = seen[0][1]["assistants"]
     assert len(assistants) == 1
-    assert assistants[0].label == "IDIOLECT // DIXIE@BASE [Qwen3-8B-4bit]"
+    assert assistants[0].label == "IDIOLECT // DIXIE::BASE [Qwen3-8B-4bit]"
     assert assistants[0].assistant.run is None
     assert output.out == ""
     assert output.err == ""

@@ -164,7 +164,7 @@ just chat run RUN_ID DATASET_ID
 just chat resume CHAT_ID
 ```
 
-In chat, type `/` for control commands or a leading `@` to reference one of
+In chat, the active model is styled as `IDIOLECT // TARGET::RUN [BASE]`. Type `/` for control commands or a leading `@` to reference one of
 the numbered stored message bubbles. Continue typing the reference identity
 after `@` to filter the list; `/ ` and `@ ` also open their menus before existing
 prompt text. Enter activates a selected slash command; Tab does not autocomplete.

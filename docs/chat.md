@@ -40,13 +40,16 @@ just setup-chat
 just chat
 ```
 
-The first landing row is `IDIOLECT // DIXIE@BASE [MODEL]`. It is available
+The first landing row is `IDIOLECT // DIXIE::BASE [BASE]`. It is available
 without a run or dataset and uses the configured system persona. Selecting it
 resolves and verifies the base model inside the worker. Landing discovery itself
 does not download a model.
 
 The landing screen displays the base persona, verified adapters, and saved
-snapshots in `REGISTRY`. It has no search field or pointer activation.
+snapshots in `REGISTRY`. It has no search field or pointer activation. The
+primary registry column is `CONSTRUCT` and contains the `TARGET::RUN` identity;
+the `BASE` column immediately to its right identifies the base model used by
+each entry. TYPE and ENTRY remain the right-hand metadata columns.
 The blue watermark keeps its mark and product name bold and gives its tagline a
 dim, non-bold treatment. Chat and SPECS identity headers carry the matching
 `· ·` brand motif at their right edge with one blank cell completing the face.
@@ -75,9 +78,12 @@ and the cycle wraps to green after cyan. This branding control is intentionally
 omitted from the navigation hints.
 
 Press S on any `READY` row to open `SPECS` without resolving or loading the
-model. The scrollable page shows the complete verified model identity, source,
+model. The scrollable page shows the complete verified model identity in
+`IDIOLECT // TARGET::RUN [BASE]` form, source,
 revision, digests, prompt and generation policy, and available run, dataset, and
 TRACE lineage. It uses the compact `CTX`, `TOK`, `REP`, `GEN`, and `EVAL` labels.
+Its IDENTITY section repeats the `CONSTRUCT` and `BASE` values used by the
+registry columns; the CONSTRUCT value is the `TARGET::RUN` identity.
 Field names use the command menu's primary text, while values use its
 metadata-gray description treatment. Section headings remain white and bold.
 Every value, including evaluation bars, uses the same one-cell inset beneath its
@@ -94,7 +100,7 @@ not measurements. CONSTRUCT and TRACE pages show `NOT EVALUATED` because chat
 does not scan or infer results from private evaluation artifacts.
 
 Verified run/dataset pairs and saved lineage leaves follow the default row. Each
-adapter has the identity `IDIOLECT // NAME@run [MODEL]`. `run` is the first eight
+Each adapter has the identity `IDIOLECT // NAME::run [BASE]`. `run` is the first eight
 characters of the full run ID. `NAME` is the uppercase display of the recorded
 target name; adapter prompts keep the recorded target name unchanged. Both rows
 are unavailable if that prefix collides.

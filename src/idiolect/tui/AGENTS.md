@@ -49,19 +49,21 @@ TUI tests.
 - Present assistants and saved snapshots in `REGISTRY`, a vertical,
   keyboard-only table without search or pointer activation. Start on the first
   available row, skip unavailable rows, and select with arrows and Enter. Keep
-  row identity primary. Treat TYPE and ENTRY like slash-command descriptions:
-  use metadata gray while idle and the dimmed selection accent while selected.
+  `TARGET::RUN` as the primary row identity and show the `BASE` model in the
+  column immediately to its right. Treat BASE, TYPE, and ENTRY like
+  slash-command descriptions: use metadata gray while idle and the dimmed
+  selection accent while selected.
   Treat unavailable rows like unavailable `/save`: metadata gray and dimmed.
 - Let `T` in REGISTRY cycle the interface accent through ANSI green, yellow,
   blue, magenta-purple, and cyan. Use green by default, advance to yellow on the
   first press, wrap to green after cyan, and do not advertise this branding
   control in the navigation hints.
-- For a `TRACE`, keep the canonical model identity first and show its trace name
-  to the right in the remaining MODEL width. Ellipsize only the trace name when
-  it does not fit. Expand trace names by default. Let Space toggle all trace
-  names whenever the registry contains a TRACE. Treat an expanded trace name
-  like TYPE and ENTRY while its TRACE is highlighted: use the selection accent
-  with dim styling.
+- For a `TRACE`, keep its `TARGET::RUN` identity first and show its trace name
+  to the right in the remaining primary-column width. Ellipsize only the trace
+  name when it does not fit. Expand trace names by default. Let Space toggle
+  all trace names whenever the registry contains a TRACE. Treat an expanded
+  trace name like BASE, TYPE, and ENTRY while its TRACE is highlighted: use the
+  selection accent with dim styling.
 - Keep slash commands in a vertical menu above the composer. Show at most three
   rows, with command names in a fixed-width column and descriptions in the
   remaining width. Keep composer focus. Wrap enabled commands with arrow keys;
