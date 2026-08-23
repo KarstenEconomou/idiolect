@@ -3,7 +3,6 @@
 import hashlib
 import json
 import math
-import os
 import shutil
 import tempfile
 from collections.abc import Callable, Mapping, Sequence
@@ -12,6 +11,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TypeGuard
 
+from idiolect.artifact import (
+    canonical_json_bytes,
+    is_digest,
+    write_json,
+    write_jsonl,
+)
 from idiolect.config import InferenceConfig, TrainConfig
 from idiolect.data.local import load_dataset
 from idiolect.inference.base import (
@@ -120,7 +125,7 @@ class LocalInferencer:
         try:
             rows_value = [_prediction_value(value) for value in predictions]
             prediction_path = temporary / "pred.jsonl"
-            _write_jsonl(prediction_path, rows_value)
+            write_jsonl(prediction_path, rows_value)
             counts = {
                 "examples": len(selected),
                 "predictions": len(predictions),
@@ -134,7 +139,7 @@ class LocalInferencer:
                 "files": files,
             }
             inference_id = InferenceId(
-                hashlib.sha256(_json_bytes(identity)).hexdigest()
+                hashlib.sha256(canonical_json_bytes(identity)).hexdigest()
             )
             destination = output / str(inference_id)
             manifest = {
@@ -142,7 +147,7 @@ class LocalInferencer:
                 "created_at": created_at.isoformat(),
                 **identity,
             }
-            _write_json(temporary / "manifest.json", manifest)
+            write_json(temporary / "manifest.json", manifest)
             temporary.rename(destination)
         except KeyboardInterrupt:
             shutil.rmtree(temporary, ignore_errors=True)
@@ -244,7 +249,7 @@ def configured_target(
         "trust_remote_code": config.trust_remote_code,
         "data": asdict(config.data),
     }
-    target_id = hashlib.sha256(_json_bytes(value)).hexdigest()
+    target_id = hashlib.sha256(canonical_json_bytes(value)).hexdigest()
     return ModelTarget(
         target_id,
         TargetMode.CONFIG_BASE,
@@ -308,7 +313,7 @@ class RecordedTargetResolver:
 def load_inference(path: Path) -> InferenceRef:
     """Load and verify one immutable inference artifact."""
     name = path.name
-    if not _is_digest(name):
+    if not is_digest(name):
         raise InferenceError(f"Inference path does not contain an ID: {path}")
     return _load_artifact(path, InferenceId(name))
 
@@ -390,7 +395,7 @@ def _dataset_rows(
             "index": index,
             "prompt_digest": hashlib.sha256(prompt.encode()).hexdigest(),
         }
-        example_id = hashlib.sha256(_json_bytes(identity)).hexdigest()
+        example_id = hashlib.sha256(canonical_json_bytes(identity)).hexdigest()
         result.append((index, example_id, prompt))
     if not result:
         raise InferenceError(f"Dataset split is empty: {split.value}")
@@ -467,7 +472,7 @@ def _find_artifact(
     except OSError as error:
         raise InferenceError(f"Cannot inspect inference output: {output}") from error
     for path in paths:
-        if not path.is_dir() or not _is_digest(path.name):
+        if not path.is_dir() or not is_digest(path.name):
             continue
         try:
             value = json.loads((path / "manifest.json").read_text(encoding="utf-8"))
@@ -508,7 +513,7 @@ def _load_artifact(
         counts = _artifact_counts(value["counts"])
         files = _artifact_files(value["files"])
         identity = {"recipe": recipe, "counts": counts, "files": files}
-        actual_id = hashlib.sha256(_json_bytes(identity)).hexdigest()
+        actual_id = hashlib.sha256(canonical_json_bytes(identity)).hexdigest()
         if actual_id != str(inference_id):
             raise InferenceError(f"Inference content does not match its ID: {path}")
         if expected_recipe is not None and not _same_json(recipe, expected_recipe):
@@ -551,7 +556,7 @@ def _artifact_files(value: object) -> dict[str, str]:
     if not isinstance(value, dict) or set(value) != {"pred.jsonl"}:
         raise TypeError
     digest = value["pred.jsonl"]
-    if not isinstance(digest, str) or not _is_digest(digest):
+    if not isinstance(digest, str) or not is_digest(digest):
         raise TypeError
     return {"pred.jsonl": digest}
 
@@ -605,7 +610,7 @@ def _validate_artifact_predictions(
         if (
             not _is_nonnegative_int(index)
             or not isinstance(example_id, str)
-            or not _is_digest(example_id)
+            or not is_digest(example_id)
         ):
             raise TypeError
         expected.extend((index, example_id, seed) for seed in seeds)
@@ -645,7 +650,7 @@ def _validate_prediction_values(
     max_prompt_tokens: int,
     max_tokens: int,
 ) -> None:
-    if not isinstance(value.example_id, str) or not _is_digest(value.example_id):
+    if not isinstance(value.example_id, str) or not is_digest(value.example_id):
         raise InferenceError("Inference backend returned an invalid example ID")
     if not _is_nonnegative_int(value.index) or not _is_int(value.seed):
         raise InferenceError("Inference backend returned invalid prediction identity")
@@ -676,15 +681,9 @@ def _is_positive_int(value: object) -> bool:
     return _is_int(value) and value > 0
 
 
-def _is_digest(value: str) -> bool:
-    return len(value) == 64 and all(
-        character in "0123456789abcdef" for character in value
-    )
-
-
 def _same_json(first: object, second: object) -> bool:
     try:
-        return _json_bytes(first) == _json_bytes(second)
+        return canonical_json_bytes(first) == canonical_json_bytes(second)
     except TypeError, ValueError:
         return False
 
@@ -699,30 +698,6 @@ def _artifact_file(root: Path, name: object) -> Path:
             f"Inference manifest contains an invalid file path: {name}"
         )
     return path
-
-
-def _write_json(path: Path, value: Mapping[str, Any]) -> None:
-    with path.open("x", encoding="utf-8") as stream:
-        json.dump(value, stream, ensure_ascii=False, indent=2, sort_keys=True)
-        stream.write("\n")
-    os.chmod(path, 0o600)
-
-
-def _write_jsonl(path: Path, rows: Sequence[Mapping[str, Any]]) -> None:
-    with path.open("x", encoding="utf-8") as stream:
-        for row in rows:
-            json.dump(row, stream, ensure_ascii=False, separators=(",", ":"))
-            stream.write("\n")
-    os.chmod(path, 0o600)
-
-
-def _json_bytes(value: Any) -> bytes:
-    return json.dumps(
-        value,
-        ensure_ascii=False,
-        separators=(",", ":"),
-        sort_keys=True,
-    ).encode()
 
 
 def _utc_now() -> datetime:

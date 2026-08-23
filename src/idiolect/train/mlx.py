@@ -13,7 +13,15 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
 
+from idiolect.artifact import (
+    canonical_json_bytes,
+    file_hashes,
+    is_digest,
+    write_json,
+    write_jsonl,
+)
 from idiolect.config import TrainConfig, TrainDataConfig
+from idiolect.data.local import BuildResult, DataError, load_dataset
 from idiolect.model import (
     ModelError,
     ModelSpec,
@@ -201,7 +209,7 @@ class MlxTrainer:
     ) -> RunRef:
         """Train or return one content-addressed seed run."""
         recipe = _recipe(dataset, config, model_digest, dataset_digest, seed)
-        run_id = RunId(hashlib.sha256(_json_bytes(recipe)).hexdigest())
+        run_id = RunId(hashlib.sha256(canonical_json_bytes(recipe)).hexdigest())
         output = _required_path(config.output, "Training output")
         destination = output / str(run_id)
         if destination.exists():
@@ -216,7 +224,7 @@ class MlxTrainer:
             adapter_path.mkdir(mode=0o700)
             request = _request(config, model_path, data_path, adapter_path, seed, counts)
             request_path = temporary / "request.json"
-            _write_json(request_path, request)
+            write_json(request_path, request)
             log_path = temporary / "train.log"
             command = (*config.command, "--config", str(request_path))
             exit_code = self._runner(command, log_path)
@@ -227,7 +235,7 @@ class MlxTrainer:
                 raise TrainError(f"MLX-LM did not create the adapter file: {artifact}")
 
             created_at = self._clock()
-            files = _file_hashes(temporary)
+            files = file_hashes(temporary)
             manifest = {
                 "run_id": str(run_id),
                 "dataset_id": str(dataset.id),
@@ -236,22 +244,17 @@ class MlxTrainer:
                 "counts": counts,
                 "files": files,
             }
-            _write_json(temporary / "manifest.json", manifest)
+            write_json(temporary / "manifest.json", manifest)
             temporary.rename(destination)
             return RunRef(run_id, dataset.id, destination, created_at)
         except KeyboardInterrupt:
             shutil.rmtree(temporary, ignore_errors=True)
             raise
-        except (
-            OSError,
-            TypeError,
-            ValueError,
-            json.JSONDecodeError,
-            TrainError,
-        ) as error:
+        except TrainError:
             shutil.rmtree(temporary, ignore_errors=True)
-            if isinstance(error, TrainError):
-                raise
+            raise
+        except (OSError, TypeError, ValueError) as error:
+            shutil.rmtree(temporary, ignore_errors=True)
             raise TrainError(f"Cannot create training run: {destination}") from error
 
 
@@ -421,7 +424,7 @@ def _export_data(
         rows = prepared.get(split)
         if rows is None:
             continue
-        _write_jsonl(destination / f"{split.value}.jsonl", rows)
+        write_jsonl(destination / f"{split.value}.jsonl", rows)
         counts[split.value] = len(rows)
     return counts
 
@@ -567,14 +570,12 @@ def load_run(path: Path) -> LoadedRun:
     """Load and verify one fixed training run."""
     try:
         run_id = RunId(path.name)
-        if len(path.name) != 64 or any(
-            character not in "0123456789abcdef" for character in path.name
-        ):
+        if not is_digest(path.name):
             raise TrainError(f"Run path does not contain an ID: {path}")
         value = json.loads((path / "manifest.json").read_text(encoding="utf-8"))
         if value["run_id"] != str(run_id):
             raise TrainError(f"Run manifest does not match its path: {path}")
-        actual_id = hashlib.sha256(_json_bytes(value["recipe"])).hexdigest()
+        actual_id = hashlib.sha256(canonical_json_bytes(value["recipe"])).hexdigest()
         if actual_id != str(run_id):
             raise TrainError(f"Run recipe does not match its ID: {path}")
         files = value["files"]
@@ -623,9 +624,7 @@ def load_run(path: Path) -> LoadedRun:
             raise TypeError
         if not isinstance(max_seq_length, int) or isinstance(max_seq_length, bool):
             raise TypeError
-    except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError) as error:
-        if isinstance(error, TrainError):
-            raise
+    except (KeyError, OSError, TypeError, ValueError) as error:
         raise TrainError(f"Cannot read existing run: {path}") from error
     ref = RunRef(run_id, DatasetId(dataset_id), path, created_at)
     return LoadedRun(
@@ -680,42 +679,10 @@ def _run_data_config(value: object) -> TrainDataConfig:
     return TrainDataConfig(**values)
 
 
-def _file_hashes(root: Path) -> Mapping[str, str]:
-    paths = sorted(path for path in root.rglob("*") if path.is_file())
-    return {
-        path.relative_to(root).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
-        for path in paths
-    }
-
-
-def _write_json(path: Path, value: Mapping[str, Any]) -> None:
-    with path.open("x", encoding="utf-8") as stream:
-        json.dump(value, stream, ensure_ascii=False, indent=2, sort_keys=True)
-        stream.write("\n")
-    os.chmod(path, 0o600)
-
-
-def _write_jsonl(path: Path, rows: Sequence[Mapping[str, Any]]) -> None:
-    with path.open("x", encoding="utf-8") as stream:
-        for row in rows:
-            json.dump(row, stream, ensure_ascii=False, separators=(",", ":"))
-            stream.write("\n")
-    os.chmod(path, 0o600)
-
-
 def _required_path(path: Path | None, name: str) -> Path:
     if path is None:
         raise TrainError(f"{name} is not configured")
     return path.expanduser().resolve()
-
-
-def _json_bytes(value: Any) -> bytes:
-    return json.dumps(
-        value,
-        ensure_ascii=False,
-        separators=(",", ":"),
-        sort_keys=True,
-    ).encode()
 
 
 def _utc_now() -> datetime:

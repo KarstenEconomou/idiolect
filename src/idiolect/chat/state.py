@@ -1,11 +1,11 @@
 """Manage one in-memory interactive chat transcript."""
 
 import hashlib
-import json
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, replace
 from typing import Literal
 
+from idiolect.artifact import canonical_json_bytes
 from idiolect.chat.discovery import Assistant
 from idiolect.config import ChatConfig, GenerationConfig
 from idiolect.prompt import (
@@ -162,6 +162,8 @@ def prepare_prompt(
     if not state.turns or state.turns[-1].role != "user":
         raise ChatStateError("A prompt requires a newest user message")
     limit = state.assistant.context_messages
+    if limit < 1:
+        raise ChatStateError("The recorded context window is empty")
     selected = state.turns[-limit:]
     dropped = len(state.turns) - len(selected)
     while selected:
@@ -231,11 +233,3 @@ def _validate_turn_order(turns: tuple[ChatTurn, ...]) -> None:
     ):
         raise ChatStateError("Transcript roles must alternate")
 
-
-def _json_bytes(value: object) -> bytes:
-    return json.dumps(
-        value,
-        ensure_ascii=False,
-        separators=(",", ":"),
-        sort_keys=True,
-    ).encode()

@@ -2,7 +2,7 @@
 
 import hashlib
 import json
-import os
+import math
 import random
 import re
 import shutil
@@ -10,10 +10,18 @@ import tempfile
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from idiolect.artifact import (
+    canonical_json_bytes,
+    is_digest,
+    quantile,
+    utc_now,
+    write_json,
+    write_jsonl,
+)
 from idiolect.config import EvalConfig
 from idiolect.eval.local import (
     EvalRow,
@@ -92,7 +100,7 @@ def collect_judgments(
                     "position": answer if answer in {"a", "b"} else None,
                 }
             )
-    created_at = (clock or _utc_now)()
+    created_at = (clock or utc_now)()
     artifact_recipe = {
         "version": _JUDGMENT_VERSION,
         "evaluation_id": str(evaluation.id),
@@ -105,7 +113,7 @@ def collect_judgments(
         },
         "judgments": judgments,
     }
-    judgment_id = JudgmentId(hashlib.sha256(_json_bytes(artifact_recipe)).hexdigest())
+    judgment_id = JudgmentId(hashlib.sha256(canonical_json_bytes(artifact_recipe)).hexdigest())
     root = _evaluation_root(config) / "judgments"
     destination = root / str(judgment_id)
     if destination.exists():
@@ -114,7 +122,7 @@ def collect_judgments(
     temporary = Path(tempfile.mkdtemp(prefix=".judgment-", dir=root))
     try:
         judgment_path = temporary / "judgments.jsonl"
-        _write_jsonl(judgment_path, judgments)
+        write_jsonl(judgment_path, judgments)
         manifest_value = {
             "judgment_id": str(judgment_id),
             "evaluation_id": str(evaluation.id),
@@ -198,17 +206,17 @@ def create_panel(
             "primary_comparisons": config.min_primary_comparisons,
         },
     }
-    panel_id = PanelId(hashlib.sha256(_json_bytes(recipe)).hexdigest())
+    panel_id = PanelId(hashlib.sha256(canonical_json_bytes(recipe)).hexdigest())
     root = _evaluation_root(config) / "panels"
     destination = root / str(panel_id)
     if destination.exists():
         return load_panel(destination)
-    created_at = (clock or _utc_now)()
+    created_at = (clock or utc_now)()
     root.mkdir(mode=0o700, parents=True, exist_ok=True)
     temporary = Path(tempfile.mkdtemp(prefix=".panel-", dir=root))
     try:
         report_path = temporary / "panel.json"
-        _write_json(report_path, summary)
+        write_json(report_path, summary)
         manifest = {
             "panel_id": str(panel_id),
             "evaluation_id": str(evaluation.id),
@@ -374,7 +382,7 @@ def _ballots(
             "seed": seed,
             "run_index": run_index if "policy" in {value[0] for value in candidates} else None,
         }
-        ballot_id = hashlib.sha256(_json_bytes(canonical)).hexdigest()
+        ballot_id = hashlib.sha256(canonical_json_bytes(canonical)).hexdigest()
         left, right = candidates
         if order_rng.randrange(2):
             left, right = right, left
@@ -429,7 +437,7 @@ def _validate_judgment_rows(rows: Sequence[Mapping[str, Any]]) -> None:
         matchup = _required_text(row["matchup"])
         dimension = _required_text(row["dimension"])
         choice = _required_text(row["choice"])
-        if not _is_digest(ballot_id) or not _is_digest(example_id):
+        if not is_digest(ballot_id) or not is_digest(example_id):
             raise EvaluationError("Judgment row identifiers are not valid")
         if matchup not in _MATCHUP_IDENTITIES or dimension not in expected_dimensions:
             raise EvaluationError("Judgment row policy is not valid")
@@ -734,10 +742,6 @@ def _derived_seed(seed: int, value: str) -> int:
     return int.from_bytes(digest[:8], "big")
 
 
-def _is_digest(value: str) -> bool:
-    return len(value) == 64 and all(character in "0123456789abcdef" for character in value)
-
-
 def _read_jsonl(path: Path) -> tuple[Mapping[str, Any], ...]:
     try:
         values = tuple(
@@ -749,28 +753,3 @@ def _read_jsonl(path: Path) -> tuple[Mapping[str, Any], ...]:
     if not all(isinstance(value, dict) for value in values):
         raise EvaluationError(f"JSON Lines rows are not objects: {path}")
     return values
-
-
-def _write_json(path: Path, value: Mapping[str, Any]) -> None:
-    with path.open("x", encoding="utf-8") as stream:
-        json.dump(value, stream, ensure_ascii=False, indent=2, sort_keys=True)
-        stream.write("\n")
-    os.chmod(path, 0o600)
-
-
-def _write_jsonl(path: Path, rows: Sequence[Mapping[str, Any]]) -> None:
-    with path.open("x", encoding="utf-8") as stream:
-        for row in rows:
-            json.dump(row, stream, ensure_ascii=False, separators=(",", ":"))
-            stream.write("\n")
-    os.chmod(path, 0o600)
-
-
-def _json_bytes(value: Any) -> bytes:
-    return json.dumps(
-        value, ensure_ascii=False, separators=(",", ":"), sort_keys=True
-    ).encode()
-
-
-def _utc_now() -> datetime:
-    return datetime.now(UTC)

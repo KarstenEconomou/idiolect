@@ -6,6 +6,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
+from idiolect.artifact import is_digest
 from idiolect.config import ChatConfig, TrainConfig, TrainDataConfig
 from idiolect.data.local import (
     BuildResult,
@@ -191,7 +192,7 @@ def discover_assistants(
         return ()
     rows: list[DiscoveryItem] = []
     for path in sorted(run_output.iterdir()):
-        if not path.is_dir() or not _digest(path.name):
+        if not path.is_dir() or not is_digest(path.name):
             continue
         dataset_id = _recorded_dataset_id(path)
         if dataset_id is None:
@@ -239,10 +240,5 @@ def _recorded_dataset_id(path: Path) -> str | None:
         value = _read_manifest(path).get("dataset_id")
     except OSError, TypeError, ValueError, json.JSONDecodeError:
         return None
-    return value if isinstance(value, str) and _digest(value) else None
+    return value if isinstance(value, str) and is_digest(value) else None
 
-
-def _digest(value: str) -> bool:
-    return len(value) == 64 and all(
-        character in "0123456789abcdef" for character in value
-    )

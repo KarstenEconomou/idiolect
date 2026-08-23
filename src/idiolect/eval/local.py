@@ -12,10 +12,19 @@ import unicodedata
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass, replace
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Protocol
 
+from idiolect.artifact import (
+    canonical_json_bytes,
+    file_hashes,
+    is_digest,
+    quantile,
+    utc_now,
+    write_json,
+    write_jsonl,
+)
 from idiolect.config import EvalConfig, InferenceConfig
 from idiolect.data.local import load_dataset
 from idiolect.eval.base import CompletionScore, ScoreBackend
@@ -122,7 +131,7 @@ class LocalEvaluator:
         self._scorer = scorer
         self._inferencer = inferencer
         self._target_loader = target_loader
-        self._clock = _utc_now if clock is None else clock
+        self._clock = utc_now if clock is None else clock
 
     def evaluate(
         self,
@@ -182,7 +191,7 @@ class LocalEvaluator:
             "eval_config": _config_value(config),
             "inference_config": _inference_value(effective_inference),
         }
-        evaluation_id = EvaluationId(hashlib.sha256(_json_bytes(recipe)).hexdigest())
+        evaluation_id = EvaluationId(hashlib.sha256(canonical_json_bytes(recipe)).hexdigest())
         output = _required_output(config)
         destination = output / str(evaluation_id)
         if destination.exists():
@@ -210,10 +219,10 @@ class LocalEvaluator:
             metrics_path = temporary / "metrics.json"
             examples_path = temporary / "examples.jsonl"
             report_path = temporary / "report.md"
-            _write_json(metrics_path, report)
-            _write_jsonl(examples_path, example_values)
+            write_json(metrics_path, report)
+            write_jsonl(examples_path, example_values)
             _write_text(report_path, _markdown_report(report, ordered))
-            files = _file_hashes(temporary)
+            files = file_hashes(temporary)
             manifest = {
                 "evaluation_id": str(evaluation_id),
                 "created_at": created_at.isoformat(),
@@ -228,7 +237,7 @@ class LocalEvaluator:
                 },
                 "files": files,
             }
-            _write_json(temporary / "manifest.json", manifest)
+            write_json(temporary / "manifest.json", manifest)
             temporary.rename(destination)
         except KeyboardInterrupt:
             shutil.rmtree(temporary, ignore_errors=True)
@@ -286,7 +295,7 @@ def load_evaluation(path: Path) -> EvaluationRef:
         value = json.loads((path / "manifest.json").read_text(encoding="utf-8"))
         if value["evaluation_id"] != str(evaluation_id):
             raise EvaluationError(f"Evaluation manifest does not match its path: {path}")
-        if hashlib.sha256(_json_bytes(value["recipe"])).hexdigest() != str(
+        if hashlib.sha256(canonical_json_bytes(value["recipe"])).hexdigest() != str(
             evaluation_id
         ):
             raise EvaluationError(f"Evaluation recipe does not match its ID: {path}")
@@ -406,7 +415,7 @@ def _load_rows(dataset: DatasetRef, split: Split) -> tuple[EvalRow, ...]:
             "index": index,
             "prompt_digest": hashlib.sha256(prompt.encode()).hexdigest(),
         }
-        example_id = hashlib.sha256(_json_bytes(identity)).hexdigest()
+        example_id = hashlib.sha256(canonical_json_bytes(identity)).hexdigest()
         rows.append(EvalRow(index, example_id, prompt, completion))
     if not rows:
         raise EvaluationError(f"Dataset split is empty: {split.value}")
@@ -799,7 +808,7 @@ def _by_example(predictions: Sequence[Prediction]) -> Mapping[str, tuple[Predict
 
 
 def _duplicate_rate(texts: Sequence[str]) -> float:
-    normalized = [_normalize(text) for text in texts if _normalize(text)]
+    normalized = [value for text in texts if (value := normalize_text(text))]
     if not normalized:
         return 0.0
     counts = Counter(normalized)
@@ -810,7 +819,7 @@ def _within_prompt_duplicate_rate(predictions: Sequence[Prediction]) -> float:
     grouped = _by_example(predictions)
     duplicated = 0
     for values in grouped.values():
-        texts = [_normalize(value.text) for value in values]
+        texts = [normalize_text(value.text) for value in values]
         duplicated += len(texts) > 1 and len(set(texts)) < len(texts)
     return duplicated / len(grouped)
 

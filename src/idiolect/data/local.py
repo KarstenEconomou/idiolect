@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from idiolect.artifact import canonical_json_bytes, is_digest
 from idiolect.config import DataConfig
 from idiolect.data.render import (
     RenderError,
@@ -142,7 +143,7 @@ class LocalBuilder:
             },
             "pseudonyms": {str(key): value for key, value in pseudonyms.items()},
         }
-        digest = hashlib.sha256(_json_bytes(identity)).hexdigest()
+        digest = hashlib.sha256(canonical_json_bytes(identity)).hexdigest()
         dataset_id = DatasetId(digest)
         destination = self._root / digest
         if destination.exists():
@@ -444,7 +445,7 @@ def _pseudonyms(
 
 def _source_digest(messages: Sequence[Message]) -> str:
     values = [_message_value(message) for message in sorted(messages, key=_message_key)]
-    return hashlib.sha256(_json_bytes(values)).hexdigest()
+    return hashlib.sha256(canonical_json_bytes(values)).hexdigest()
 
 
 def _message_value(message: Message) -> Mapping[str, Any]:
@@ -497,9 +498,7 @@ def _mention_value(mention: Any) -> Mapping[str, Any]:
 
 def _existing_result(path: Path, dataset_id: DatasetId) -> BuildResult:
     try:
-        if len(path.name) != 64 or any(
-            character not in "0123456789abcdef" for character in path.name
-        ):
+        if not is_digest(path.name):
             raise DataError(f"Dataset path does not contain an ID: {path}")
         value = json.loads((path / "manifest.json").read_text(encoding="utf-8"))
         if value.get("dataset_id") != str(dataset_id):
@@ -514,7 +513,7 @@ def _existing_result(path: Path, dataset_id: DatasetId) -> BuildResult:
             }
         else:
             identity = recipe
-        if hashlib.sha256(_json_bytes(identity)).hexdigest() != str(dataset_id):
+        if hashlib.sha256(canonical_json_bytes(identity)).hexdigest() != str(dataset_id):
             raise DataError(f"Dataset identity does not match its ID: {path}")
         files = value["files"]
         if not isinstance(files, dict):
@@ -526,7 +525,7 @@ def _existing_result(path: Path, dataset_id: DatasetId) -> BuildResult:
             raise DataError(f"Dataset files do not match its manifest: {path}")
         for name, expected in files.items():
             file_path = _dataset_file(path, name)
-            if not _is_digest(expected):
+            if not is_digest(expected):
                 raise TypeError
             actual = hashlib.sha256(file_path.read_bytes()).hexdigest()
             if actual != expected:
@@ -567,7 +566,7 @@ def _existing_result(path: Path, dataset_id: DatasetId) -> BuildResult:
         if created_at.utcoffset() is None:
             raise TypeError
         target_id = PersonId(raw_target_id)
-    except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError) as error:
+    except (KeyError, OSError, TypeError, ValueError) as error:
         if isinstance(error, DataError):
             raise
         raise DataError(f"Cannot read existing dataset: {path}") from error
@@ -576,15 +575,6 @@ def _existing_result(path: Path, dataset_id: DatasetId) -> BuildResult:
 
 def _message_key(message: Message) -> tuple[datetime, str]:
     return message.sent_at, str(message.id)
-
-
-def _json_bytes(value: Any) -> bytes:
-    return json.dumps(
-        value,
-        ensure_ascii=False,
-        separators=(",", ":"),
-        sort_keys=True,
-    ).encode()
 
 
 def _jsonl_bytes(examples: Sequence[_RenderedExample]) -> bytes:
@@ -754,14 +744,6 @@ def _validate_index(path: Path, counts: Mapping[Split, int]) -> None:
         for other in tuple(Split)[index + 1 :]:
             if not sources[split].isdisjoint(sources[other]):
                 raise DataError(f"Dataset source message crosses split boundaries: {path}")
-
-
-def _is_digest(value: Any) -> bool:
-    return (
-        isinstance(value, str)
-        and len(value) == 64
-        and all(character in "0123456789abcdef" for character in value)
-    )
 
 
 def _reaction_key(reaction: Reaction) -> tuple[datetime, str]:
