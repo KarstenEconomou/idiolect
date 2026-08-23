@@ -455,7 +455,17 @@ def _message_value(message: Message) -> Mapping[str, Any]:
             "author_id": str(message.quote.author_id),
             "sent_at": message.quote.sent_at.isoformat(),
             "text": message.quote.text,
-            "mentions": [_mention_value(value) for value in message.quote.mentions],
+            "mentions": [
+                _mention_value(value)
+                for value in sorted(
+                    message.quote.mentions,
+                    key=lambda value: (
+                        value.start_utf16,
+                        value.length_utf16,
+                        str(value.person_id),
+                    ),
+                )
+            ],
         }
     return {
         "id": str(message.id),
@@ -469,7 +479,14 @@ def _message_value(message: Message) -> Mapping[str, Any]:
         "reply_to": str(message.reply_to) if message.reply_to is not None else None,
         "edited_at": message.edited_at.isoformat() if message.edited_at else None,
         "deleted_at": message.deleted_at.isoformat() if message.deleted_at else None,
-        "mentions": [_mention_value(value) for value in message.mentions],
+        # Canonicalize child order so equivalent source data hashes equally.
+        "mentions": [
+            _mention_value(value)
+            for value in sorted(
+                message.mentions,
+                key=lambda value: (value.start_utf16, value.length_utf16, str(value.person_id)),
+            )
+        ],
         "quote": quote,
         "attachments": [value.id for value in message.attachments],
         "reactions": [

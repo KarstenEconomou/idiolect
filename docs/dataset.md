@@ -122,7 +122,9 @@ IDs. It is audit data and is not passed to MLX-LM.
 
 The dataset ID is a SHA-256 value over the source recipe, split counts,
 selection audit, pseudonym mapping, canonical JSONL hashes, and source-index
-hash. The loader checks that identity, every file hash, every split count, each
+hash. The source digest canonicalizes mention order inside each message and
+quote, so equivalent source data hashes equally.
+The loader checks that identity, every file hash, every split count, each
 row schema, the source-index order, and source disjointness across splits. A
 second equal build returns the same directory. The loader rejects missing,
 changed, or unrecorded files.
