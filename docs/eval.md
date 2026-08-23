@@ -88,7 +88,9 @@ samples, and training seeds are not independent observations. Reports show each
 run, an equally weighted policy estimate, paired macro-NLL confidence intervals,
 token-weighted corpus perplexity, and run spread.
 
-A policy is `eligible` only when all automatic gates pass. Eligibility is not a
+A policy is `eligible` only when all automatic gates pass. Each behavior gate
+applies to every training run on its own, not only to the pooled policy, so one
+degenerate seed cannot hide behind the other runs. Eligibility is not a
 claim that the model has the target's voice and is not a complete privacy audit.
 Use the familiar-panel result as separate evidence.
 
