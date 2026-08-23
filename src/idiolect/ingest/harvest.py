@@ -35,7 +35,13 @@ def harvest(source: Source, parser: Parser, repository: Repository) -> HarvestRe
     received = stored = messages = reactions = skipped = duplicates = 0
     for event in source.events():
         received += 1
-        records = tuple(parser.records(event))
+        # One event that cannot be normalized must not discard the drained
+        # events after it.
+        try:
+            records = tuple(parser.records(event))
+        except Exception:  # noqa: BLE001 - tolerate one bad event, count it.
+            skipped += 1
+            continue
         if not records:
             skipped += 1
             continue

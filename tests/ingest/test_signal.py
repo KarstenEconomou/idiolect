@@ -93,6 +93,19 @@ def test_source_lists_group_ids_for_whitelist() -> None:
     ]
 
 
+def test_source_skips_malformed_lines_and_keeps_the_rest(signal_events: Path) -> None:
+    """Check that one bad line does not discard later drained events."""
+    lines = signal_events.read_bytes().splitlines(keepends=True)
+    runner = FakeRunner(lines=(b"not json\n", lines[0]))
+    source = SignalSource(
+        SignalConfig(account="+10000000000"),
+        runner=runner,
+        clock=lambda: _NOW,
+    )
+
+    assert len(tuple(source.events())) == 1
+
+
 def test_parser_keeps_allowed_message_context(signal_events: Path) -> None:
     """Check text, media data, replies, edits, and reactions."""
     events = tuple(SignalFileSource(signal_events, clock=lambda: _NOW).events())

@@ -132,12 +132,14 @@ just idiolect signal import path/to/events.jsonl
 ## Collector behavior
 
 - The source runs `signal-cli --output json receive`.
+- The source skips one malformed output line and keeps the events after it. The harvest result counts such an event as `skipped`.
 - The source does not download attachments, stories, avatars, or stickers.
 - The parser accepts only group IDs in the configured chat whitelist.
 - The parser discards direct messages and messages from other groups.
 - The parser reads incoming messages and sent-message sync events.
 - The parser records text, identity-linked mentions, reply snapshots, edits, remote deletes, reactions, and attachment metadata.
 - The parser keeps original message text and native mention metadata.
+- One event that fails normalization is skipped and counted. It does not stop the harvest or discard later drained events.
 - Mention ranges stay in the UTF-16 units that Signal supplies.
 - The parser does not store attachment bytes.
 - The store writes one source event and its normalized records in one transaction.

@@ -150,13 +150,17 @@ class SignalSource:
         return command
 
     def _events_from_lines(self, lines: Iterable[bytes]) -> Iterator[Event]:
+        # One malformed line must not discard the drained events after it.
         for line in lines:
             payload = line.strip()
             if not payload:
                 continue
-            value = _json_value(payload)
+            try:
+                value = _json_value(payload)
+            except SignalError:
+                continue
             if not isinstance(value, dict):
-                raise SignalError("Signal event must be a JSON object")
+                continue
             digest = hashlib.sha256(payload).hexdigest()
             yield Event(
                 id=EventId(f"signal:{digest}"),
@@ -183,9 +187,12 @@ class SignalFileSource:
                     payload = line.strip()
                     if not payload:
                         continue
-                    value = _json_value(payload)
+                    try:
+                        value = _json_value(payload)
+                    except SignalError:
+                        continue
                     if not isinstance(value, dict):
-                        raise SignalError("Signal event must be a JSON object")
+                        continue
                     digest = hashlib.sha256(payload).hexdigest()
                     yield Event(
                         id=EventId(f"signal:{digest}"),
