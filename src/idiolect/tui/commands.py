@@ -6,7 +6,7 @@ COMMANDS = (
     "/terminate",
     "/echo",
     "/disconnect",
-    "/save",
+    "/trace",
     "/specs",
     "/chroma",
 )
@@ -15,7 +15,7 @@ COMMAND_DESCRIPTIONS = {
     "/terminate": "TERMINATE IDIOLECT.",
     "/echo": "ENV echo.",
     "/disconnect": "DISCONNECT from CONSTRUCT.",
-    "/save": "Save TRACE.",
+    "/trace": "Save TRACE.",
     "/specs": "View SPECS.",
     "/chroma": "Select CHROMA.",
 }
@@ -46,12 +46,12 @@ def parse_command(value: str) -> Command | None:
         return None
     parts = value.split(maxsplit=1)
     if not parts or parts[0] not in COMMANDS:
-        raise CommandError("Unknown chat command")
+        raise CommandError("COMMAND unknown")
     command_name = parts[0]
     name = command_name[1:]
     arguments = parts[1] if len(parts) == 2 else ""
     if command_name not in COMMAND_ARGUMENTS and arguments.strip():
-        raise CommandError(f"/{name} does not accept an argument")
+        raise CommandError("COMMAND unexpected argument")
     return Command(name, arguments)
 
 

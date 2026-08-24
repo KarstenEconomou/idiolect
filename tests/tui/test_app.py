@@ -193,13 +193,15 @@ def test_registry_chroma_menu_previews_all_themes_and_persists(tmp_path) -> None
             await pilot.press("s")
             await pilot.pause()
             assert app.query_one("#specs-identity", Static).styles.color.ansi == 2
-            assert app.query_one("#specs-eyes", Static).styles.color.ansi == 2
+            assert app.query_one("#specs-link", Static).display is False
 
             assert app.has_class("-accent-green")
             await pilot.press("escape", "enter")
             await _wait_for_chat(app, pilot)
             assert app.query_one("#identity", Static).styles.color.ansi == 2
-            assert app.query_one("#chat-eyes", Static).styles.color.ansi == 2
+            chat_link = app.query_one("#chat-link", Static)
+            assert str(chat_link.content) == "LINK#------"
+            assert chat_link.styles.color.ansi == 2
             assert app.query_one("#composer-prompt", Static).styles.color.ansi == 2
             transcript = app.query_one("#transcript", Transcript)
             transcript.set_turns((("USER", "Theme check"),))
@@ -285,14 +287,10 @@ def test_registry_opens_specs_and_returns_to_the_same_row(tmp_path) -> None:
                 assistant.name
             )
             specs_heading = app.query_one("#specs-heading", Horizontal)
-            specs_eyes = app.query_one("#specs-eyes", Static)
-            assert str(specs_eyes.content) == "· ·"
-            assert (
-                specs_eyes.content_region.right
-                == specs_heading.content_region.right - 1
-            )
-            assert specs_eyes.region.right == specs_heading.content_region.right
-            assert specs_eyes.styles.color.ansi == 2
+            chat_heading = app.query_one("#chat-heading", Horizontal)
+            specs_link = app.query_one("#specs-link", Static)
+            assert specs_heading.region.y == chat_heading.region.y
+            assert specs_link.display is False
 
             await pilot.press("escape")
             await pilot.pause()
@@ -558,6 +556,7 @@ def test_chat_divider_matches_the_page_gutter(tmp_path) -> None:
     """Check the chat divider has the REGISTRY and SPECS horizontal inset."""
     chat = ChatConfig(output=tmp_path)
     generation = GenerationConfig()
+    assistant = replace(_assistant(), base_model_digest="f" * 64)
     app = ChatApp(
         chat,
         generation,
@@ -565,7 +564,7 @@ def test_chat_divider_matches_the_page_gutter(tmp_path) -> None:
             Callable[..., ChatRuntime],
             lambda *_args: ImmediateRuntime(chat, generation),
         ),
-        initial_assistant=_assistant(),
+        initial_assistant=assistant,
     )
 
     async def verify() -> None:
@@ -574,13 +573,13 @@ def test_chat_divider_matches_the_page_gutter(tmp_path) -> None:
 
             divider = app.query_one("#identity-rule", Rule)
             heading = app.query_one("#chat-heading", Horizontal)
-            eyes = app.query_one("#chat-eyes", Static)
+            link = app.query_one("#chat-link", Static)
             assert divider.content_region.x == 2
             assert divider.content_region.width == app.size.width - 4
-            assert str(eyes.content) == "· ·"
-            assert eyes.content_region.right == heading.content_region.right - 1
-            assert eyes.region.right == heading.content_region.right
-            assert eyes.styles.color.ansi == 2
+            assert str(link.content) == "LINK#FFFFFF"
+            assert link.content_region.right == heading.content_region.right - 1
+            assert link.region.right == heading.content_region.right
+            assert link.styles.color.ansi == 2
 
     asyncio.run(verify())
 
@@ -960,6 +959,53 @@ def test_transcript_formats_markdown_and_remains_scrollable(tmp_path) -> None:
     asyncio.run(verify())
 
 
+def test_loaded_trace_starts_at_the_bottom_of_chat_history(tmp_path) -> None:
+    """Check a loaded TRACE follows its newest turn after chat layout settles."""
+    chat = ChatConfig(output=tmp_path)
+    generation = GenerationConfig()
+    turns = tuple(
+        turn
+        for index in range(8)
+        for turn in (
+            ChatTurn("user", f"User message {index}"),
+            ChatTurn("assistant", f"Assistant reply {index}"),
+        )
+    )
+    trace = SavedChat(
+        "c" * 64,
+        tmp_path / ("c" * 64),
+        datetime(2026, 8, 22, tzinfo=UTC),
+        "Loaded trace",
+        None,
+        _assistant(),
+        chat,
+        generation,
+        turns,
+    )
+    runtime = ImmediateRuntime(chat, generation)
+    app = ChatApp(
+        chat,
+        generation,
+        runtime_factory=cast(Callable[..., ChatRuntime], lambda *_args: runtime),
+        initial_chat=trace,
+    )
+
+    async def verify() -> None:
+        async with app.run_test(size=(50, 18)) as pilot:
+            await _wait_for_chat(app, pilot)
+            scroller = app.query_one("#transcript-scroll", VerticalScroll)
+            await pilot.pause()
+            assert scroller.max_scroll_y > 0
+
+            scroller.scroll_home(animate=False)
+            app._show_chat()
+            await pilot.pause()
+            await pilot.pause()
+            assert scroller.scroll_y == scroller.max_scroll_y
+
+    asyncio.run(verify())
+
+
 def test_footer_discloses_secondary_telemetry_when_space_allows(tmp_path) -> None:
     """Check telemetry priority and responsive disclosure."""
     chat = ChatConfig(output=tmp_path)
@@ -1287,7 +1333,7 @@ def test_command_menu_filters_navigates_and_returns_to_registry(tmp_path) -> Non
             menu = app.query_one("#command-menu", CommandMenu)
             terminate_button = menu.query_one("#command-terminate", Horizontal)
             disconnect_button = menu.query_one("#command-disconnect", Horizontal)
-            save_button = menu.query_one("#command-save", Horizontal)
+            trace_button = menu.query_one("#command-trace", Horizontal)
             specs_button = menu.query_one("#command-specs", Horizontal)
             chroma_button = menu.query_one("#command-chroma", Horizontal)
             assert menu.display is True
@@ -1311,7 +1357,7 @@ def test_command_menu_filters_navigates_and_returns_to_registry(tmp_path) -> Non
                 disconnect_button.query_one(".command-description", Static).content
             ) == "DISCONNECT from CONSTRUCT."
             assert str(
-                save_button.query_one(".command-description", Static).content
+                trace_button.query_one(".command-description", Static).content
             ) == "Save TRACE."
             assert str(
                 specs_button.query_one(".command-description", Static).content
@@ -1320,9 +1366,9 @@ def test_command_menu_filters_navigates_and_returns_to_registry(tmp_path) -> Non
                 chroma_button.query_one(".command-description", Static).content
             ) == "Select CHROMA."
             assert specs_button.display is False
-            assert save_button.has_class("-disabled")
-            assert save_button.has_class("-selected") is False
-            assert save_button.query_one(".command-name", Static).styles.color == (
+            assert trace_button.has_class("-disabled")
+            assert trace_button.has_class("-selected") is False
+            assert trace_button.query_one(".command-name", Static).styles.color == (
                 app.query_one("#catalog-subtitle").styles.color
             )
             assert disconnect_button.region.y == terminate_button.region.y + 2
@@ -1476,12 +1522,50 @@ def test_echo_command_uses_an_env_turn_and_argument_bar(tmp_path) -> None:
             assert env_label.style is not None and env_label.style.dim
             assert env_label.style.color is not None
             assert env_label.style.color.name == "green"
-            assert env_text.style is not None and env_text.style.dim
+            assert env_text.style is not None and not env_text.style.dim
             assert env_text.style.color is not None
             assert env_text.style.color.name == "bright_black"
 
             runtime.session.add_user("next")
             assert [turn.role for turn in runtime.session.turns] == ["env", "user"]
+
+    asyncio.run(verify())
+
+
+def test_command_argument_errors_use_generic_messages(tmp_path) -> None:
+    """Check standardized missing and unexpected argument errors."""
+    chat = ChatConfig(output=tmp_path)
+    generation = GenerationConfig()
+    runtime = ImmediateRuntime(chat, generation)
+    app = ChatApp(
+        chat,
+        generation,
+        runtime_factory=cast(Callable[..., ChatRuntime], lambda *_args: runtime),
+        initial_assistant=_assistant(),
+    )
+
+    async def verify() -> None:
+        async with app.run_test() as pilot:
+            await _wait_for_chat(app, pilot)
+            composer = app.query_one(Composer)
+
+            composer.insert("/echo")
+            await pilot.press("enter", "enter")
+            await pilot.pause()
+            assert app.query_one("#chat-alert", LoadingStatus).state == (
+                "ENV: ERR COMMAND missing argument."
+            )
+
+            app._clear_command()
+            composer.clear()
+            await pilot.pause()
+            composer.insert("/chroma extra")
+            await pilot.pause()
+            await pilot.press("enter")
+            await pilot.pause()
+            assert app.query_one("#chat-alert", LoadingStatus).state == (
+                "ENV: ERR COMMAND unexpected argument."
+            )
 
     asyncio.run(verify())
 
@@ -1778,12 +1862,12 @@ def test_specs_command_restores_the_unchanged_trace_chat(tmp_path) -> None:
             assert app.query_one("#chat").display is False
             assert app.query_one("#specs").display
             assert str(app.query_one("#specs-hints", Static).content) == (
-                "↑↓ SCROLL    ESC CHAT    CTRL+C TERMINATE"
+                "↑↓ SCROLL    ESC LINK    CTRL+C TERMINATE"
             )
             content = app.query_one("#specs-body", Static).content
             assert isinstance(content, SpecsDocument)
             assert "TYPE\n TRACE\n" in content.plain
-            assert f"TRACE ID\n {trace.id}\n" in content.plain
+            assert f"TRACE ID\n {trace.id.upper()}\n" in content.plain
             assert "TEMPERATURE\n 0.3\n" in content.plain
 
             await pilot.press("ctrl+c")
@@ -1830,7 +1914,7 @@ def test_save_command_checkpoints_only_new_trace_data(tmp_path) -> None:
             composer = app.query_one(Composer)
             assert runtime.session is not None
             runtime.session.add_user("checkpoint data")
-            composer.insert("/save")
+            composer.insert("/trace")
             await pilot.press("enter")
             await pilot.pause()
 
@@ -1846,23 +1930,34 @@ def test_save_command_checkpoints_only_new_trace_data(tmp_path) -> None:
             assert runtime.session.dirty is False
             alert = app.query_one("#chat-alert", LoadingStatus)
             composer_bar = app.query_one("#composer-bar", Horizontal)
-            assert alert.state == "Saved aaaaaaaa — default trace name."
+            assert alert.state == "ENV: ACK TRACE saved as AAAAAA."
+            assert str(app.query_one("#chat-link", Static).content) == "LINK#AAAAAA"
             assert alert.display
             assert alert.region.bottom == composer_bar.region.y
             assert alert.styles.text_align == "right"
-            assert alert.styles.color.ansi == 8
+            rendered = alert.render()
+            assert isinstance(rendered, Text)
+            prefix_style = rendered.get_style_at_offset(Console(), 0)
+            message_style = rendered.get_style_at_offset(
+                Console(), rendered.plain.index("ACK")
+            )
+            assert prefix_style.color is not None
+            assert prefix_style.color.name == "green"
+            assert prefix_style.dim
+            assert message_style.color is not None
+            assert message_style.color.name == "bright_black"
+            assert not message_style.dim
             assert not alert.has_class("-error")
 
-            composer.insert("/save")
+            composer.insert("/trace")
             await pilot.press("enter")
             await pilot.pause()
             assert len(app.screen.query("#trace-name")) == 0
             assert store.titles == [None]
             assert app.query_one("#chat-alert", LoadingStatus).state == (
-                "The TRACE has no new data to save."
+                "ENV: ACK TRACE AAAAAA exists."
             )
-            assert alert.styles.color.ansi == 1
-            assert alert.has_class("-error")
+            assert not alert.has_class("-error")
 
     asyncio.run(verify())
 
@@ -1889,7 +1984,7 @@ def test_chat_errors_align_right_above_composer(tmp_path) -> None:
             await pilot.pause()
 
             failure = app.query_one("#chat-alert", LoadingStatus)
-            assert failure.state == "CONNECTION is not ready."
+            assert failure.state == "ENV: ERR CONNECTION is not ready."
             assert failure.display
 
             app._loading = False
@@ -1900,12 +1995,23 @@ def test_chat_errors_align_right_above_composer(tmp_path) -> None:
 
             loading = app.query_one("#status", LoadingStatus)
             composer_bar = app.query_one("#composer-bar", Horizontal)
-            assert failure.state == "Unknown chat command."
+            assert failure.state == "ENV: ERR COMMAND unknown."
             assert failure.display
             assert failure.region.bottom == composer_bar.region.y
             assert failure.content_region.x == loading.content_region.x
             assert failure.styles.text_align == "right"
-            assert failure.styles.color.ansi == 1
+            rendered = failure.render()
+            assert isinstance(rendered, Text)
+            prefix_style = rendered.get_style_at_offset(Console(), 0)
+            message_style = rendered.get_style_at_offset(
+                Console(), rendered.plain.index("ERR")
+            )
+            assert prefix_style.color is not None
+            assert prefix_style.color.name == "green"
+            assert prefix_style.dim
+            assert message_style.color is not None
+            assert message_style.color.name == "bright_black"
+            assert not message_style.dim
             assert failure.has_class("-error")
 
     asyncio.run(verify())

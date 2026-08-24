@@ -76,6 +76,7 @@ _ACCENT_THEMES = (
     ("cyan", "cyan", "GENTLEMAN"),
 )
 _DEFAULT_ACCENT_THEME = "green"
+_UNSAVED_LINK_ID = "------"
 
 
 def _watermark(color: str = "green") -> Text:
@@ -90,6 +91,18 @@ def _watermark(color: str = "green") -> Text:
     return value
 
 
+def _link_label(chat_id: str | None, model_digest: str | None = None) -> str:
+    """Return the compact link label for one chat snapshot or model."""
+    identifier = (
+        chat_id[:6].upper()
+        if chat_id is not None
+        else model_digest[:6].upper()
+        if model_digest is not None
+        else _UNSAVED_LINK_ID
+    )
+    return f"LINK#{identifier}"
+
+
 def _accent_theme_css() -> str:
     """Return screen-class overrides for each selectable ANSI accent."""
     color_selectors = (
@@ -97,7 +110,7 @@ def _accent_theme_css() -> str:
         "OptionList:focus > .option-list--option-highlighted",
         "OptionList > .option-list--option-hover",
         "#specs-identity",
-        ".brand-eyes",
+        ".brand-link",
         "#identity",
         "#composer-prompt",
         ".command-action.-selected .command-name",
@@ -219,13 +232,12 @@ class ChatApp(App[None]):
     OptionList > .option-list--option-disabled { color: $metadata; text-style: dim; }
     OptionList > .option-list--option-hover { color: $accent; background: $terminal; text-style: bold; }
     #catalog-hints { height: 1; color: $metadata; background: $terminal; padding: 0 2; }
-    #catalog-alert, #chat-alert { display: none; height: 1; color: $metadata; background: $terminal; padding: 0 2; text-align: right; }
-    #catalog-alert.-error, #chat-alert.-error { color: $failure; }
+    #catalog-alert, #chat-alert { display: none; height: 1; color: $accent; background: $terminal; padding: 0 2; text-align: right; text-style: none; }
     #footer { height: 1; color: $metadata; background: $terminal; padding: 0 2; }
     #specs { display: none; background: $terminal; }
-    #specs-heading { height: auto; min-height: 1; margin-top: 1; padding: 0 2; }
+    #specs-heading { height: auto; min-height: 1; margin-top: 0; padding: 0 2; }
     #specs-identity { width: 1fr; height: auto; min-height: 1; color: $accent; text-style: bold; }
-    .brand-eyes { width: 4; height: 1; padding-right: 1; color: $accent; text-align: right; text-style: bold; }
+    .brand-link { width: 12; height: 1; padding-right: 1; color: $accent; text-align: right; text-style: bold; }
     #specs-rule { height: 1; margin: 0; padding: 0 2; color: $metadata; }
     #specs-scroll { height: 1fr; padding: 0 2; background: $terminal; scrollbar-size-vertical: 1; scrollbar-color: $metadata; scrollbar-color-hover: $metadata; scrollbar-color-active: $metadata; scrollbar-background: $terminal; scrollbar-background-hover: $terminal; scrollbar-background-active: $terminal; }
     #specs-body { width: 100%; height: auto; color: $terminal; background: $terminal; }
@@ -252,7 +264,7 @@ class ChatApp(App[None]):
     .command-action.-selected .command-name { color: $accent; text-style: bold; }
     .command-action.-selected .command-description { color: $accent; text-style: dim; }
     .command-action.-disabled .command-name, .command-action.-disabled .command-description { color: $failure; text-style: dim; }
-    .command-action.-save-disabled .command-name, .command-action.-save-disabled .command-description { color: $metadata; text-style: dim; }
+    .command-action.-trace-disabled .command-name, .command-action.-trace-disabled .command-description { color: $metadata; text-style: dim; }
     #command-bar { display: none; height: auto; min-height: 3; margin: 0 1; padding: 0 1; border: solid $accent; background: $terminal; }
     #reference-menu { display: none; height: auto; max-height: 4; margin: 0 1; padding: 0 1; background: $terminal; }
     #reference-message { height: 1; color: ansi_white; text-style: bold; }
@@ -398,7 +410,12 @@ class ChatApp(App[None]):
         with Container(id="specs"):
             with Horizontal(id="specs-heading"):
                 yield Static("", markup=False, id="specs-identity")
-                yield Static("· ·", markup=False, id="specs-eyes", classes="brand-eyes")
+                yield Static(
+                    _link_label(None),
+                    markup=False,
+                    id="specs-link",
+                    classes="brand-link",
+                )
             yield Rule(line_style="solid", id="specs-rule")
             with SpecsScroll(id="specs-scroll"):
                 yield Static("", markup=False, id="specs-body")
@@ -410,7 +427,12 @@ class ChatApp(App[None]):
         with Container(id="chat"):
             with Horizontal(id="chat-heading"):
                 yield Static("", markup=False, id="identity")
-                yield Static("· ·", markup=False, id="chat-eyes", classes="brand-eyes")
+                yield Static(
+                    _link_label(None),
+                    markup=False,
+                    id="chat-link",
+                    classes="brand-link",
+                )
             yield Rule(line_style="solid", id="identity-rule")
             with VerticalScroll(id="transcript-scroll"):
                 yield Transcript(id="transcript")
@@ -624,7 +646,7 @@ class ChatApp(App[None]):
         if choice != "erase":
             return
         if self.store is None:
-            self._show_error("Chat output is not configured")
+            self._show_error("LINK not configured")
             return
         try:
             self.store.erase(trace.id)
@@ -638,7 +660,7 @@ class ChatApp(App[None]):
         if title is None:
             return
         if self.store is None:
-            self._show_error("Chat output is not configured")
+            self._show_error("LINK not configured")
             return
         try:
             self.store.rename(
@@ -1115,7 +1137,7 @@ class ChatApp(App[None]):
         self._generating = False
         self._set_status(None)
         self._update_command_menu()
-        self._show_error(f"{message}. Return to REGISTRY to start again.")
+        self._show_error(message)
 
     def _report_prefill(self, current: int, total: int) -> None:
         self.call_from_thread(self._set_status, f"prefill {current}/{total}")
@@ -1127,6 +1149,9 @@ class ChatApp(App[None]):
         self.query_one("#landing").display = False
         self.query_one("#chat").display = True
         self.query_one("#identity", Static).update(session.assistant.name)
+        self.query_one("#chat-link", Static).update(
+            _link_label(session.saved_chat_id, session.assistant.model_digest)
+        )
         self._render_transcript()
         self._render_command()
         self._render_reference()
@@ -1134,6 +1159,7 @@ class ChatApp(App[None]):
         self._update_status()
         self._update_footer()
         self.query_one(Composer).focus()
+        self.call_after_refresh(self._scroll_transcript_end)
 
     def _render_transcript(self, partial: bool = False) -> None:
         transcript = self.query_one("#transcript", Transcript)
@@ -1536,7 +1562,7 @@ class ChatApp(App[None]):
         """Run one selected command with its optional composer arguments."""
         if name == "echo":
             if not arguments.strip():
-                raise CommandError("/echo requires text")
+                raise CommandError("COMMAND missing argument")
             session = self._session()
             session.add_env(arguments)
             self._render_transcript()
@@ -1546,21 +1572,27 @@ class ChatApp(App[None]):
             self.action_interrupt()
         elif name == "disconnect":
             if self._generating:
-                self._show_error("Stop the active reply before returning to REGISTRY")
+                self._show_error("CONSTRUCT GENERATING")
             else:
                 self._return_to_landing()
         elif name == "specs":
             self._show_chat_specs()
         elif name == "chroma":
             self._open_chroma()
-        elif name == "save":
+        elif name == "trace":
             session = self._session()
             if not session.dirty:
-                self._show_error("The TRACE has no new data to save")
+                trace_id = session.saved_chat_id
+                message = (
+                    "TRACE exists"
+                    if trace_id is None
+                    else f"TRACE {trace_id[:6].upper()} exists"
+                )
+                self._show_alert(message)
             elif self.store is None:
-                self._show_error("Chat output is not configured")
+                self._show_error("LINK not configured")
             elif self._generating:
-                self._show_error("Stop the active reply before saving")
+                self._show_error("CONSTRUCT GENERATING")
             else:
                 self._confirmation_open = True
                 self._trace_name_open = True
@@ -1576,7 +1608,7 @@ class ChatApp(App[None]):
         if title is not None:
             self._save_from_confirmation(title)
 
-    def _save_enabled(self) -> bool:
+    def _trace_enabled(self) -> bool:
         session = self.runtime.session
         return (
             self.store is not None
@@ -1590,7 +1622,7 @@ class ChatApp(App[None]):
             index
             for index, command in enumerate(self._command_matches)
             if (command != "/disconnect" or not self._generating)
-            and (command != "/save" or self._save_enabled())
+            and (command != "/trace" or self._trace_enabled())
         )
 
     def _command_cursor_in_block(self, composer: Composer) -> bool:
@@ -1636,7 +1668,7 @@ class ChatApp(App[None]):
             visible_matches,
             selected,
             registry_enabled=not self._generating,
-            save_enabled=self._save_enabled(),
+            trace_enabled=self._trace_enabled(),
         )
         composer.command_menu_active = bool(visible_matches)
         composer.command_menu_escape_enabled = not self._generating
@@ -1727,7 +1759,7 @@ class ChatApp(App[None]):
 
     def _save_from_confirmation(self, title: str) -> bool:
         if self.store is None:
-            self._show_error("Chat output is not configured")
+            self._show_error("LINK not configured")
             return False
         try:
             saved = self.store.save(
@@ -1739,7 +1771,8 @@ class ChatApp(App[None]):
             self._show_error(str(error))
             return False
         self._active_trace = saved
-        self._show_alert(f"Saved {saved.id[:8]} — {saved.title}")
+        self.query_one("#chat-link", Static).update(_link_label(saved.id))
+        self._show_alert(f"TRACE saved as {saved.id[:6].upper()}")
         return True
 
     def _begin_select(self, assistant: Assistant) -> None:
@@ -1810,6 +1843,21 @@ class ChatApp(App[None]):
         """Show one right-aligned failure beside the active controls."""
         self._show_alert(message, error=True)
 
+    @staticmethod
+    def _alert_body(message: str) -> str:
+        """Normalize the first word in one alert or error message."""
+        value = message.strip()
+        start = next(
+            (index for index, character in enumerate(value) if character.isalpha()),
+            len(value),
+        )
+        if start == len(value):
+            return value
+        word = value[start:].split(maxsplit=1)[0].rstrip(".,:;!?")
+        if word.isupper():
+            return value
+        return value[:start] + value[start].lower() + value[start + 1 :]
+
     def _show_alert(self, message: str, *, error: bool = False) -> None:
         """Show one transient message beside the active controls."""
         if self._alert_timer is not None:
@@ -1821,12 +1869,19 @@ class ChatApp(App[None]):
         other_alert = self.query_one(other, LoadingStatus)
         other_alert.set_state("")
         other_alert.remove_class("-error")
-        value = message.strip()
-        if value and not value.endswith((".", "!", "?")):
-            value += "."
+        role = "ERR" if error else "ACK"
+        body = self._alert_body(message)
+        if body and not body.endswith((".", "!", "?")):
+            body += "."
+        value = f"ENV: {role} {body}"
+        _, accent, _ = _ACCENT_THEMES[self._accent_theme_index]
+        content = Text.assemble(
+            ("ENV:", Style(color=accent, dim=True)),
+            (f" {role} {body}", Style(color="bright_black")),
+        )
         alert = self.query_one(identifier, LoadingStatus)
         alert.set_class(error, "-error")
-        alert.set_state(value, animated=False)
+        alert.set_content(content, value)
         self._alert_timer = self.set_timer(5, self._clear_alert)
 
     def _clear_alert(self) -> None:
@@ -1925,6 +1980,7 @@ class ChatApp(App[None]):
         self.query_one("#landing").display = False
         self.query_one("#chat").display = False
         self.query_one("#specs").display = True
+        self.query_one("#specs-link", Static).display = False
         self.query_one("#specs-hints", Static).update(
             "↑↓ SCROLL    ←→ CONSTRUCT    ENTER CONNECT    ESC REGISTRY    CTRL+C TERMINATE"
         )
@@ -1938,8 +1994,14 @@ class ChatApp(App[None]):
         self.query_one("#landing").display = False
         self.query_one("#chat").display = False
         self.query_one("#specs").display = True
+        session = self._session()
+        specs_link = self.query_one("#specs-link", Static)
+        specs_link.update(
+            _link_label(session.saved_chat_id, session.assistant.model_digest)
+        )
+        specs_link.display = True
         self.query_one("#specs-hints", Static).update(
-            "↑↓ SCROLL    ESC CHAT    CTRL+C TERMINATE"
+            "↑↓ SCROLL    ESC LINK    CTRL+C TERMINATE"
         )
         self._render_specs()
         specs_scroll = self.query_one("#specs-scroll", SpecsScroll)

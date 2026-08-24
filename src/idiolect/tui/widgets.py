@@ -310,7 +310,7 @@ class CommandMenu(Widget):
         selected: str | None,
         *,
         registry_enabled: bool,
-        save_enabled: bool,
+        trace_enabled: bool,
     ) -> None:
         """Set visible commands and the highlighted command."""
         self.display = bool(commands)
@@ -322,13 +322,13 @@ class CommandMenu(Widget):
             action.display = command in preview
             disabled = (
                 (command == "/disconnect" and not registry_enabled)
-                or (command == "/save" and not save_enabled)
+                or (command == "/trace" and not trace_enabled)
             )
             action.set_class(command == selected and not disabled, "-selected")
             action.set_class(disabled, "-disabled")
             action.set_class(
-                command == "/save" and not save_enabled,
-                "-save-disabled",
+                command == "/trace" and not trace_enabled,
+                "-trace-disabled",
             )
 
 
@@ -558,7 +558,7 @@ class Transcript(Static):
 
 
 class _Dimmed:
-    """Apply metadata color and dim styling to one Rich renderable."""
+    """Apply the footer color to one environment renderable."""
 
     def __init__(self, renderable: object) -> None:
         """Keep the original renderable for delegated rendering."""
@@ -566,7 +566,7 @@ class _Dimmed:
 
     def __rich_console__(self, console, options):
         """Render child segments with the metadata style."""
-        metadata = Style(color="bright_black", dim=True)
+        metadata = Style(color="bright_black")
         for segment in console.render(self.renderable, options):
             style = metadata if segment.style is None else segment.style + metadata
             yield Segment(segment.text, style, segment.control)
@@ -579,6 +579,7 @@ class LoadingStatus(Widget):
         """Create a hidden loading state."""
         super().__init__(id=id)
         self.state = ""
+        self._content: Text | None = None
         self._animated = True
         self._spinner = Spinner("dots")
 
@@ -589,13 +590,25 @@ class LoadingStatus(Widget):
     def set_state(self, value: str, *, animated: bool = True) -> None:
         """Set the visible status and its animation state."""
         self.state = value
+        self._content = None
         self._animated = animated
         self.display = bool(value)
         self.auto_refresh = 1 / 12 if value and animated else None
         self.refresh()
 
+    def set_content(self, content: Text, state: str) -> None:
+        """Set one styled, non-animated status message."""
+        self.state = state
+        self._content = content
+        self._animated = False
+        self.display = bool(state)
+        self.auto_refresh = None
+        self.refresh()
+
     def render(self) -> RenderResult:
         """Render the spinner before the loading state."""
+        if self._content is not None:
+            return self._content
         if not self._animated:
             return Text(self.state)
         frame = (

@@ -51,13 +51,16 @@ primary registry column is `CONSTRUCT` and contains the `TARGET::RUN` identity;
 the `BASE` column immediately to its right identifies the base model used by
 each entry. TYPE and ENTRY remain the right-hand metadata columns.
 The blue watermark keeps its mark and product name bold and gives its tagline a
-dim, non-bold treatment. Chat and SPECS identity headers carry the matching
-`· ·` brand motif at their right edge with one blank cell completing the face.
+dim, non-bold treatment. Chat and `/specs` identity headers show the active
+snapshot as `LINK#XXXXXX`, using the first six hexadecimal characters in
+uppercase. A clean unsaved session uses the model digest; a digest that is not
+available yet shows `LINK#------`. SPECS opened from REGISTRY hides this link
+because it does not represent an active chat snapshot.
 Use the arrow keys to choose a row and Enter to connect. TYPE identifies a BASE,
 CONSTRUCT, or TRACE. TYPE and ENTRY use the same description treatment as slash
 commands: metadata gray while idle and dimmed accent color with their selected
 model. Unavailable FAULT rows use the muted, dimmed treatment of an unavailable
-`/save`. A saved `TRACE` keeps the canonical model identity first and shows the
+`/trace`. A saved `TRACE` keeps the canonical model identity first and shows the
 trace name to its right in metadata gray. A long trace name ends with an ellipsis
 before TYPE. Trace names are expanded by default and use the muted selection
 color with their highlighted TRACE, matching TYPE and ENTRY. Press Space from any registry
@@ -82,7 +85,8 @@ The registry navigation hints include `C CHROMA`.
 
 Press S on any `READY` row to open `SPECS` without resolving or loading the
 model. The scrollable page shows the complete verified model identity in
-`IDIOLECT // TARGET::RUN [BASE]` form, source,
+`IDIOLECT // TARGET::RUN [BASE]` form, with hexadecimal identifiers displayed in
+uppercase, source,
 revision, digests, prompt and generation policy, and available run, dataset, and
 TRACE lineage. It uses the compact `CTX`, `TOK`, `REP`, `GEN`, and `EVAL` labels.
 Its IDENTITY section repeats the `CONSTRUCT` and `BASE` values used by the
@@ -103,9 +107,9 @@ The DIXIE BASE page includes a deterministic fidelity scorecard labeled
 not measurements. CONSTRUCT and TRACE pages show `NOT EVALUATED` because chat
 does not scan or infer results from private evaluation artifacts.
 
-Verified run/dataset pairs and saved lineage leaves follow the default row. Each
-Each adapter has the identity `IDIOLECT // NAME::run [BASE]`. `run` is the first eight
-characters of the full run ID. `NAME` is the uppercase display of the recorded
+Verified run/dataset pairs and saved lineage leaves follow the default row.
+Each adapter has the identity `IDIOLECT // NAME::RUN [BASE]`. `RUN` is the first eight
+uppercase hexadecimal characters of the full run ID. `NAME` is the uppercase display of the recorded
 target name; adapter prompts keep the recorded target name unchanged. Both rows
 are unavailable if that prefix collides.
 
@@ -149,19 +153,21 @@ that starts at the beginning of a word. Commands are:
 - `/terminate`: stop an active reply or terminate when idle;
 - `/echo <text>`: show `<text>` as a dimmed `ENV` turn without adding it to model context;
 - `/disconnect`: return to `REGISTRY` when no reply is active;
-- `/save`: save a TRACE checkpoint and keep the chat open;
+- `/trace`: save a TRACE checkpoint and keep the chat open;
 - `/specs`: temporarily view the active model's SPECS.
 - `/chroma`: open the CHROMA theme menu.
 
 Commands with arguments remove their slash token from the composer and show a
 dimmed command bar above it. The command description follows the command in the
 metadata color. Type arguments in the composer and press Enter to run the
-command. Escape removes the active command. A command always replaces a
-selected reference, and the reference menu stays closed while a command bar is
-active.
+command. Missing arguments report `ENV: ERR COMMAND missing argument.` and
+unexpected arguments report `ENV: ERR COMMAND unexpected argument.` Escape removes
+the active command. A command always replaces a selected reference, and the
+reference menu stays closed while a command bar is active.
 
-`/echo` appends an `ENV` turn. Its name and message use the metadata color. ENV
-turns are kept for display and snapshots, but are excluded from model context.
+`/echo` appends an `ENV` turn. `ENV` uses the dimmed accent color and its
+message uses the footer text color. ENV turns are kept for display and
+snapshots, but are excluded from model context.
 
 Type `@` at the start of an empty composer to open the `REF` menu. It
 shows three stored chat bubbles at a time, numbered from `00` in chronological
@@ -193,13 +199,13 @@ unsaved state, or transcript content. Escape restores the same chat directly;
 Left and Right do not cycle registry models in this temporary view. Ctrl+C
 restores chat and opens the normal exit menu when the session has unsaved data.
 
-`/save` is available only when the transcript contains new unsaved data and no
+`/trace` is available only when the transcript contains new unsaved data and no
 reply is active. Otherwise it is shown as unavailable and cannot be selected;
 entering it explicitly in a clean session reports that there is no new data.
 The command opens the same optional trace-name field used by SAVE. Enter saves
 the checkpoint and stays in chat. The empty field shows the generated default
 name; a blank name uses it, and Escape cancels the checkpoint. A successful
-checkpoint disables `/save` until the transcript changes again.
+checkpoint disables `/trace` until the transcript changes again.
 
 Either idle command opens the horizontal DISCONNECT, SAVE, and RESUME
 confirmation when the transcript has unsaved changes. DISCONNECT is selected
@@ -268,7 +274,7 @@ new chat.
 Model resolution, verification, and loading run outside the Textual event loop.
 The interface stays responsive and reports active worker states above the
 composer. It reports `CONNECTING` while a model connection starts and
-`CONNECTION is not ready.` if input is submitted before the connection
+`ENV: ERR CONNECTION is not ready.` if input is submitted before the connection
 completes. It hides the ready state. During prompt processing, it reports the
 measured prefill token count and total from MLX-LM.
 
@@ -280,9 +286,13 @@ backend; the footer does not report estimated performance. Peak memory uses
 decimal GB, which matches the MLX-LM measurement.
 
 Transient alerts appear as right-aligned lines immediately above the active
-control bar with the same spacing as loading status. Informational and success
-alerts use metadata gray; errors alone use the failure color. The TUI does not
-use floating toasts.
+control bar with the same spacing as loading status. Each message starts with
+dimmed `ENV:`. Errors continue with `ERR` and alerts continue with `ACK`; their
+messages use the footer text color. The first message word is lowercase unless
+it is an uppercase interface word. A successful TRACE reports
+`ENV: ACK TRACE saved as ID.`; an already clean TRACE reports
+`ENV: ACK TRACE {ID} exists.`. Generation failures report `ENV: ERR message.`. The
+TUI does not use floating toasts.
 
 ## Saved snapshots
 

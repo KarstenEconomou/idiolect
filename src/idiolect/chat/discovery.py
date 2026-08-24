@@ -135,7 +135,7 @@ def canonical_name(target_name: str, run_id: str, model_name: str) -> str:
 
 def _target_run(target_name: str, run_id: str | None) -> str:
     """Return the compact target and run identity used by chat views."""
-    run = "BASE" if run_id is None else run_id[:8]
+    run = "BASE" if run_id is None else run_id[:8].upper()
     return f"{target_name.upper()}::{run}"
 
 
@@ -229,11 +229,11 @@ def discover_assistants(
             )
     prefixes: dict[str, list[int]] = {}
     for index, row in enumerate(rows):
-        prefixes.setdefault(row.run_id[:8], []).append(index)
+        prefixes.setdefault(row.run_id[:8].upper(), []).append(index)
     for prefix, indexes in prefixes.items():
         if len(indexes) < 2:
             continue
-        ids = ", ".join(rows[index].run_id for index in indexes)
+        ids = ", ".join(rows[index].run_id.upper() for index in indexes)
         message = f"Run prefix {prefix} is not unique: {ids}"
         for index in indexes:
             rows[index] = replace(rows[index], assistant=None, error=message)

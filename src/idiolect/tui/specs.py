@@ -149,7 +149,7 @@ def render_specs(
     _field(document, "SOURCE", assistant.model.source.upper())
     _field(document, "REVISION", assistant.model.revision)
     _field(document, "CACHE", assistant.model.cache)
-    _field(document, "MODEL DIGEST", assistant.model_digest)
+    _field(document, "MODEL DIGEST", _upper_hex(assistant.model_digest))
     _field(
         document,
         "TRUST REMOTE CODE",
@@ -158,13 +158,13 @@ def render_specs(
 
     if assistant.run is not None:
         _section(document, "LINEAGE")
-        _field(document, "RUN ID", assistant.run_id)
+        _field(document, "RUN ID", _upper_hex(assistant.run_id))
         _field(document, "RUN PATH", assistant.run.ref.path)
-        _field(document, "DATASET ID", assistant.dataset_id)
+        _field(document, "DATASET ID", _upper_hex(assistant.dataset_id))
         if assistant.dataset is not None:
             _field(document, "DATASET PATH", assistant.dataset.dataset.path)
         _field(document, "ADAPTER PATH", assistant.run.adapter_path)
-        _field(document, "ADAPTER DIGEST", assistant.adapter_digest)
+        _field(document, "ADAPTER DIGEST", _upper_hex(assistant.adapter_digest))
         _field(document, "TRAINING SEED", assistant.training_seed)
         _field(document, "MAX SEQUENCE", assistant.run.max_seq_length)
         _field(document, "DATASET SPLITS", _split_counts(assistant))
@@ -176,9 +176,9 @@ def render_specs(
     if trace is not None:
         _section(document, "TRACE")
         _field(document, "NAME", trace.title)
-        _field(document, "TRACE ID", trace.id)
+        _field(document, "TRACE ID", trace.id.upper())
         _field(document, "TRACE PATH", trace.path)
-        _field(document, "PARENT ID", trace.parent_id)
+        _field(document, "PARENT ID", _upper_hex(trace.parent_id))
         _field(document, "CREATED", trace.created_at.isoformat())
         _field(document, "TURNS", len(trace.turns))
 
@@ -195,6 +195,11 @@ def render_specs(
     _field(document, "STATUS", "NOT EVALUATED")
     _note(document, "No recorded evaluation was supplied to this registry.")
     return document
+
+
+def _upper_hex(value: str | None) -> str | None:
+    """Return one displayed hexadecimal identity in uppercase."""
+    return None if value is None else value.upper()
 
 
 def _section(document: SpecsDocument, name: str) -> None:

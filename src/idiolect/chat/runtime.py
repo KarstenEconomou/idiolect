@@ -86,7 +86,7 @@ def validate_chat_policy(
     if missing:
         raise ChatError(f"Chat configuration is incomplete: {', '.join(missing)}")
     if chat.output is None:
-        raise ChatError("Chat output is not configured")
+        raise ChatError("LINK not configured")
     if chat.seed < 0:
         raise ChatError("Chat seed must not be negative")
     if not chat.participant_name.strip():

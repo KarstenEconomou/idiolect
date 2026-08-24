@@ -16,8 +16,9 @@ TUI tests.
   primary text, and inactive row names. Use the selected ANSI green, yellow,
   blue, magenta, or cyan only for accents and active primary labels;
   bright black for metadata, help text, telemetry, inactive actions, dividers,
-  and idle borders; ANSI white for table and menu headings; and ANSI red for
-  failures and unavailable actions. Use terminal `grey23` as the character-width
+  and idle borders; a dimmed current accent prefix and bright-black message
+  text for transient alerts and errors; ANSI white for table and menu headings;
+  and ANSI red for unavailable actions. Use terminal `grey23` as the character-width
   background for transcript code. Do not add RGB colors, opaque modal backdrops,
   tints, or separate surface colors.
 - Bold product marks, primary page titles, canonical chat identities, table and
@@ -25,9 +26,11 @@ TUI tests.
   selection. Do not bold body text outside focused transcript Markdown,
   telemetry, help text, descriptions, or inactive actions. Give supporting
   metadata in a selected item the accent color with dim styling.
-- Keep the watermark blue. Render its mark and product name bold, and render its
-  tagline non-bold and dim. Put the blue `· ·` brand motif at the right edge of
-  the chat and SPECS identity headers with one blank cell after it.
+- Keep the landing watermark blue. Render its mark and product name bold, and
+  render its tagline non-bold and dim. Put `LINK#XXXXXX` at the right edge of
+  chat and `/specs` identity headers, using six uppercase hexadecimal ID
+  characters; use the model digest for clean chats and show `LINK#------` only
+  until that digest is available. Hide the link for SPECS opened from REGISTRY.
 - Use uppercase for interface nouns, identities, transcript speaker labels,
   table headings, status values, action labels, telemetry, and keyboard hints.
   Keep command names lowercase. Write command descriptions in sentence case and
@@ -53,7 +56,7 @@ TUI tests.
   column immediately to its right. Treat BASE, TYPE, and ENTRY like
   slash-command descriptions: use metadata gray while idle and the dimmed
   selection accent while selected.
-  Treat unavailable rows like unavailable `/save`: metadata gray and dimmed.
+  Treat unavailable rows like unavailable `/trace`: metadata gray and dimmed.
 - Let `C` in REGISTRY open the `CHROMA` menu. Present ANSI red LOOKOUT, yellow
   PICKPOCKET, green HACKER, blue LOCKSMITH, magenta MOLE, and cyan GENTLEMAN in
   that order. Use green by default. Preview themes with the arrow keys, select
@@ -69,9 +72,12 @@ TUI tests.
   rows, with command names in a fixed-width column and descriptions in the
   remaining width. Keep composer focus. Wrap enabled commands with arrow keys;
   Tab completes the selection plus one trailing space; Enter runs it; Escape
-  closes the menu without clearing the composer. Show disabled commands red and
-  dim, except for the metadata-gray disabled `/save`, and skip them when another
-  enabled command exists.
+  closes the menu without clearing the composer. Prefix alerts and errors with
+  dimmed `ENV:`, then use `ACK` or `ERR` with footer-colored message text.
+  Lowercase the first message word unless it is an uppercase interface word.
+  Show disabled commands red and dim, except for the
+  metadata-gray disabled `/trace`, and skip them when another enabled command
+  exists.
 - Let `/specs` open the active session's exact model sheet without changing the
   chat session, turns, dirty state, or transcript. Include saved TRACE lineage
   when available. In this temporary view, hide model-cycling hints, make
@@ -79,10 +85,10 @@ TUI tests.
   the normal exit confirmation.
 - Let `/chroma` open the same live-preview CHROMA menu in chat. Place it above
   the composer and restore the chat footer when it closes.
-- Offer `/save` only when the current transcript has new unsaved data. Request
+- Offer `/trace` only when the current transcript has new unsaved data. Request
   its optional trace name with the existing field, record the checkpoint, and
   keep the chat open. Disable the command after the record succeeds. An explicit
-  `/save` in a clean session shows a failure.
+  `/trace` in a clean session shows a failure.
 - Keep unsaved-change actions in one horizontal row ordered `DISCONNECT`,
   `SAVE`, `RESUME`. Select `DISCONNECT` first. Wrap all arrow keys, activate
   with Enter, and make Escape equivalent to `RESUME`. Disable pointer activation.

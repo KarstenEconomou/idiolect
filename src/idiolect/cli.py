@@ -58,7 +58,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if arguments.command == "chat":
             validate_chat_policy(config.chat, config.inference, config.train)
             if config.chat.output is None:
-                raise ChatError("Chat output is not configured")
+                raise ChatError("LINK not configured")
             store = ChatStore(config.chat.output)
             initial_assistant = None
             initial_chat = None

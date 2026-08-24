@@ -19,7 +19,7 @@ def test_assistant_name_uses_requested_identity_and_final_model_component() -> N
     assert model_basename("mlx-community/Qwen3-14B-4bit") == "Qwen3-14B-4bit"
     assert model_basename("/models/local-model/") == "local-model"
     assert canonical_name("target", "7f3a91c2" + "0" * 56, "org/Qwen") == (
-        "IDIOLECT // TARGET::7f3a91c2 [Qwen]"
+        "IDIOLECT // TARGET::7F3A91C2 [Qwen]"
     )
 
 
@@ -80,4 +80,6 @@ def test_discovery_disables_every_colliding_short_run_id(tmp_path, monkeypatch) 
 
     assert len(rows) == 2
     assert all(not row.available for row in rows)
-    assert all(all(run_id in (row.error or "") for run_id in ids) for row in rows)
+    assert all(
+        all(run_id.upper() in (row.error or "") for run_id in ids) for row in rows
+    )

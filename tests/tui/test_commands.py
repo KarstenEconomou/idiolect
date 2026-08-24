@@ -10,7 +10,7 @@ from idiolect.tui.commands import CommandError, completions, parse_command
     [
         "/terminate",
         "/disconnect",
-        "/save",
+        "/trace",
         "/specs",
         "/chroma",
         "/terminate   ",
@@ -37,10 +37,10 @@ def test_echo_command_keeps_its_argument_text() -> None:
 @pytest.mark.parametrize(
     ("value", "message"),
     [
-        ("/quit", "Unknown chat command"),
-        ("/retry", "Unknown chat command"),
-        ("/terminate now", "/terminate does not accept an argument"),
-        ("/registry", "Unknown chat command"),
+        ("/quit", "COMMAND unknown"),
+        ("/retry", "COMMAND unknown"),
+        ("/terminate now", "COMMAND unexpected argument"),
+        ("/registry", "COMMAND unknown"),
     ],
 )
 def test_unknown_commands_and_arguments_are_rejected(
@@ -58,12 +58,12 @@ def test_command_completion_requires_one_command_prefix() -> None:
         "/terminate",
         "/echo",
         "/disconnect",
-        "/save",
+        "/trace",
         "/specs",
         "/chroma",
     )
     assert completions("/di") == ("/disconnect",)
-    assert completions("/sa") == ("/save",)
+    assert completions("/tr") == ("/trace",)
     assert completions("/sp") == ("/specs",)
     assert completions("/ch") == ("/chroma",)
     assert completions("/ec") == ("/echo",)

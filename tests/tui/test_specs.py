@@ -34,12 +34,12 @@ def test_construct_specs_show_verified_lineage_and_no_invented_evaluation(
         "CONSTRUCT",
     )
 
-    assert _RUN_ID in document.plain
-    assert _DATASET_ID in document.plain
-    assert _ADAPTER_DIGEST in document.plain
+    assert _RUN_ID.upper() in document.plain
+    assert _DATASET_ID.upper() in document.plain
+    assert _ADAPTER_DIGEST.upper() in document.plain
     assert "CONSTRUCT" in document.plain
-    assert "DIXIE::aaaaaaaa" in document.plain
-    assert "CONSTRUCT\n DIXIE::aaaaaaaa" in document.plain
+    assert "DIXIE::AAAAAAAA" in document.plain
+    assert "CONSTRUCT\n DIXIE::AAAAAAAA" in document.plain
     assert "BASE" in document.plain
     assert "TRAIN 90    VALID 10    TEST 5" in document.plain
     assert "LORA RANK" in document.plain
@@ -72,17 +72,19 @@ def test_trace_specs_add_snapshot_lineage_to_the_underlying_model(
     )
 
     assert "Night session" in document.plain
-    assert trace.id in document.plain
-    assert _TRACE_PARENT_ID in document.plain
+    assert trace.id.upper() in document.plain
+    assert _TRACE_PARENT_ID.upper() in document.plain
     assert _NOW.isoformat() in document.plain
     assert "NOT EVALUATED" in document.plain
     console = Console(width=36, color_system=None)
+    model_digest = assistant.model_digest
+    assert model_digest is not None
     with console.capture() as capture:
         console.print(document)
     rendered = capture.get().splitlines()
     for label, next_label, value in (
-        ("MODEL DIGEST", "TRUST REMOTE CODE", assistant.model_digest),
-        ("TRACE ID", "TRACE PATH", trace.id),
+        ("MODEL DIGEST", "TRUST REMOTE CODE", model_digest.upper()),
+        ("TRACE ID", "TRACE PATH", trace.id.upper()),
         ("TRACE PATH", "PARENT ID", trace.path),
     ):
         start = rendered.index(label) + 1
