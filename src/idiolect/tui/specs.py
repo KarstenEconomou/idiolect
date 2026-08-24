@@ -169,7 +169,7 @@ def render_specs(
         _field(document, "MAX SEQUENCE", assistant.run.max_seq_length)
         _field(document, "DATASET SPLITS", _split_counts(assistant))
 
-        _section(document, "TRAINING POLICY")
+        _section(document, "TRAINING")
         for key, value in _flatten(assistant.run.policy):
             _field(document, key, value)
 
@@ -187,11 +187,11 @@ def render_specs(
     for key, value in asdict(assistant.data).items():
         _field(document, key, value)
 
-    _section(document, "GENERATION POLICY")
+    _section(document, "GENERATION")
     for key, value in asdict(generation).items():
         _field(document, key, value)
 
-    _section(document, "EVALUATION")
+    _section(document, "FIDELITY")
     _field(document, "STATUS", "NOT EVALUATED")
     _note(document, "No recorded evaluation was supplied to this registry.")
     return document
@@ -206,7 +206,7 @@ def _section(document: SpecsDocument, name: str) -> None:
     """Append one specification section heading."""
     if document:
         document.append_line()
-    document.append_line(Text(_label(name), style="bold white"))
+    document.append_line(Text(name, style="bold white"))
 
 
 def _field(

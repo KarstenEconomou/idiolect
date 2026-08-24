@@ -13,8 +13,8 @@ COMMANDS = (
 
 COMMAND_DESCRIPTIONS = {
     "/terminate": "TERMINATE IDIOLECT.",
-    "/echo": "ENV echo.",
-    "/disconnect": "DISCONNECT from CONSTRUCT.",
+    "/echo": "SYS echo.",
+    "/disconnect": "DISCONNECT LINK.",
     "/trace": "Save TRACE.",
     "/specs": "View SPECS.",
     "/chroma": "Select CHROMA.",

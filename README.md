@@ -168,17 +168,15 @@ In chat, the active model is styled as `IDIOLECT // TARGET::RUN [BASE]`. Type `/
 the numbered stored message bubbles. Continue typing the reference identity
 after `@` to filter the list; `/ ` and `@ ` also open their menus before existing
 prompt text. Enter activates a selected slash command; Tab does not autocomplete.
-`/echo <text>` shows a dimmed ENV turn without adding it to model context.
+`/echo <text>` shows a dimmed SYS turn without adding it to model context.
 Commands with arguments use a command bar above the composer, and a command
 replaces any selected reference. Use `/chroma` in chat or press `C` in
 `REGISTRY` to open `CHROMA` and
 preview the red LOOKOUT, yellow PICKPOCKET, green HACKER, blue LOCKSMITH,
 magenta MOLE, and cyan GENTLEMAN themes with the arrow keys; Enter selects one.
-Chat and `/specs` headers show `LINK#XXXXXX`, using the first six hexadecimal
-characters of the active snapshot ID in uppercase; unsaved sessions show
-`LINK#------` until the model digest is available, then use the first six
-characters of that digest. SPECS opened from REGISTRY has no link. Hexadecimal
-IDs in SPECS are uppercase. Alerts and errors use a dimmed `ENV:` prefix, followed by
+Chat and `/specs` headers show `LINK#XXXXXX`, using a random six-digit
+hexadecimal link ID in uppercase. SPECS opened from REGISTRY has no link.
+Hexadecimal IDs in SPECS are uppercase. Alerts and errors use a dimmed `SYS:` prefix, followed by
 `ACK` or `ERR` and the message in the footer text color.
 A selected reference is shown above the composer and is encoded as Signal-style
 reply metadata for adapter-backed assistants. See
@@ -209,7 +207,7 @@ Important constraints:
   use immutable files.
 - Keep the Mac on, awake, and logged in for the LaunchAgent. Training, inference,
   and automatic evaluation recipes use `caffeinate`.
-- Chat never reads Signal or DuckDB, and it never autosaves. SAVE in the
+- Chat never reads Signal or DuckDB, and it never autosaves. TRACE in the
   unsaved-change confirmation and the explicit `/trace` checkpoint command write
   private snapshots.
 - Treat raw events, hashed records, chat transcripts, and saved snapshots as

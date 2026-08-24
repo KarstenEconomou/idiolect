@@ -31,7 +31,7 @@ Chat validates this section only when a chat command runs. It also requires the
 generation fields in `[inference]` and the fixed base-model fields in `[train]`.
 `default_model = "train-base"` selects that configured base snapshot without its
 adapter. `participant_name` is the synthetic name used inside model prompts. The
-interface always shows the local user as `USER`.
+interface always shows the local operator as `OP`.
 
 Install and launch:
 
@@ -52,10 +52,9 @@ the `BASE` column immediately to its right identifies the base model used by
 each entry. TYPE and ENTRY remain the right-hand metadata columns.
 The blue watermark keeps its mark and product name bold and gives its tagline a
 dim, non-bold treatment. Chat and `/specs` identity headers show the active
-snapshot as `LINK#XXXXXX`, using the first six hexadecimal characters in
-uppercase. A clean unsaved session uses the model digest; a digest that is not
-available yet shows `LINK#------`. SPECS opened from REGISTRY hides this link
-because it does not represent an active chat snapshot.
+session as `LINK#XXXXXX`, using a random six-digit hexadecimal link ID in
+uppercase. SPECS opened from REGISTRY hides this link because it does not
+represent an active chat session.
 Use the arrow keys to choose a row and Enter to connect. TYPE identifies a BASE,
 CONSTRUCT, or TRACE. TYPE and ENTRY use the same description treatment as slash
 commands: metadata gray while idle and dimmed accent color with their selected
@@ -65,10 +64,9 @@ trace name to its right in metadata gray. A long trace name ends with an ellipsi
 before TYPE. Trace names are expanded by default and use the muted selection
 color with their highlighted TRACE, matching TYPE and ENTRY. Press Space from any registry
 row to collapse or expand all trace names together. Press Backspace while a
-TRACE is highlighted to open the horizontal `TRACE` management menu. `RETAIN` is
-selected by default and Escape also keeps the trace. Its heading shows the
-current trace name directly after `TRACE` in metadata gray,
-and the subject trace name blinks until the menu closes. The menu and rename
+TRACE is highlighted to open the horizontal `TRACE MANAGE` menu. `RETAIN` is
+selected by default and Escape also keeps the trace. The subject trace name
+blinks in the registry until the menu closes. The menu and rename
 field use the same outer inset as the chat composer. Select `RENAME` to open
 the standard name field with the current name as its default. Renaming creates
 an immutable replacement with the same lineage parent. Select `ERASE` to
@@ -129,7 +127,7 @@ line-break fallback. Escape stops active generation at the next token boundary.
 Ctrl+C stops active generation or opens the idle quit confirmation. The composer
 remains available during generation, but a second message is not queued. Use the
 mouse wheel, or Ctrl+Up and Ctrl+Down without leaving the composer, to scroll the
-transcript. Transcript turns use `USER` and the short uppercase assistant name.
+transcript. Transcript turns use `OP` and the short uppercase assistant name.
 One model invocation generates one response episode. When the reply contains the
 training serialization boundary `[new message]`, the transcript shows each bubble
 as its own labeled block under the same assistant name, both while streaming and
@@ -151,7 +149,7 @@ completion. The menu is visible only while the cursor is inside a slash token
 that starts at the beginning of a word. Commands are:
 
 - `/terminate`: stop an active reply or terminate when idle;
-- `/echo <text>`: show `<text>` as a dimmed `ENV` turn without adding it to model context;
+- `/echo <text>`: show `<text>` as a dimmed `SYS` turn without adding it to model context;
 - `/disconnect`: return to `REGISTRY` when no reply is active;
 - `/trace`: save a TRACE checkpoint and keep the chat open;
 - `/specs`: temporarily view the active model's SPECS.
@@ -160,13 +158,13 @@ that starts at the beginning of a word. Commands are:
 Commands with arguments remove their slash token from the composer and show a
 dimmed command bar above it. The command description follows the command in the
 metadata color. Type arguments in the composer and press Enter to run the
-command. Missing arguments report `ENV: ERR COMMAND missing argument.` and
-unexpected arguments report `ENV: ERR COMMAND unexpected argument.` Escape removes
+command. Missing arguments report `SYS: ERR COMMAND missing argument.` and
+unexpected arguments report `SYS: ERR COMMAND unexpected argument.` Escape removes
 the active command. A command always replaces a selected reference, and the
 reference menu stays closed while a command bar is active.
 
-`/echo` appends an `ENV` turn. `ENV` uses the dimmed accent color and its
-message uses the footer text color. ENV turns are kept for display and
+`/echo` appends a `SYS` turn. `SYS` uses the dimmed accent color and its
+message uses the footer text color. SYS turns are kept for display and
 snapshots, but are excluded from model context.
 
 Type `@` at the start of an empty composer to open the `REF` menu. It
@@ -185,7 +183,7 @@ Escape in the composer removes the selected reference. If a filter has no
 matches, editing it back to a matching query reopens the selector.
 
 The reference bar is removed when the prompt is sent. The transcript labels the
-user turn as `USER:`, followed by an indented dim `REF @NAME:NN` line and the
+operator turn as `OP:`, followed by an indented dim `REF @NAME:NN` line and the
 indented user text. Adapter-backed assistants receive the
 selected bubble as Signal-style `reply to AUTHOR: "quoted text"` header
 metadata; BASE assistants remove the UI token but omit this metadata. Active
@@ -202,14 +200,14 @@ restores chat and opens the normal exit menu when the session has unsaved data.
 `/trace` is available only when the transcript contains new unsaved data and no
 reply is active. Otherwise it is shown as unavailable and cannot be selected;
 entering it explicitly in a clean session reports that there is no new data.
-The command opens the same optional trace-name field used by SAVE. Enter saves
+The command opens the same optional trace-name field used by TRACE. Enter saves
 the checkpoint and stays in chat. The empty field shows the generated default
 name; a blank name uses it, and Escape cancels the checkpoint. A successful
 checkpoint disables `/trace` until the transcript changes again.
 
-Either idle command opens the horizontal DISCONNECT, SAVE, and RESUME
+Either idle command opens the horizontal DISCONNECT, TRACE, and RESUME
 confirmation when the transcript has unsaved changes. DISCONNECT is selected
-first. SAVE requests an optional trace name before it writes the immutable
+first. TRACE requests an optional trace name before it writes the immutable
 snapshot and continues the requested navigation. The empty field shows the
 generated default based on the first user message. Enter records the typed name;
 an empty or whitespace-only name uses the displayed default. Escape resumes the
@@ -272,10 +270,11 @@ model failure keeps the memory-only transcript. Return to `REGISTRY` to start a
 new chat.
 
 Model resolution, verification, and loading run outside the Textual event loop.
-The interface stays responsive and reports active worker states above the
-composer. It reports `CONNECTING` while a model connection starts and
-`ENV: ERR CONNECTION is not ready.` if input is submitted before the connection
-completes. It hides the ready state. During prompt processing, it reports the
+The interface enters chat before model loading starts and stays responsive. It
+reports active loading states above the composer with a `LINK` prefix, including
+`LINK LOADING`, and reports `SYS: ACK LINK ESTABLISHED.` when loading completes.
+It reports `SYS: ERR CONNECTION is not ready.` if input is submitted before the
+connection completes. It hides the ready state. During prompt processing, it reports the
 measured prefill token count and total from MLX-LM.
 
 The footer reports the last measured turn when no action menu is open. It puts
@@ -287,11 +286,11 @@ decimal GB, which matches the MLX-LM measurement.
 
 Transient alerts appear as right-aligned lines immediately above the active
 control bar with the same spacing as loading status. Each message starts with
-dimmed `ENV:`. Errors continue with `ERR` and alerts continue with `ACK`; their
+dimmed `SYS:`. Errors continue with `ERR` and alerts continue with `ACK`; their
 messages use the footer text color. The first message word is lowercase unless
 it is an uppercase interface word. A successful TRACE reports
-`ENV: ACK TRACE saved as ID.`; an already clean TRACE reports
-`ENV: ACK TRACE {ID} exists.`. Generation failures report `ENV: ERR message.`. The
+`SYS: ACK TRACE saved as ID.`; an already clean TRACE reports
+`SYS: ACK TRACE {ID} exists.`. Generation failures report `SYS: ERR message.`. The
 TUI does not use floating toasts.
 
 ## Saved snapshots

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import secrets
 import threading
 import time
 import traceback
@@ -91,16 +92,15 @@ def _watermark(color: str = "green") -> Text:
     return value
 
 
-def _link_label(chat_id: str | None, model_digest: str | None = None) -> str:
-    """Return the compact link label for one chat snapshot or model."""
-    identifier = (
-        chat_id[:6].upper()
-        if chat_id is not None
-        else model_digest[:6].upper()
-        if model_digest is not None
-        else _UNSAVED_LINK_ID
-    )
+def _link_label(identifier: str | None) -> str:
+    """Return the compact label for one live link."""
+    identifier = _UNSAVED_LINK_ID if identifier is None else identifier
     return f"LINK#{identifier}"
+
+
+def _random_link_id() -> str:
+    """Return a random six-digit hexadecimal link identifier."""
+    return secrets.token_hex(3).upper()
 
 
 def _accent_theme_css() -> str:
@@ -379,6 +379,7 @@ class ChatApp(App[None]):
         self._specs_key: str | None = None
         self._specs_from_chat = False
         self._active_trace: SavedChat | None = None
+        self._link_id: str | None = None
         self._accent_theme_index = next(
             index
             for index, (name, _, _) in enumerate(_ACCENT_THEMES)
@@ -540,7 +541,7 @@ class ChatApp(App[None]):
             self._start_trace_blink()
             self._refresh_catalog_prompts(event.key)
             self.push_screen(
-                TraceMenuModal(row.title),
+                TraceMenuModal(),
                 lambda choice: self._after_trace_action(row, choice),
             )
 
@@ -1150,7 +1151,7 @@ class ChatApp(App[None]):
         self.query_one("#chat").display = True
         self.query_one("#identity", Static).update(session.assistant.name)
         self.query_one("#chat-link", Static).update(
-            _link_label(session.saved_chat_id, session.assistant.model_digest)
+            _link_label(self._link_id)
         )
         self._render_transcript()
         self._render_command()
@@ -1169,9 +1170,9 @@ class ChatApp(App[None]):
         turns = []
         for turn in session.turns:
             if turn.role == "env":
-                turns.append(("ENV", turn.content, True))
+                turns.append(("SYS", turn.content, True))
                 continue
-            name = "USER" if turn.role == "user" else self._chat_name(session)
+            name = "OP" if turn.role == "user" else self._chat_name(session)
             if turn.role == "user" and turn.reference is not None:
                 referenced = self._reference_bubble(turn.reference)
                 if referenced is not None:
@@ -1215,7 +1216,7 @@ class ChatApp(App[None]):
     def _reference_name(self, bubble: ChatBubble) -> str:
         """Return the display identity for one reference bubble."""
         if bubble.role == "user":
-            return "USER"
+            return "OP"
         session = self.runtime.session
         return "ASSISTANT" if session is None else session.assistant.target_name.upper()
 
@@ -1512,7 +1513,7 @@ class ChatApp(App[None]):
             return
         if self._confirmation_open:
             self._set_footer(
-                "ENTER SAVE    ESC RESUME"
+                "ENTER TRACE    ESC RESUME"
                 if self._trace_name_open
                 else "←→ MOVE    ENTER SELECT    ESC RESUME"
             )
@@ -1543,7 +1544,10 @@ class ChatApp(App[None]):
             self._footer_text = value
 
     def _update_status(self) -> None:
-        self._set_status(self.runtime.state.value)
+        state = self.runtime.state.value
+        self._set_status(
+            self._link_status_label(state) if self._loading else state
+        )
 
     def _set_status(self, value: str | None) -> None:
         normalized = (
@@ -1771,7 +1775,6 @@ class ChatApp(App[None]):
             self._show_error(str(error))
             return False
         self._active_trace = saved
-        self.query_one("#chat-link", Static).update(_link_label(saved.id))
         self._show_alert(f"TRACE saved as {saved.id[:6].upper()}")
         return True
 
@@ -1779,7 +1782,14 @@ class ChatApp(App[None]):
         if not self._prepare_load():
             return
         self._active_trace = None
+        self._link_id = _random_link_id()
+        self.runtime.session = ChatSession(
+            assistant,
+            self.chat_policy,
+            self.generation,
+        )
         self._set_loading(True)
+        self._show_chat()
         self._select_thread(assistant)
 
     def _begin_attach(
@@ -1791,6 +1801,7 @@ class ChatApp(App[None]):
         if not self._prepare_load():
             return
         self._active_trace = trace
+        self._link_id = _random_link_id()
         self.runtime.session = session
         self._set_loading(True)
         self._show_chat()
@@ -1831,6 +1842,7 @@ class ChatApp(App[None]):
     def _load_done(self) -> None:
         self._set_loading(False)
         self._show_chat()
+        self._show_alert("LINK ESTABLISHED")
 
     def _load_failed(self, message: str) -> None:
         self._set_loading(False)
@@ -1873,10 +1885,10 @@ class ChatApp(App[None]):
         body = self._alert_body(message)
         if body and not body.endswith((".", "!", "?")):
             body += "."
-        value = f"ENV: {role} {body}"
+        value = f"SYS: {role} {body}"
         _, accent, _ = _ACCENT_THEMES[self._accent_theme_index]
         content = Text.assemble(
-            ("ENV:", Style(color=accent, dim=True)),
+            ("SYS:", Style(color=accent, dim=True)),
             (f" {role} {body}", Style(color="bright_black")),
         )
         alert = self.query_one(identifier, LoadingStatus)
@@ -1901,18 +1913,22 @@ class ChatApp(App[None]):
         if not self.is_mounted or len(self.query("#load-status")) == 0:
             return
         state = self.runtime.state.value
-        status = self._status_label(state) if self._loading else ""
+        status = self._link_status_label(state) if self._loading else ""
         if status != self._load_status_text:
             self.query_one("#load-status", LoadingStatus).set_state(status)
             self._load_status_text = status
         if self._loading and self.query_one("#chat").display:
-            self._set_status(state)
+            self._update_status()
 
     @staticmethod
     def _status_label(value: str) -> str:
-        """Return the user-facing label for one worker state."""
-        normalized = value.upper()
-        return "CONNECTING" if normalized == "LOADING" else normalized
+        """Return the uppercase label for one worker state."""
+        return value.upper()
+
+    @staticmethod
+    def _link_status_label(value: str) -> str:
+        """Return one loading label with its link prefix."""
+        return f"LINK {value.upper()}"
 
     def _fill_chooser(self) -> None:
         self._catalog_width = self.size.width
@@ -1994,10 +2010,9 @@ class ChatApp(App[None]):
         self.query_one("#landing").display = False
         self.query_one("#chat").display = False
         self.query_one("#specs").display = True
-        session = self._session()
         specs_link = self.query_one("#specs-link", Static)
         specs_link.update(
-            _link_label(session.saved_chat_id, session.assistant.model_digest)
+            _link_label(self._link_id)
         )
         specs_link.display = True
         self.query_one("#specs-hints", Static).update(

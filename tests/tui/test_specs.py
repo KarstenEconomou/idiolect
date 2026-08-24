@@ -42,6 +42,8 @@ def test_construct_specs_show_verified_lineage_and_no_invented_evaluation(
     assert "CONSTRUCT\n DIXIE::AAAAAAAA" in document.plain
     assert "BASE" in document.plain
     assert "TRAIN 90    VALID 10    TEST 5" in document.plain
+    assert "TRAINING\n" in document.plain
+    assert "TRAINING POLICY" not in document.plain
     assert "LORA RANK" in document.plain
     assert "NOT EVALUATED" in document.plain
     assert "SYNTHETIC // UI FIXTURE" not in document.plain
@@ -114,11 +116,11 @@ def test_specs_abbreviate_telemetry_and_align_prompt_format_blocks(
     )
 
     assert "CTX MESSAGES" in document.plain
-    assert "GEN POLICY" in document.plain
+    assert "GENERATION\n" in document.plain
     assert "MAX PROMPT TOK" in document.plain
     assert "REP PENALTY" in document.plain
     assert "REP CTX SIZE" in document.plain
-    assert "EVAL\n" in document.plain
+    assert "FIDELITY\n" in document.plain
     offset = " "
     assert (
         f"SYSTEM PROMPT\n{offset}First line.\n{offset}\n{offset}Second line."
@@ -133,7 +135,9 @@ def test_specs_abbreviate_telemetry_and_align_prompt_format_blocks(
     assert "TOKENS" not in document.plain
     assert "REPETITION" not in document.plain
     assert "EVALUATION" not in document.plain
-    assert "GENERATION" not in document.plain
+    assert "GENERATION POLICY" not in document.plain
+    assert "GENERATION\n" in document.plain
+    assert "FIDELITY\n" in document.plain
 
 
 def test_prompt_blocks_drop_trailing_system_blank(

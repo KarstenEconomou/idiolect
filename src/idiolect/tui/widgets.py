@@ -625,10 +625,10 @@ class ConfirmModal(ModalScreen[str]):
     def compose(self) -> ComposeResult:
         """Create the confirmation dialog."""
         with Vertical(id="confirm-dialog"):
-            yield Static("CONNECTION", markup=False, id="confirm-message")
+            yield Static("LINK DIRTY", markup=False, id="confirm-message")
             with Horizontal(id="confirm-actions"):
                 yield KeyboardButton("DISCONNECT", id="discard")
-                yield KeyboardButton("SAVE", id="save")
+                yield KeyboardButton("TRACE", id="save")
                 yield KeyboardButton("RESUME", id="cancel")
 
     def on_mount(self) -> None:
@@ -740,17 +740,10 @@ class TraceNameModal(ModalScreen[str | None]):
 class TraceMenuModal(ModalScreen[str]):
     """Show actions for one saved trace."""
 
-    def __init__(self, trace_name: str) -> None:
-        """Set the trace name shown in the menu heading."""
-        super().__init__()
-        self.trace_name = trace_name
-
     def compose(self) -> ComposeResult:
         """Create the trace actions."""
         with Vertical(id="trace-dialog"):
-            heading = Text("TRACE", style="bold white")
-            heading.append(f" {self.trace_name}", style="bright_black")
-            yield Static(heading, markup=False, id="trace-message")
+            yield Static("TRACE MANAGE", markup=False, id="trace-message")
             with Horizontal(id="trace-actions"):
                 yield KeyboardButton("ERASE", id="erase")
                 yield KeyboardButton("RENAME", id="rename")

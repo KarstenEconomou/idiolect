@@ -23,7 +23,7 @@ from idiolect.chat.storage import ChatStorageError, ChatStore, SavedChat
 from idiolect.chat.worker import WorkerState
 from idiolect.config import ChatConfig, GenerationConfig, TrainDataConfig
 from idiolect.model import ModelSpec
-from idiolect.tui.app import ChatApp, _episode_segments
+from idiolect.tui.app import ChatApp, _episode_segments, _random_link_id
 from idiolect.tui.specs import HalfCellScrollBarRender, SpecsDocument
 from idiolect.tui.widgets import (
     CommandMenu,
@@ -200,15 +200,15 @@ def test_registry_chroma_menu_previews_all_themes_and_persists(tmp_path) -> None
             await _wait_for_chat(app, pilot)
             assert app.query_one("#identity", Static).styles.color.ansi == 2
             chat_link = app.query_one("#chat-link", Static)
-            assert str(chat_link.content) == "LINK#------"
+            assert re.fullmatch(r"LINK#[0-9A-F]{6}", str(chat_link.content))
             assert chat_link.styles.color.ansi == 2
             assert app.query_one("#composer-prompt", Static).styles.color.ansi == 2
             transcript = app.query_one("#transcript", Transcript)
-            transcript.set_turns((("USER", "Theme check"),))
+            transcript.set_turns((("OP", "Theme check"),))
             segments = tuple(
                 Console().render(cast(RenderableType, transcript.content))
             )
-            label = next(segment for segment in segments if segment.text == "USER:")
+            label = next(segment for segment in segments if segment.text == "OP:")
             assert label.style is not None
             assert label.style.color is not None and label.style.color.number == 2
 
@@ -576,7 +576,7 @@ def test_chat_divider_matches_the_page_gutter(tmp_path) -> None:
             link = app.query_one("#chat-link", Static)
             assert divider.content_region.x == 2
             assert divider.content_region.width == app.size.width - 4
-            assert str(link.content) == "LINK#FFFFFF"
+            assert re.fullmatch(r"LINK#[0-9A-F]{6}", str(link.content))
             assert link.content_region.right == heading.content_region.right - 1
             assert link.region.right == heading.content_region.right
             assert link.styles.color.ansi == 2
@@ -717,13 +717,7 @@ def test_registry_confirms_trace_erasure(tmp_path) -> None:
             await pilot.pause()
 
             heading = app.screen.query_one("#trace-message", Static).content
-            assert isinstance(heading, Text)
-            assert heading.plain == "TRACE Night session"
-            metadata = heading.get_style_at_offset(
-                Console(), heading.plain.index("Night session")
-            )
-            assert metadata.color is not None
-            assert metadata.color.name == "bright_black"
+            assert str(heading) == "TRACE MANAGE"
             assert [
                 str(button.label) for button in app.screen.query(KeyboardButton)
             ] == ["ERASE", "RENAME", "RETAIN"]
@@ -874,15 +868,15 @@ def test_transcript_formats_markdown_and_remains_scrollable(tmp_path) -> None:
 
             transcript = app.query_one("#transcript", Transcript)
             transcript_text = transcript.plain
-            assert "USER:" in transcript_text
+            assert "OP:" in transcript_text
             assert "DIXIE:" in transcript_text
-            assert "USER:\n User **message** 0\n [bold]literal[/bold]" in transcript_text
+            assert "OP:\n User **message** 0\n [bold]literal[/bold]" in transcript_text
             assert "IDIOLECT //" not in transcript_text
             console = Console(width=20, color_system=None)
             with console.capture() as capture:
                 console.print(transcript.content)
             rendered_lines = capture.get().splitlines()
-            assert rendered_lines[0] == "USER:"
+            assert rendered_lines[0] == "OP:"
             assert rendered_lines[1].strip() == "User message 0"
             assert rendered_lines[1].startswith(" ")
             assert rendered_lines[2].startswith(" ")
@@ -1077,7 +1071,7 @@ def test_composer_submits_and_inserts_line_breaks(tmp_path) -> None:
                 if "Synthetic reply" in app.query_one(Transcript).plain:
                     break
             transcript = app.query_one(Transcript).plain
-            assert "USER:\n first\n second" in transcript
+            assert "OP:\n first\n second" in transcript
             assert "DIXIE:\n Synthetic reply" in transcript
             assert composer.text == ""
 
@@ -1181,6 +1175,20 @@ def test_theme_uses_terminal_and_ansi_colors() -> None:
     assert re.search(r"#[0-9a-fA-F]{3,8}\b", ChatApp.CSS) is None
 
 
+def test_link_id_uses_three_random_bytes(monkeypatch) -> None:
+    """Check the live link ID uses six random hexadecimal digits."""
+    requested = []
+
+    def fake_token_hex(byte_count: int) -> str:
+        requested.append(byte_count)
+        return "a1b2c3"
+
+    monkeypatch.setattr("idiolect.tui.app.secrets.token_hex", fake_token_hex)
+
+    assert _random_link_id() == "A1B2C3"
+    assert requested == [3]
+
+
 def test_model_load_keeps_event_processing_active(tmp_path) -> None:
     """Check event processing during model loading."""
     chat = ChatConfig(output=tmp_path)
@@ -1196,21 +1204,26 @@ def test_model_load_keeps_event_processing_active(tmp_path) -> None:
     async def verify() -> None:
         async with app.run_test() as pilot:
             assert await asyncio.to_thread(runtime.started.wait, 1)
-            status = app.query_one("#load-status", LoadingStatus)
+            assert app.query_one("#chat").display
+            assert app.query_one("#landing").display is False
+            status = app.query_one("#status", LoadingStatus)
             for _ in range(20):
                 await pilot.pause()
-                if status.state == "CONNECTING":
+                if status.state == "LINK LOADING":
                     break
             else:
                 raise AssertionError("The loading state did not appear")
             rendered = status.render()
             assert isinstance(rendered, Text)
-            assert rendered.plain.endswith(" CONNECTING")
+            assert rendered.plain.endswith(" LINK LOADING")
             assert "// MODEL SESSION" not in rendered.plain
             assert status.styles.color == app.query_one("#catalog-subtitle").styles.color
             assert app.query_one("#chooser", OptionList).disabled is True
             runtime.release.set()
             await _wait_for_chat(app, pilot)
+            assert app.query_one("#chat-alert", LoadingStatus).state == (
+                "SYS: ACK LINK ESTABLISHED."
+            )
 
     try:
         asyncio.run(verify())
@@ -1243,7 +1256,7 @@ def test_failed_confirmation_save_keeps_memory_only_chat(tmp_path) -> None:
             assert app.focused is not None
             assert app.focused.id == "discard"
             assert str(app.screen.query_one("#confirm-message", Static).content) == (
-                "CONNECTION"
+                "LINK DIRTY"
             )
             assert app.screen.query_one("#confirm-message", Static).styles.color.ansi == 7
             assert app.screen.query_one(
@@ -1256,12 +1269,12 @@ def test_failed_confirmation_save_keeps_memory_only_chat(tmp_path) -> None:
             )
             assert [
                 str(button.label) for button in app.screen.query(KeyboardButton)
-            ] == ["DISCONNECT", "SAVE", "RESUME"]
+            ] == ["DISCONNECT", "TRACE", "RESUME"]
             await pilot.press("right", "enter")
             await pilot.pause()
             assert app.screen.query_one("#trace-name", Input).has_focus
             assert str(app.query_one("#footer", Static).content) == (
-                "ENTER SAVE    ESC RESUME"
+                "ENTER TRACE    ESC RESUME"
             )
             await pilot.press("enter")
             await pilot.pause()
@@ -1355,7 +1368,7 @@ def test_command_menu_filters_navigates_and_returns_to_registry(tmp_path) -> Non
             ) == "TERMINATE IDIOLECT."
             assert str(
                 disconnect_button.query_one(".command-description", Static).content
-            ) == "DISCONNECT from CONSTRUCT."
+            ) == "DISCONNECT LINK."
             assert str(
                 trace_button.query_one(".command-description", Static).content
             ) == "Save TRACE."
@@ -1489,10 +1502,10 @@ def test_echo_command_uses_an_env_turn_and_argument_bar(tmp_path) -> None:
             assert app._command_selected
             assert command_bar.display
             assert isinstance(command_bar.content, Text)
-            assert command_bar.content.plain == "/ ECHO ENV echo."
+            assert command_bar.content.plain == "/ ECHO SYS echo."
             command_style = command_bar.content.get_style_at_offset(Console(), 0)
             description_style = command_bar.content.get_style_at_offset(
-                Console(), command_bar.content.plain.index("ENV")
+                Console(), command_bar.content.plain.index("SYS")
             )
             assert command_style.dim
             assert command_style.color is not None
@@ -1513,11 +1526,11 @@ def test_echo_command_uses_an_env_turn_and_argument_bar(tmp_path) -> None:
             assert runtime.session.turns[-1].role == "env"
             assert runtime.session.turns[-1].content == "@hello"
             transcript = app.query_one(Transcript)
-            assert "ENV:\n @hello" in transcript.plain
+            assert "SYS:\n @hello" in transcript.plain
             segments = tuple(
                 Console().render(cast(RenderableType, transcript.content))
             )
-            env_label = next(segment for segment in segments if segment.text == "ENV:")
+            env_label = next(segment for segment in segments if segment.text == "SYS:")
             env_text = next(segment for segment in segments if "@hello" in segment.text)
             assert env_label.style is not None and env_label.style.dim
             assert env_label.style.color is not None
@@ -1553,7 +1566,7 @@ def test_command_argument_errors_use_generic_messages(tmp_path) -> None:
             await pilot.press("enter", "enter")
             await pilot.pause()
             assert app.query_one("#chat-alert", LoadingStatus).state == (
-                "ENV: ERR COMMAND missing argument."
+                "SYS: ERR COMMAND missing argument."
             )
 
             app._clear_command()
@@ -1564,7 +1577,7 @@ def test_command_argument_errors_use_generic_messages(tmp_path) -> None:
             await pilot.press("enter")
             await pilot.pause()
             assert app.query_one("#chat-alert", LoadingStatus).state == (
-                "ENV: ERR COMMAND unexpected argument."
+                "SYS: ERR COMMAND unexpected argument."
             )
 
     asyncio.run(verify())
@@ -1746,14 +1759,14 @@ def test_reference_menu_selects_bubble_and_escape_clears_reference(tmp_path) -> 
             assert composer.text == ""
 
             composer.insert("prompt")
-            composer.insert("@U")
+            composer.insert("@O")
             await pilot.pause()
             assert menu.display
-            assert str(menu.query_one("#reference-0 .reference-name", Static).content) == "USER:00"
+            assert str(menu.query_one("#reference-0 .reference-name", Static).content) == "OP:00"
             await pilot.press("enter")
             await pilot.pause()
             assert composer.text == "prompt"
-            assert "@ USER:00" in bar.content.plain
+            assert "@ OP:00" in bar.content.plain
             assert app._reference_selected
 
             composer.clear()
@@ -1792,7 +1805,7 @@ def test_reference_menu_selects_bubble_and_escape_clears_reference(tmp_path) -> 
             runtime.session.add_user("sent", reference=2)
             app._render_transcript()
             transcript = app.query_one(Transcript)
-            assert "USER:\n REF @DIXIE:02\n sent" in transcript.plain
+            assert "OP:\n REF @DIXIE:02\n sent" in transcript.plain
             segments = tuple(
                 Console().render(cast(RenderableType, transcript.content))
             )
@@ -1803,7 +1816,7 @@ def test_reference_menu_selects_bubble_and_escape_clears_reference(tmp_path) -> 
             assert annotation.style.dim
             assert annotation.style.color is not None
             assert annotation.style.color.name == "green"
-            speaker = next(segment for segment in segments if segment.text == "USER:")
+            speaker = next(segment for segment in segments if segment.text == "OP:")
             assert speaker.style is not None
             assert not speaker.style.dim
             assert speaker.style.color is not None
@@ -1877,7 +1890,7 @@ def test_specs_command_restores_the_unchanged_trace_chat(tmp_path) -> None:
             assert app.query_one("#specs").display is False
             assert str(
                 app.screen.query_one("#confirm-message", Static).content
-            ) == "CONNECTION"
+            ) == "LINK DIRTY"
             await pilot.press("escape")
             await pilot.pause()
 
@@ -1930,8 +1943,11 @@ def test_save_command_checkpoints_only_new_trace_data(tmp_path) -> None:
             assert runtime.session.dirty is False
             alert = app.query_one("#chat-alert", LoadingStatus)
             composer_bar = app.query_one("#composer-bar", Horizontal)
-            assert alert.state == "ENV: ACK TRACE saved as AAAAAA."
-            assert str(app.query_one("#chat-link", Static).content) == "LINK#AAAAAA"
+            assert alert.state == "SYS: ACK TRACE saved as AAAAAA."
+            assert re.fullmatch(
+                r"LINK#[0-9A-F]{6}",
+                str(app.query_one("#chat-link", Static).content),
+            )
             assert alert.display
             assert alert.region.bottom == composer_bar.region.y
             assert alert.styles.text_align == "right"
@@ -1955,7 +1971,7 @@ def test_save_command_checkpoints_only_new_trace_data(tmp_path) -> None:
             assert len(app.screen.query("#trace-name")) == 0
             assert store.titles == [None]
             assert app.query_one("#chat-alert", LoadingStatus).state == (
-                "ENV: ACK TRACE AAAAAA exists."
+                "SYS: ACK TRACE AAAAAA exists."
             )
             assert not alert.has_class("-error")
 
@@ -1984,7 +2000,7 @@ def test_chat_errors_align_right_above_composer(tmp_path) -> None:
             await pilot.pause()
 
             failure = app.query_one("#chat-alert", LoadingStatus)
-            assert failure.state == "ENV: ERR CONNECTION is not ready."
+            assert failure.state == "SYS: ERR CONNECTION is not ready."
             assert failure.display
 
             app._loading = False
@@ -1995,7 +2011,7 @@ def test_chat_errors_align_right_above_composer(tmp_path) -> None:
 
             loading = app.query_one("#status", LoadingStatus)
             composer_bar = app.query_one("#composer-bar", Horizontal)
-            assert failure.state == "ENV: ERR COMMAND unknown."
+            assert failure.state == "SYS: ERR COMMAND unknown."
             assert failure.display
             assert failure.region.bottom == composer_bar.region.y
             assert failure.content_region.x == loading.content_region.x
@@ -2039,7 +2055,7 @@ def test_dirty_slash_commands_open_connection_confirmation(tmp_path) -> None:
             await pilot.pause()
 
             assert str(app.screen.query_one("#confirm-message", Static).content) == (
-                "CONNECTION"
+                "LINK DIRTY"
             )
             assert app.focused is not None
             assert app.focused.id == "discard"
