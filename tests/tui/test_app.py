@@ -1398,6 +1398,17 @@ def test_command_menu_filters_navigates_and_returns_to_registry(tmp_path) -> Non
             assert str(app.query_one("#footer", Static).content) == (
                 "↑↓ MOVE    ENTER COMMAND    ESC CLOSE"
             )
+            app._show_alert("COMMAND aligned")
+            await pilot.pause()
+            alert = app.query_one("#chat-alert", LoadingStatus)
+            visible_actions = tuple(
+                action for action in menu.query(".command-action") if action.display
+            )
+            assert alert.region.y == visible_actions[-1].region.y
+            assert alert.region.right == app.query_one(
+                "#activity-row", Horizontal
+            ).region.right
+            app._clear_alert()
 
             await pilot.press("down")
             assert menu.query_one("#command-echo", Horizontal).has_class(
@@ -1568,6 +1579,12 @@ def test_command_argument_errors_use_generic_messages(tmp_path) -> None:
             assert app.query_one("#chat-alert", LoadingStatus).state == (
                 "SYS: ERR COMMAND missing argument."
             )
+            command_bar = app.query_one("#command-bar", Static)
+            alert = app.query_one("#chat-alert", LoadingStatus)
+            activity = app.query_one("#activity-row", Horizontal)
+            assert alert.region.y == command_bar.content_region.y
+            assert command_bar.region.right <= alert.region.x
+            assert alert.region.right == activity.region.right
 
             app._clear_command()
             composer.clear()
@@ -1687,6 +1704,19 @@ def test_reference_menu_selects_bubble_and_escape_clears_reference(tmp_path) -> 
             assert str(app.query_one("#footer", Static).content) == (
                 "↑↓ MOVE    ENTER REF    ESC CLOSE"
             )
+            app._show_alert("REF aligned")
+            await pilot.pause()
+            alert = app.query_one("#chat-alert", LoadingStatus)
+            visible_actions = tuple(
+                action
+                for action in menu.query(".reference-action")
+                if action.display
+            )
+            assert alert.region.y == visible_actions[-1].region.y
+            assert alert.region.right == app.query_one(
+                "#activity-row", Horizontal
+            ).region.right
+            app._clear_alert()
 
             composer_bar = app.query_one("#composer-bar", Horizontal)
             before_geometry = (
@@ -2000,8 +2030,13 @@ def test_chat_errors_align_right_above_composer(tmp_path) -> None:
             await pilot.pause()
 
             failure = app.query_one("#chat-alert", LoadingStatus)
+            loading = app.query_one("#status", LoadingStatus)
+            activity = app.query_one("#activity-row", Horizontal)
             assert failure.state == "SYS: ERR CONNECTION is not ready."
             assert failure.display
+            assert loading.display
+            assert loading.region.y == failure.region.y
+            assert failure.region.right == activity.region.right
 
             app._loading = False
             composer.clear()
@@ -2009,12 +2044,11 @@ def test_chat_errors_align_right_above_composer(tmp_path) -> None:
             await pilot.press("enter")
             await pilot.pause()
 
-            loading = app.query_one("#status", LoadingStatus)
             composer_bar = app.query_one("#composer-bar", Horizontal)
             assert failure.state == "SYS: ERR COMMAND unknown."
             assert failure.display
             assert failure.region.bottom == composer_bar.region.y
-            assert failure.content_region.x == loading.content_region.x
+            assert failure.region.right == activity.region.right
             assert failure.styles.text_align == "right"
             rendered = failure.render()
             assert isinstance(rendered, Text)

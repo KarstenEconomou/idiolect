@@ -284,8 +284,9 @@ fields from the right when space is limited. All values come from the model
 backend; the footer does not report estimated performance. Peak memory uses
 decimal GB, which matches the MLX-LM measurement.
 
-Transient alerts appear as right-aligned lines immediately above the active
-control bar with the same spacing as loading status. Each message starts with
+Transient alerts share one activity row with loading status, the command or
+reference menu, or the selected command bar. Activity content stays on the
+left, and alerts align to the right of its last text line. Each message starts with
 dimmed `SYS:`. Errors continue with `ERR` and alerts continue with `ACK`; their
 messages use the footer text color. The first message word is lowercase unless
 it is an uppercase interface word. A successful TRACE reports

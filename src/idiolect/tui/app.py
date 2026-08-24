@@ -232,7 +232,7 @@ class ChatApp(App[None]):
     OptionList > .option-list--option-disabled { color: $metadata; text-style: dim; }
     OptionList > .option-list--option-hover { color: $accent; background: $terminal; text-style: bold; }
     #catalog-hints { height: 1; color: $metadata; background: $terminal; padding: 0 2; }
-    #catalog-alert, #chat-alert { display: none; height: 1; color: $accent; background: $terminal; padding: 0 2; text-align: right; text-style: none; }
+    #catalog-alert { display: none; height: 1; color: $accent; background: $terminal; padding: 0 2; text-align: right; text-style: none; }
     #footer { height: 1; color: $metadata; background: $terminal; padding: 0 2; }
     #specs { display: none; background: $terminal; }
     #specs-heading { height: auto; min-height: 1; margin-top: 0; padding: 0 2; }
@@ -255,7 +255,7 @@ class ChatApp(App[None]):
     #composer .text-area--cursor, #composer .text-area--selection { color: $terminal; background: $terminal; text-style: reverse; }
     #composer .text-area--cursor-line, #composer .text-area--matching-bracket { background: $terminal; }
     #composer .text-area--gutter, #composer .text-area--suggestion, #composer .text-area--placeholder { color: $metadata; background: $terminal; }
-    #command-menu { display: none; height: auto; max-height: 4; margin: 0 1; padding: 0 1; background: $terminal; }
+    #command-menu { display: none; width: 100%; height: auto; max-height: 4; margin: 0 1; padding: 0 1; background: $terminal; }
     #command-message { height: 1; color: ansi_white; text-style: bold; }
     #command-actions { height: auto; max-height: 3; }
     .command-action { height: 1; }
@@ -265,8 +265,10 @@ class ChatApp(App[None]):
     .command-action.-selected .command-description { color: $accent; text-style: dim; }
     .command-action.-disabled .command-name, .command-action.-disabled .command-description { color: $failure; text-style: dim; }
     .command-action.-trace-disabled .command-name, .command-action.-trace-disabled .command-description { color: $metadata; text-style: dim; }
-    #command-bar { display: none; height: auto; min-height: 3; margin: 0 1; padding: 0 1; border: solid $accent; background: $terminal; }
-    #reference-menu { display: none; height: auto; max-height: 4; margin: 0 1; padding: 0 1; background: $terminal; }
+    #activity-row { height: auto; min-height: 0; align: left middle; }
+    #activity-primary { width: 1fr; min-width: 0; height: auto; min-height: 0; }
+    #command-bar { display: none; width: 100%; height: auto; min-height: 3; margin: 0 1; padding: 0 1; border: solid $accent; background: $terminal; }
+    #reference-menu { display: none; width: 100%; height: auto; max-height: 4; margin: 0 1; padding: 0 1; background: $terminal; }
     #reference-message { height: 1; color: ansi_white; text-style: bold; }
     #reference-actions { height: auto; max-height: 3; }
     .reference-action { height: 1; }
@@ -276,6 +278,7 @@ class ChatApp(App[None]):
     .reference-action.-selected .reference-preview { color: $accent; text-style: dim; }
     #reference-bar { display: none; height: auto; min-height: 3; margin: 0 1; padding: 0 1; border: solid $accent; background: $terminal; }
     #status { display: none; height: 1; color: $metadata; background: $terminal; padding: 0 2; }
+    #chat-alert { display: none; width: auto; max-width: 70%; height: 1; color: $accent; background: $terminal; padding: 0 2 0 0; text-align: right; text-style: none; text-overflow: ellipsis; }
     #confirm-dialog { width: 100%; height: 2; padding: 0 1; background: $terminal; border: none; }
     #confirm-message { height: 1; color: ansi_white; text-style: bold; }
     #confirm-actions { height: 1; }
@@ -437,11 +440,13 @@ class ChatApp(App[None]):
             yield Rule(line_style="solid", id="identity-rule")
             with VerticalScroll(id="transcript-scroll"):
                 yield Transcript(id="transcript")
-            yield CommandMenu(id="command-menu")
-            yield ReferenceMenu(id="reference-menu")
-            yield LoadingStatus(id="status")
-            yield LoadingStatus(id="chat-alert")
-            yield CommandBar(id="command-bar")
+            with Horizontal(id="activity-row"):
+                with Container(id="activity-primary"):
+                    yield CommandMenu(id="command-menu")
+                    yield ReferenceMenu(id="reference-menu")
+                    yield LoadingStatus(id="status")
+                    yield CommandBar(id="command-bar")
+                yield LoadingStatus(id="chat-alert")
             yield ReferenceBar(id="reference-bar")
             with Horizontal(id="composer-bar"):
                 yield Static(">", markup=False, id="composer-prompt")
@@ -1415,12 +1420,16 @@ class ChatApp(App[None]):
     def _render_command(self) -> None:
         """Refresh the selected argument command bar."""
         bar = self.query_one("#command-bar", CommandBar)
-        if not self._command_selected or self._command_name is None:
+        active = self._command_selected and self._command_name is not None
+        if not active:
             bar.display = False
+            self._align_activity_alert()
             return
+        assert self._command_name is not None
         command = f"/{self._command_name}"
         bar.set_command(self._command_name, COMMAND_DESCRIPTIONS[command])
         bar.display = True
+        self._align_activity_alert()
 
     def _render_reference(self) -> None:
         """Refresh the selected reference bar."""
@@ -1451,6 +1460,7 @@ class ChatApp(App[None]):
             composer.reference_menu_escape_enabled = False
             composer.reference_selected = self._reference_selected
             self._update_footer()
+            self._align_activity_alert()
             return
         token = self._reference_token_at_cursor(
             composer.text,
@@ -1504,6 +1514,7 @@ class ChatApp(App[None]):
         composer.reference_menu_escape_enabled = active
         composer.reference_selected = self._reference_selected
         self._update_footer()
+        self._align_activity_alert()
         if active:
             self.call_after_refresh(self._scroll_transcript_end)
 
@@ -1679,6 +1690,7 @@ class ChatApp(App[None]):
         composer.command_selected = self._command_selected
         composer.reference_selected = self._reference_selected
         self._update_footer()
+        self._align_activity_alert()
         if was_visible or visible_matches:
             self.call_after_refresh(self._scroll_transcript_end)
 
@@ -1892,9 +1904,39 @@ class ChatApp(App[None]):
             (f" {role} {body}", Style(color="bright_black")),
         )
         alert = self.query_one(identifier, LoadingStatus)
+        if identifier == "#chat-alert":
+            self._align_activity_alert()
         alert.set_class(error, "-error")
         alert.set_content(content, value)
         self._alert_timer = self.set_timer(5, self._clear_alert)
+
+    def _align_activity_alert(self) -> None:
+        """Align the chat alert with the active content's last text line."""
+        if not self.is_mounted or len(self.query("#activity-row")) == 0:
+            return
+        command_bar = self.query_one("#command-bar", CommandBar)
+        command_menu = self.query_one("#command-menu", CommandMenu)
+        reference_menu = self.query_one("#reference-menu", ReferenceMenu)
+        if command_bar.display:
+            offset = 1
+        elif command_menu.display:
+            offset = sum(
+                action.display for action in command_menu.query(".command-action")
+            )
+        elif reference_menu.display:
+            offset = sum(
+                action.display for action in reference_menu.query(
+                    ".reference-action"
+                )
+            )
+        else:
+            offset = 0
+        self.query_one("#chat-alert", LoadingStatus).styles.margin = (
+            offset,
+            0,
+            0,
+            0,
+        )
 
     def _clear_alert(self) -> None:
         """Clear the transient message line."""

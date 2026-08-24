@@ -176,8 +176,10 @@ preview the red LOOKOUT, yellow PICKPOCKET, green HACKER, blue LOCKSMITH,
 magenta MOLE, and cyan GENTLEMAN themes with the arrow keys; Enter selects one.
 Chat and `/specs` headers show `LINK#XXXXXX`, using a random six-digit
 hexadecimal link ID in uppercase. SPECS opened from REGISTRY has no link.
-Hexadecimal IDs in SPECS are uppercase. Alerts and errors use a dimmed `SYS:` prefix, followed by
-`ACK` or `ERR` and the message in the footer text color.
+Hexadecimal IDs in SPECS are uppercase. Alerts and errors share a row with
+loading status, command and reference menus, or the selected command bar. They
+use a dimmed `SYS:` prefix, followed by `ACK` or `ERR` and the message in the
+footer text color.
 A selected reference is shown above the composer and is encoded as Signal-style
 reply metadata for adapter-backed assistants. See
 [docs/chat.md](docs/chat.md) for the keyboard controls.
