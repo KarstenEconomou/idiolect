@@ -167,8 +167,8 @@ cancels the preview without an acknowledgement.
 Commands with arguments remove their slash token from the composer and show a
 dimmed command bar above it. The command description follows the command in the
 metadata color. Type arguments in the composer and press Enter to run the
-command. Missing arguments report `SYS: ERR COMMAND missing argument.` and
-unexpected arguments report `SYS: ERR COMMAND unexpected argument.` Escape removes
+command. Missing arguments report `SYS: ERR COMMAND argument missing.` and
+unexpected arguments report `SYS: ERR COMMAND argument unexpected.` Escape removes
 the active command. A command always replaces a selected reference, and the
 reference menu stays closed while a command bar is active.
 
@@ -207,11 +207,12 @@ Left and Right do not cycle registry models in this temporary view. Ctrl+C
 restores chat and opens the normal exit menu when the session has unsaved data.
 
 `/probe` uses the same temporary sheet controls, but its body contains only live
-hardware-oriented details under a `PROBE` page header. `SYSTEM` reports the MLX
-and MLX-LM versions, default device, and machine architecture. `HOST` reports
-every Metal/device property returned by MLX, with the working-set limit and
-memory labels shortened for display. `PAYLOAD` reports the verified model
-digest, model and adapter sizes, and load time. Byte measurements use one compact
+hardware-oriented details under a `PROBE` page header. `STACK` reports the MLX
+and MLX-LM versions, default device type, and machine architecture. `DEVICE`
+reports every Metal/device property returned by MLX, with `DEVICE NAME`
+shortened to `NAME` and the working-set limit and memory labels shortened for
+display. `PAYLOAD` reports the verified model digest, model and adapter sizes,
+and load time. Byte measurements use one compact
 IEC unit such as `GiB`, `MiB`, or `B`; load time uses seconds. These values
 describe the active worker and its current model load. They are not stored in a
 TRACE. Escape restores the unchanged chat, and Ctrl+C follows the same behavior
@@ -303,8 +304,8 @@ new chat.
 Model resolution, verification, and loading run outside the Textual event loop.
 The interface enters chat before model loading starts and stays responsive. It
 reports active loading states above the composer with a `LINK` prefix, including
-`LINK LOADING`, and reports `SYS: ACK LINK ESTABLISHED.` when loading completes.
-It reports `SYS: ERR CONNECTION is not ready.` if input is submitted before the
+`LINK LOADING`, and reports `SYS: ACK LINK established.` when loading completes.
+It reports `SYS: ERR LINK not established.` if input is submitted before the
 connection completes. It hides the ready state. During prompt processing, it reports the
 measured prefill token count and total from MLX-LM.
 
@@ -320,8 +321,10 @@ reference menu, or the selected command bar. Activity content stays on the
 left, and alerts align to the right of its last text line. Each message starts with
 dimmed `SYS:`. Errors continue with `ERR` and alerts continue with `ACK`; their
 messages use the footer text color. The first message word is lowercase unless
-it is an uppercase interface word. A successful TRACE reports
-`SYS: ACK TRACE saved as ID.`; an already clean TRACE reports
+it is an uppercase interface word. Fixed messages follow
+`SYS: <ACK|ERR> <OBJECT> <STATE>.`; an object identity, such as a TRACE ID, can
+appear between the object and its state. A successful TRACE reports
+`SYS: ACK TRACE ID saved.`; an already clean TRACE reports
 `SYS: ACK TRACE {ID} exists.`. Generation failures report `SYS: ERR message.`. The
 TUI does not use floating toasts.
 

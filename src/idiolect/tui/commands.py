@@ -55,7 +55,7 @@ def parse_command(value: str) -> Command | None:
     name = command_name[1:]
     arguments = parts[1] if len(parts) == 2 else ""
     if command_name not in COMMAND_ARGUMENTS and arguments.strip():
-        raise CommandError("COMMAND unexpected argument")
+        raise CommandError("COMMAND argument unexpected")
     return Command(name, arguments)
 
 

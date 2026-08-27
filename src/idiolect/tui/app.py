@@ -1002,7 +1002,7 @@ class ChatApp(App[None]):
         if not value.strip() and not self._command_selected:
             return
         if self._loading:
-            self._show_error("CONNECTION is not ready")
+            self._show_error("LINK not established")
             return
         composer = self.query_one(Composer)
         try:
@@ -1592,7 +1592,7 @@ class ChatApp(App[None]):
         """Run one selected command with its optional composer arguments."""
         if name == "echo":
             if not arguments.strip():
-                raise CommandError("COMMAND missing argument")
+                raise CommandError("COMMAND argument missing")
             session = self._session()
             session.add_env(arguments)
             self._render_transcript()
@@ -1602,7 +1602,7 @@ class ChatApp(App[None]):
             self.action_interrupt()
         elif name == "disconnect":
             if self._generating:
-                self._show_error("CONSTRUCT GENERATING")
+                self._show_error("CONSTRUCT is generating")
             else:
                 self._return_to_landing()
         elif name == "specs":
@@ -1626,7 +1626,7 @@ class ChatApp(App[None]):
             elif self.store is None:
                 self._show_error("LINK not configured")
             elif self._generating:
-                self._show_error("CONSTRUCT GENERATING")
+                self._show_error("CONSTRUCT is generating")
             else:
                 self._confirmation_open = True
                 self._trace_name_open = True
@@ -1806,7 +1806,7 @@ class ChatApp(App[None]):
             self._show_error(str(error))
             return False
         self._active_trace = saved
-        self._show_alert(f"TRACE saved as {saved.id[:6].upper()}")
+        self._show_alert(f"TRACE {saved.id[:6].upper()} saved")
         return True
 
     def _begin_select(self, assistant: Assistant) -> None:
@@ -1873,7 +1873,7 @@ class ChatApp(App[None]):
     def _load_done(self) -> None:
         self._set_loading(False)
         self._show_chat()
-        self._show_alert("LINK ESTABLISHED")
+        self._show_alert("LINK established")
 
     def _load_failed(self, message: str) -> None:
         self._set_loading(False)

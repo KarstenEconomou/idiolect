@@ -39,6 +39,7 @@ def test_probe_shows_only_live_hardware_runtime_and_load_details() -> None:
             "arm64",
             (
                 ("architecture", "applegpu_g16g"),
+                ("device_name", "Apple M4 Max"),
                 ("max_buffer_size", 5 * 1024**3),
                 ("max_recommended_working_set_size", 4 * 1024**3),
                 ("memory_size", 16 * 1024**3),
@@ -48,11 +49,13 @@ def test_probe_shows_only_live_hardware_runtime_and_load_details() -> None:
         LoadProbe("a" * 64, 8 * 1024**3, 64 * 1024**2, 2.3456),
     )
 
-    assert "SYSTEM\n" in document.plain
+    assert "STACK\n" in document.plain
     assert "MLX VERSION\n 0.32.1\n" in document.plain
     assert "MLX-LM VERSION\n 0.31.3\n" in document.plain
-    assert "DEVICE\n Device(gpu, 0)\n" in document.plain
-    assert "HOST\n" in document.plain
+    assert "DEVICE\n GPU\n" in document.plain
+    assert document.plain.count("DEVICE\n") == 2
+    assert "NAME\n Apple M4 Max\n" in document.plain
+    assert "HOST\n" not in document.plain
     assert "MAX BUFFER SIZE\n 5.00 GiB\n" in document.plain
     assert "WORKING SET LIMIT\n 4.00 GiB\n" in document.plain
     assert "MEMORY\n 16.00 GiB\n" in document.plain

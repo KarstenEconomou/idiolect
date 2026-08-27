@@ -1257,7 +1257,7 @@ def test_model_load_keeps_event_processing_active(tmp_path) -> None:
             runtime.release.set()
             await _wait_for_chat(app, pilot)
             assert app.query_one("#chat-alert", LoadingStatus).state == (
-                "SYS: ACK LINK ESTABLISHED."
+                "SYS: ACK LINK established."
             )
 
     try:
@@ -1630,7 +1630,7 @@ def test_command_argument_errors_use_generic_messages(tmp_path) -> None:
             await pilot.press("enter", "enter")
             await pilot.pause()
             assert app.query_one("#chat-alert", LoadingStatus).state == (
-                "SYS: ERR COMMAND missing argument."
+                "SYS: ERR COMMAND argument missing."
             )
             command_bar = app.query_one("#command-bar", Static)
             alert = app.query_one("#chat-alert", LoadingStatus)
@@ -1647,7 +1647,7 @@ def test_command_argument_errors_use_generic_messages(tmp_path) -> None:
             await pilot.press("enter")
             await pilot.pause()
             assert app.query_one("#chat-alert", LoadingStatus).state == (
-                "SYS: ERR COMMAND unexpected argument."
+                "SYS: ERR COMMAND argument unexpected."
             )
 
     asyncio.run(verify())
@@ -2017,8 +2017,8 @@ def test_probe_command_shows_live_details_and_restores_chat(tmp_path) -> None:
             assert str(app.query_one("#specs-identity", Static).content) == "PROBE"
             content = app.query_one("#specs-body", Static).content
             assert isinstance(content, SpecsDocument)
-            assert "SYSTEM\n" in content.plain
-            assert "HOST\n" in content.plain
+            assert "STACK\n" in content.plain
+            assert "DEVICE\n GPU\n" in content.plain
             assert "PAYLOAD\n" in content.plain
             assert "MLX VERSION\n 0.32.1\n" in content.plain
             assert "MODEL SIZE\n 8.00 GiB\n" in content.plain
@@ -2140,7 +2140,7 @@ def test_save_command_checkpoints_only_new_trace_data(tmp_path) -> None:
             assert runtime.session.dirty is False
             alert = app.query_one("#chat-alert", LoadingStatus)
             composer_bar = app.query_one("#composer-bar", Horizontal)
-            assert alert.state == "SYS: ACK TRACE saved as AAAAAA."
+            assert alert.state == "SYS: ACK TRACE AAAAAA saved."
             assert re.fullmatch(
                 r"LINK#[0-9A-F]{6}",
                 str(app.query_one("#chat-link", Static).content),
@@ -2199,7 +2199,7 @@ def test_chat_errors_align_right_above_composer(tmp_path) -> None:
             failure = app.query_one("#chat-alert", LoadingStatus)
             loading = app.query_one("#status", LoadingStatus)
             activity = app.query_one("#activity-row", Horizontal)
-            assert failure.state == "SYS: ERR CONNECTION is not ready."
+            assert failure.state == "SYS: ERR LINK not established."
             assert failure.display
             assert loading.display
             assert loading.region.y == failure.region.y
@@ -2305,6 +2305,12 @@ def test_commands_follow_generation_navigation_rules(tmp_path) -> None:
             composer.insert("hold reply")
             await pilot.press("enter")
             assert await asyncio.to_thread(runtime.prefill_started.wait, 1)
+
+            app._command("disconnect")
+            await pilot.pause()
+            assert app.query_one("#chat-alert", LoadingStatus).state == (
+                "SYS: ERR CONSTRUCT is generating."
+            )
 
             composer.insert("/disconnect")
             await pilot.pause()

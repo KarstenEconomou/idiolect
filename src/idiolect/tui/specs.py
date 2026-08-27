@@ -39,6 +39,7 @@ _PROMPT_BLOCK_FIELDS = frozenset(
     }
 )
 _PROBE_LABELS = {
+    "device_name": "name",
     "max_recommended_working_set_size": "working_set_limit",
     "memory_size": "memory",
 }
@@ -209,21 +210,25 @@ def render_probe(
 ) -> SpecsDocument:
     """Return one hardware and model-load probe document."""
     document = SpecsDocument()
-    _section(document, "SYSTEM")
+    _section(document, "STACK")
     _field(document, "MLX VERSION", None if runtime is None else runtime.mlx_version)
     _field(
         document,
         "MLX-LM VERSION",
         None if runtime is None else runtime.mlx_lm_version,
     )
-    _field(document, "DEVICE", None if runtime is None else runtime.device)
+    _field(
+        document,
+        "DEVICE",
+        None if runtime is None else _device_type(runtime.device),
+    )
     _field(
         document,
         "MACHINE ARCHITECTURE",
         None if runtime is None else runtime.architecture,
     )
 
-    _section(document, "HOST")
+    _section(document, "DEVICE")
     if runtime is None or not runtime.device_properties:
         _note(document, "No Metal device properties were reported.")
     else:
@@ -255,6 +260,14 @@ def render_probe(
         None if load is None else f"{load.load_duration:.3f} S",
     )
     return document
+
+
+def _device_type(value: str) -> str:
+    """Return the uppercase type from one MLX device representation."""
+    normalized = value.strip()
+    if normalized.casefold().startswith("device(") and normalized.endswith(")"):
+        normalized = normalized[7:-1].split(",", 1)[0].strip()
+    return normalized.upper()
 
 
 def render_buffer(

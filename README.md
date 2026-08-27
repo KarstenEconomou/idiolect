@@ -172,7 +172,7 @@ prompt text. Enter activates a selected slash command; Tab does not autocomplete
 Commands with arguments use a command bar above the composer, and a command
 replaces any selected reference. `/specs` shows recorded model policy and
 lineage. `/probe` shows only live MLX, hardware, Metal/device, and current
-model-load measurements under `SYSTEM`, `HOST`, and `PAYLOAD`. Sizes use one
+model-load measurements under `STACK`, `DEVICE`, and `PAYLOAD`. Sizes use one
 compact IEC unit, and load time uses seconds; the values are not saved in a
 TRACE. `/buffer` opens the active context sheet. It reports the
 fitted turn and token use, evicted-turn count, state identity, the newest
@@ -187,7 +187,8 @@ random six-digit hexadecimal link ID in uppercase. SPECS opened from REGISTRY ha
 Hexadecimal IDs in SPECS are uppercase. Alerts and errors share a row with
 loading status, command and reference menus, or the selected command bar. They
 use a dimmed `SYS:` prefix, followed by `ACK` or `ERR` and the message in the
-footer text color.
+footer text color. Fixed alerts use `SYS: <ACK|ERR> <OBJECT> <STATE>.`; an
+object identity, such as a TRACE ID, can appear before the state.
 A selected reference is shown above the composer and is encoded as Signal-style
 reply metadata for adapter-backed assistants. See
 [docs/chat.md](docs/chat.md) for the keyboard controls.

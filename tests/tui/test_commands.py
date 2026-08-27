@@ -41,7 +41,7 @@ def test_echo_command_keeps_its_argument_text() -> None:
     [
         ("/quit", "COMMAND unknown"),
         ("/retry", "COMMAND unknown"),
-        ("/terminate now", "COMMAND unexpected argument"),
+        ("/terminate now", "COMMAND argument unexpected"),
         ("/registry", "COMMAND unknown"),
     ],
 )
