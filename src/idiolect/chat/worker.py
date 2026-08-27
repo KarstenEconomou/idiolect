@@ -105,10 +105,38 @@ class StateEvent:
 
 
 @dataclass(frozen=True, slots=True)
-class ProbeEvent:
-    """Report measured local runtime details."""
+class RuntimeProbe:
+    """Keep measured local hardware and runtime details."""
 
-    values: dict[str, Any]
+    mlx_version: str
+    mlx_lm_version: str
+    device: str
+    architecture: str
+    device_properties: tuple[tuple[str, object], ...]
+
+
+@dataclass(frozen=True, slots=True)
+class LoadProbe:
+    """Keep measurements for one verified model load."""
+
+    model_digest: str
+    model_size: int
+    adapter_size: int | None
+    load_duration: float
+
+
+@dataclass(frozen=True, slots=True)
+class ProbeEvent:
+    """Report measured local hardware and runtime details."""
+
+    probe: RuntimeProbe
+
+
+@dataclass(frozen=True, slots=True)
+class LoadEvent:
+    """Report measurements for the current model load."""
+
+    probe: LoadProbe
 
 
 @dataclass(frozen=True, slots=True)
@@ -159,6 +187,7 @@ class FailureEvent:
 type WorkerEvent = (
     StateEvent
     | ProbeEvent
+    | LoadEvent
     | CountEvent
     | PrefillEvent
     | DeltaEvent
@@ -312,17 +341,17 @@ def worker_main(commands: Any, events: Any, cancel: Any) -> None:
                     started = time.perf_counter()
                     session = backend.load(target)
                     events.put(
-                        ProbeEvent(
-                            {
-                                "load_duration": time.perf_counter() - started,
-                                "model_digest": target.model_digest,
-                                "model_size": _path_size(target.model_path),
-                                "adapter_size": (
+                        LoadEvent(
+                            LoadProbe(
+                                model_digest=target.model_digest,
+                                model_size=_path_size(target.model_path),
+                                adapter_size=(
                                     _path_size(target.adapter_path)
                                     if target.adapter_path is not None
                                     else None
                                 ),
-                            }
+                                load_duration=time.perf_counter() - started,
+                            )
                         )
                     )
                     events.put(StateEvent(WorkerState.READY))
@@ -497,20 +526,20 @@ def _prompt_from_value(value: dict[str, Any]) -> ModelInput:
     )
 
 
-def _probe() -> dict[str, Any]:
+def _probe() -> RuntimeProbe:
     import platform
     from importlib.metadata import version
 
     import mlx.core as mx
 
-    info = dict(mx.device_info())
-    return {
-        "mlx_version": version("mlx"),
-        "mlx_lm_version": version("mlx-lm"),
-        "device": str(mx.default_device()),
-        "architecture": platform.machine(),
-        **info,
-    }
+    info = tuple(sorted(mx.device_info().items()))
+    return RuntimeProbe(
+        mlx_version=version("mlx"),
+        mlx_lm_version=version("mlx-lm"),
+        device=str(mx.default_device()),
+        architecture=platform.machine(),
+        device_properties=info,
+    )
 
 
 def _failure_message(error: BaseException) -> str:
@@ -520,4 +549,6 @@ def _failure_message(error: BaseException) -> str:
 
 
 def _path_size(path: Path) -> int:
+    if path.is_file():
+        return path.stat().st_size
     return sum(item.stat().st_size for item in path.rglob("*") if item.is_file())

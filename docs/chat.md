@@ -51,7 +51,7 @@ primary registry column is `CONSTRUCT` and contains the `TARGET::RUN` identity;
 the `BASE` column immediately to its right identifies the base model used by
 each entry. TYPE and ENTRY remain the right-hand metadata columns.
 The blue watermark keeps its mark and product name bold and gives its tagline a
-dim, non-bold treatment. Chat and `/specs` identity headers show the active
+dim, non-bold treatment. Chat, `/specs`, and `/probe` identity headers show the active
 session as `LINK#XXXXXX`, using a random six-digit hexadecimal link ID in
 uppercase. SPECS opened from REGISTRY hides this link because it does not
 represent an active chat session.
@@ -152,7 +152,8 @@ that starts at the beginning of a word. Commands are:
 - `/echo <text>`: show `<text>` as a dimmed `SYS` turn without adding it to model context;
 - `/disconnect`: return to `REGISTRY` when no reply is active;
 - `/trace`: save a TRACE checkpoint and keep the chat open;
-- `/specs`: temporarily view the active model's SPECS.
+- `/specs`: temporarily view the active model's SPECS;
+- `/probe`: temporarily view live hardware, runtime, and model-load details;
 - `/chroma`: open the CHROMA theme menu.
 
 Commands with arguments remove their slash token from the composer and show a
@@ -196,6 +197,14 @@ TRACE lineage for a resumed or newly saved snapshot. It does not change turns,
 unsaved state, or transcript content. Escape restores the same chat directly;
 Left and Right do not cycle registry models in this temporary view. Ctrl+C
 restores chat and opens the normal exit menu when the session has unsaved data.
+
+`/probe` uses the same temporary sheet controls, but its body contains only live
+hardware-oriented details. It reports the MLX and MLX-LM versions, default
+device, machine architecture, every Metal/device property returned by MLX, the
+verified model digest, model and adapter sizes, and load duration. These values
+describe the active worker and its current model load. They are not stored in a
+TRACE. Escape restores the unchanged chat, and Ctrl+C follows the same behavior
+as `/specs`.
 
 `/trace` is available only when the transcript contains new unsaved data and no
 reply is active. Otherwise it is shown as unavailable and cannot be selected;

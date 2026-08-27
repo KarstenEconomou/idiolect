@@ -20,7 +20,7 @@ from idiolect.chat.discovery import Assistant, DiscoveryItem
 from idiolect.chat.runtime import ChatRuntime
 from idiolect.chat.state import ChatSession, ChatTurn, TurnTelemetry
 from idiolect.chat.storage import ChatStorageError, ChatStore, SavedChat
-from idiolect.chat.worker import WorkerState
+from idiolect.chat.worker import LoadProbe, RuntimeProbe, WorkerState
 from idiolect.config import ChatConfig, GenerationConfig, TrainDataConfig
 from idiolect.model import ModelSpec
 from idiolect.tui.app import ChatApp, _episode_segments, _random_link_id
@@ -1348,6 +1348,7 @@ def test_command_menu_filters_navigates_and_returns_to_registry(tmp_path) -> Non
             disconnect_button = menu.query_one("#command-disconnect", Horizontal)
             trace_button = menu.query_one("#command-trace", Horizontal)
             specs_button = menu.query_one("#command-specs", Horizontal)
+            probe_button = menu.query_one("#command-probe", Horizontal)
             chroma_button = menu.query_one("#command-chroma", Horizontal)
             assert menu.display is True
             assert str(menu.query_one("#command-message", Static).content) == "COMMAND"
@@ -1375,6 +1376,9 @@ def test_command_menu_filters_navigates_and_returns_to_registry(tmp_path) -> Non
             assert str(
                 specs_button.query_one(".command-description", Static).content
             ) == "View SPECS."
+            assert str(
+                probe_button.query_one(".command-description", Static).content
+            ) == "View LINK."
             assert str(
                 chroma_button.query_one(".command-description", Static).content
             ) == "Select CHROMA."
@@ -1421,12 +1425,17 @@ def test_command_menu_filters_navigates_and_returns_to_registry(tmp_path) -> Non
             assert specs_button.display
             assert terminate_button.display is False
             await pilot.press("down")
+            assert probe_button.has_class("-selected")
+            assert probe_button.display
+            await pilot.press("down")
             assert chroma_button.has_class("-selected")
             assert chroma_button.display
             await pilot.press("down")
             assert terminate_button.has_class("-selected")
             await pilot.press("up")
             assert chroma_button.has_class("-selected")
+            await pilot.press("up")
+            assert probe_button.has_class("-selected")
             await pilot.press("up")
             assert specs_button.has_class("-selected")
             await pilot.press("up")
@@ -1937,6 +1946,53 @@ def test_specs_command_restores_the_unchanged_trace_chat(tmp_path) -> None:
     asyncio.run(verify())
 
 
+def test_probe_command_shows_live_details_and_restores_chat(tmp_path) -> None:
+    """Check the hardware sheet does not expose SPECS or change the session."""
+    chat = ChatConfig(output=tmp_path)
+    generation = GenerationConfig(temperature=0.3)
+    runtime = ImmediateRuntime(chat, generation)
+    app = ChatApp(
+        chat,
+        generation,
+        initial_assistant=_assistant(),
+        runtime_factory=cast(Callable[..., ChatRuntime], lambda *_args: runtime),
+    )
+
+    async def verify() -> None:
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_chat(app, pilot)
+            session = runtime.session
+            assert session is not None
+            fingerprint = session.fingerprint
+            composer = app.query_one(Composer)
+            composer.insert("/probe")
+            await pilot.press("enter")
+            await pilot.pause()
+
+            assert app.query_one("#specs").display
+            assert str(app.query_one("#specs-identity", Static).content) == "LINK"
+            content = app.query_one("#specs-body", Static).content
+            assert isinstance(content, SpecsDocument)
+            assert "RUNTIME\n" in content.plain
+            assert "MLX VERSION\n 0.32.1\n" in content.plain
+            assert "MODEL SIZE\n 8.00 GiB (8,589,934,592 B)\n" in content.plain
+            assert "ADAPTER SIZE\n —\n" in content.plain
+            assert "IDENTITY\n" not in content.plain
+            assert "GENERATION\n" not in content.plain
+            assert "FIDELITY\n" not in content.plain
+
+            await pilot.press("escape")
+            await pilot.pause()
+
+            assert app.query_one("#chat").display
+            assert not app.query_one("#specs").display
+            assert runtime.session is session
+            assert session.fingerprint == fingerprint
+            assert composer.has_focus
+
+    asyncio.run(verify())
+
+
 def test_save_command_checkpoints_only_new_trace_data(tmp_path) -> None:
     """Check checkpoint naming, clean-state disabling, and chat continuity."""
     chat = ChatConfig(output=tmp_path)
@@ -2193,7 +2249,14 @@ class BlockingRuntime:
         self.state = WorkerState.PROBING
         self.started = threading.Event()
         self.release = threading.Event()
-        self.probe: dict[str, object] = {}
+        self.runtime_probe = RuntimeProbe(
+            "0.32.1",
+            "0.31.3",
+            "Device(gpu, 0)",
+            "arm64",
+            (("max_buffer_size", 5 * 1024**3), ("unified_memory", True)),
+        )
+        self.load_probe = LoadProbe("f" * 64, 8 * 1024**3, None, 1.25)
 
     def ensure_worker(self) -> None:
         """Keep the fake runtime ready."""

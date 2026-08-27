@@ -2,15 +2,21 @@
 
 import time
 
+import pytest
+
 from idiolect.chat.discovery import Assistant
-from idiolect.chat.runtime import ChatRuntime
+from idiolect.chat.runtime import ChatError, ChatRuntime
 from idiolect.chat.worker import (
     CancelCommand,
     CompleteEvent,
     DeltaEvent,
+    FailureEvent,
     LoadBaseCommand,
+    LoadEvent,
+    LoadProbe,
     PrefillEvent,
     ProbeEvent,
+    RuntimeProbe,
     StateEvent,
     WorkerEvent,
     WorkerState,
@@ -38,6 +44,26 @@ def test_base_assistant_load_records_verified_model_digest() -> None:
     assert load.model.name == "org/model"
     assert load.data.system_prompt == "Be terse."
     assert session.assistant.model_digest == "a" * 64
+    assert runtime.runtime_probe == _runtime_probe()
+    assert runtime.load_probe == _load_probe()
+
+
+def test_failed_load_clears_measurements_from_the_previous_target() -> None:
+    """Check that one failed replacement cannot report stale probe values."""
+    worker = ReadyWorker()
+    runtime = ChatRuntime(
+        ChatConfig(),
+        GenerationConfig(),
+        worker_factory=lambda: worker,
+    )
+    runtime.select(_assistant())
+    worker.events.extend([FailureEvent("Synthetic load failure")])
+
+    with pytest.raises(ChatError, match="Synthetic load failure"):
+        runtime.select(_assistant())
+
+    assert runtime.runtime_probe is None
+    assert runtime.load_probe is None
 
 
 def test_generation_reports_measured_prefill_progress() -> None:
@@ -117,7 +143,8 @@ class ReadyWorker:
         """Create command and event records."""
         self.commands = []
         self.events: list[WorkerEvent] = [
-            ProbeEvent({"model_digest": "a" * 64}),
+            ProbeEvent(_runtime_probe()),
+            LoadEvent(_load_probe()),
             StateEvent(WorkerState.READY),
         ]
         self.alive = True
@@ -160,3 +187,17 @@ def _assistant() -> Assistant:
             completion_role="assistant",
         ),
     )
+
+
+def _runtime_probe() -> RuntimeProbe:
+    return RuntimeProbe(
+        "0.32.1",
+        "0.31.3",
+        "Device(gpu, 0)",
+        "arm64",
+        (("max_buffer_size", 1024), ("unified_memory", True)),
+    )
+
+
+def _load_probe() -> LoadProbe:
+    return LoadProbe("a" * 64, 4096, None, 1.25)

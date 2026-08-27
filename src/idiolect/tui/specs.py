@@ -17,6 +17,7 @@ from textual.scrollbar import ScrollBarRender
 
 from idiolect.chat.discovery import Assistant
 from idiolect.chat.storage import SavedChat
+from idiolect.chat.worker import LoadProbe, RuntimeProbe
 from idiolect.config import GenerationConfig
 from idiolect.types import Split
 
@@ -195,6 +196,85 @@ def render_specs(
     _field(document, "STATUS", "NOT EVALUATED")
     _note(document, "No recorded evaluation was supplied to this registry.")
     return document
+
+
+def render_probe(
+    runtime: RuntimeProbe | None,
+    load: LoadProbe | None,
+) -> SpecsDocument:
+    """Return one hardware and model-load probe document."""
+    document = SpecsDocument()
+    _section(document, "RUNTIME")
+    _field(document, "MLX VERSION", None if runtime is None else runtime.mlx_version)
+    _field(
+        document,
+        "MLX-LM VERSION",
+        None if runtime is None else runtime.mlx_lm_version,
+    )
+    _field(document, "DEVICE", None if runtime is None else runtime.device)
+    _field(
+        document,
+        "MACHINE ARCHITECTURE",
+        None if runtime is None else runtime.architecture,
+    )
+
+    _section(document, "METAL / DEVICE")
+    if runtime is None or not runtime.device_properties:
+        _note(document, "No Metal device properties were reported.")
+    else:
+        for name, value in runtime.device_properties:
+            displayed = _format_bytes(value) if _byte_property(name, value) else value
+            _field(document, name, displayed)
+
+    _section(document, "LOADING")
+    _field(
+        document,
+        "MODEL DIGEST",
+        None if load is None else _upper_hex(load.model_digest),
+    )
+    _field(
+        document,
+        "MODEL SIZE",
+        None if load is None else _format_bytes(load.model_size),
+    )
+    _field(
+        document,
+        "ADAPTER SIZE",
+        None
+        if load is None or load.adapter_size is None
+        else _format_bytes(load.adapter_size),
+    )
+    _field(
+        document,
+        "LOAD DURATION",
+        None if load is None else f"{load.load_duration:.3f} S",
+    )
+    return document
+
+
+def _byte_property(name: str, value: object) -> bool:
+    """Return true when one integer device property reports bytes."""
+    normalized = name.casefold()
+    return isinstance(value, int) and not isinstance(value, bool) and (
+        normalized.endswith(("_size", "_memory"))
+        or "working_set_size" in normalized
+    )
+
+
+def _format_bytes(value: object) -> str:
+    """Return exact bytes with a compact IEC measurement when useful."""
+    if not isinstance(value, int) or isinstance(value, bool):
+        return _display(value)
+    if value < 1024:
+        return f"{value:,} B"
+    amount = float(value)
+    unit = "B"
+    for candidate in ("KiB", "MiB", "GiB", "TiB", "PiB"):
+        amount /= 1024
+        unit = candidate
+        if amount < 1024 or candidate == "PiB":
+            break
+    return f"{amount:.2f} {unit} ({value:,} B)"
 
 
 def _upper_hex(value: str | None) -> str | None:

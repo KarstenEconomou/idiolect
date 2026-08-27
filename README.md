@@ -170,11 +170,13 @@ after `@` to filter the list; `/ ` and `@ ` also open their menus before existin
 prompt text. Enter activates a selected slash command; Tab does not autocomplete.
 `/echo <text>` shows a dimmed SYS turn without adding it to model context.
 Commands with arguments use a command bar above the composer, and a command
-replaces any selected reference. Use `/chroma` in chat or press `C` in
-`REGISTRY` to open `CHROMA` and
+replaces any selected reference. `/specs` shows recorded model policy and
+lineage. `/probe` shows only live MLX, hardware, Metal/device, and current
+model-load measurements; it does not save them in a TRACE. Use `/chroma` in
+chat or press `C` in `REGISTRY` to open `CHROMA` and
 preview the red LOOKOUT, yellow PICKPOCKET, green HACKER, blue LOCKSMITH,
 magenta MOLE, and cyan GENTLEMAN themes with the arrow keys; Enter selects one.
-Chat and `/specs` headers show `LINK#XXXXXX`, using a random six-digit
+Chat, `/specs`, and `/probe` headers show `LINK#XXXXXX`, using a random six-digit
 hexadecimal link ID in uppercase. SPECS opened from REGISTRY has no link.
 Hexadecimal IDs in SPECS are uppercase. Alerts and errors share a row with
 loading status, command and reference menus, or the selected command bar. They

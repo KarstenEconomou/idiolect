@@ -8,11 +8,12 @@ from rich.console import Console
 
 from idiolect.chat.discovery import Assistant
 from idiolect.chat.storage import SavedChat
+from idiolect.chat.worker import LoadProbe, RuntimeProbe
 from idiolect.config import ChatConfig, GenerationConfig, TrainDataConfig
 from idiolect.data.local import BuildResult
 from idiolect.model import ModelSpec
 from idiolect.train.base import LoadedRun
-from idiolect.tui.specs import HalfCellScrollBarRender, render_specs
+from idiolect.tui.specs import HalfCellScrollBarRender, render_probe, render_specs
 from idiolect.types import DatasetId, DatasetRef, PersonId, RunId, RunRef, Split
 
 _NOW = datetime(2026, 8, 22, 12, tzinfo=UTC)
@@ -20,6 +21,47 @@ _RUN_ID = "a" * 64
 _DATASET_ID = "d" * 64
 _ADAPTER_DIGEST = "b" * 64
 _TRACE_PARENT_ID = "p" * 64
+
+
+def test_probe_shows_only_live_hardware_runtime_and_load_details() -> None:
+    """Check probe values without model policy or lineage content."""
+    document = render_probe(
+        RuntimeProbe(
+            "0.32.1",
+            "0.31.3",
+            "Device(gpu, 0)",
+            "arm64",
+            (
+                ("architecture", "applegpu_g16g"),
+                ("max_buffer_size", 5 * 1024**3),
+                ("unified_memory", True),
+            ),
+        ),
+        LoadProbe("a" * 64, 8 * 1024**3, 64 * 1024**2, 2.3456),
+    )
+
+    assert "RUNTIME\n" in document.plain
+    assert "MLX VERSION\n 0.32.1\n" in document.plain
+    assert "MLX-LM VERSION\n 0.31.3\n" in document.plain
+    assert "DEVICE\n Device(gpu, 0)\n" in document.plain
+    assert "METAL / DEVICE\n" in document.plain
+    assert "MAX BUFFER SIZE\n 5.00 GiB (5,368,709,120 B)\n" in document.plain
+    assert "MODEL SIZE\n 8.00 GiB (8,589,934,592 B)\n" in document.plain
+    assert "ADAPTER SIZE\n 64.00 MiB (67,108,864 B)\n" in document.plain
+    assert "LOAD DURATION\n 2.346 S\n" in document.plain
+    assert ("a" * 64).upper() in document.plain
+    assert "IDENTITY\n" not in document.plain
+    assert "GENERATION\n" not in document.plain
+    assert "LINEAGE\n" not in document.plain
+    assert "FIDELITY\n" not in document.plain
+
+
+def test_probe_marks_an_absent_base_adapter_size() -> None:
+    """Check that a base-model load does not invent an adapter measurement."""
+    document = render_probe(None, LoadProbe("a" * 64, 512, None, 0.5))
+
+    assert "ADAPTER SIZE\n —\n" in document.plain
+    assert "No Metal device properties were reported." in document.plain
 
 
 def test_construct_specs_show_verified_lineage_and_no_invented_evaluation(

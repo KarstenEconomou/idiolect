@@ -8,6 +8,7 @@ COMMANDS = (
     "/disconnect",
     "/trace",
     "/specs",
+    "/probe",
     "/chroma",
 )
 
@@ -17,6 +18,7 @@ COMMAND_DESCRIPTIONS = {
     "/disconnect": "DISCONNECT LINK.",
     "/trace": "Save TRACE.",
     "/specs": "View SPECS.",
+    "/probe": "View LINK.",
     "/chroma": "Select CHROMA.",
 }
 

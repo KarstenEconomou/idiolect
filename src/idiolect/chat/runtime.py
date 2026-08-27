@@ -14,9 +14,12 @@ from idiolect.chat.worker import (
     GenerateCommand,
     LoadBaseCommand,
     LoadCommand,
+    LoadEvent,
+    LoadProbe,
     PrefillEvent,
     ProbeCommand,
     ProbeEvent,
+    RuntimeProbe,
     StateEvent,
     WorkerError,
     WorkerState,
@@ -147,7 +150,8 @@ class ChatRuntime:
         self.worker = self._worker_factory()
         self.session: ChatSession | None = None
         self.state = WorkerState.PROBING
-        self.probe: dict[str, object] = {}
+        self.runtime_probe: RuntimeProbe | None = None
+        self.load_probe: LoadProbe | None = None
         self.diagnostics: list[str] = []
 
     def select(self, assistant: Assistant) -> ChatSession:
@@ -155,6 +159,8 @@ class ChatRuntime:
         self._ensure_worker()
         if self.worker is None:
             raise ChatError("The model worker is not running")
+        self.runtime_probe = None
+        self.load_probe = None
         self.worker.send(ProbeCommand())
         self.worker.send(_load_command(assistant))
         self.chat = self._configured_chat
@@ -168,6 +174,8 @@ class ChatRuntime:
         self._ensure_worker()
         if self.worker is None:
             raise ChatError("The model worker is not running")
+        self.runtime_probe = None
+        self.load_probe = None
         self.worker.send(ProbeCommand())
         self.worker.send(_load_command(session.assistant))
         self.chat = session.chat
@@ -202,7 +210,9 @@ class ChatRuntime:
                 elif isinstance(event, StateEvent):
                     self.state = event.state
                 elif isinstance(event, ProbeEvent):
-                    self.probe.update(event.values)
+                    self.runtime_probe = event.probe
+                elif isinstance(event, LoadEvent):
+                    self.load_probe = event.probe
                 elif isinstance(event, DiagnosticEvent):
                     self.diagnostics.append(event.text)
                 elif isinstance(event, FailureEvent):
@@ -278,11 +288,11 @@ class ChatRuntime:
     @property
     def backend_versions(self) -> dict[str, str | None]:
         """Return the recorded backend runtime versions, when probed."""
+        if self.runtime_probe is None:
+            return {}
         return {
-            name: value
-            for name in ("mlx_version", "mlx_lm_version")
-            if (value := self.probe.get(name)) is None
-            or isinstance(value, str)
+            "mlx_version": self.runtime_probe.mlx_version,
+            "mlx_lm_version": self.runtime_probe.mlx_lm_version,
         }
 
     def _ensure_worker(self) -> None:
@@ -329,7 +339,9 @@ class ChatRuntime:
                     self._record_model_digest()
                     return
             elif isinstance(event, ProbeEvent):
-                self.probe.update(event.values)
+                self.runtime_probe = event.probe
+            elif isinstance(event, LoadEvent):
+                self.load_probe = event.probe
             elif isinstance(event, DiagnosticEvent):
                 self.diagnostics.append(event.text)
             elif isinstance(event, FailureEvent):
@@ -340,11 +352,10 @@ class ChatRuntime:
     def _record_model_digest(self) -> None:
         if self.session is None or self.session.assistant.base_model is None:
             return
-        value = self.probe.get("model_digest")
-        if isinstance(value, str):
+        if self.load_probe is not None:
             self.session.assistant = replace(
                 self.session.assistant,
-                base_model_digest=value,
+                base_model_digest=self.load_probe.model_digest,
             )
 
 
