@@ -13,6 +13,7 @@ from idiolect.tui.commands import CommandError, completions, parse_command
         "/trace",
         "/specs",
         "/probe",
+        "/buffer",
         "/chroma",
         "/terminate   ",
     ],
@@ -62,12 +63,14 @@ def test_command_completion_requires_one_command_prefix() -> None:
         "/trace",
         "/specs",
         "/probe",
+        "/buffer",
         "/chroma",
     )
     assert completions("/di") == ("/disconnect",)
     assert completions("/tr") == ("/trace",)
     assert completions("/sp") == ("/specs",)
     assert completions("/pr") == ("/probe",)
+    assert completions("/bu") == ("/buffer",)
     assert completions("/ch") == ("/chroma",)
     assert completions("/ec") == ("/echo",)
     assert completions("message") == ()

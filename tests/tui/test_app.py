@@ -18,7 +18,7 @@ from textual.widgets import Input, OptionList, Rule, Static
 
 from idiolect.chat.discovery import Assistant, DiscoveryItem
 from idiolect.chat.runtime import ChatRuntime
-from idiolect.chat.state import ChatSession, ChatTurn, TurnTelemetry
+from idiolect.chat.state import ChatSession, ChatTurn, TurnTelemetry, prepare_prompt
 from idiolect.chat.storage import ChatStorageError, ChatStore, SavedChat
 from idiolect.chat.worker import LoadProbe, RuntimeProbe, WorkerState
 from idiolect.config import ChatConfig, GenerationConfig, TrainDataConfig
@@ -1384,6 +1384,7 @@ def test_command_menu_filters_navigates_and_returns_to_registry(tmp_path) -> Non
             trace_button = menu.query_one("#command-trace", Horizontal)
             specs_button = menu.query_one("#command-specs", Horizontal)
             probe_button = menu.query_one("#command-probe", Horizontal)
+            buffer_button = menu.query_one("#command-buffer", Horizontal)
             chroma_button = menu.query_one("#command-chroma", Horizontal)
             assert menu.display is True
             assert str(menu.query_one("#command-message", Static).content) == "COMMAND"
@@ -1414,6 +1415,9 @@ def test_command_menu_filters_navigates_and_returns_to_registry(tmp_path) -> Non
             assert str(
                 probe_button.query_one(".command-description", Static).content
             ) == "View LINK."
+            assert str(
+                buffer_button.query_one(".command-description", Static).content
+            ) == "View CTX."
             assert str(
                 chroma_button.query_one(".command-description", Static).content
             ) == "Select CHROMA."
@@ -1463,12 +1467,17 @@ def test_command_menu_filters_navigates_and_returns_to_registry(tmp_path) -> Non
             assert probe_button.has_class("-selected")
             assert probe_button.display
             await pilot.press("down")
+            assert buffer_button.has_class("-selected")
+            assert buffer_button.display
+            await pilot.press("down")
             assert chroma_button.has_class("-selected")
             assert chroma_button.display
             await pilot.press("down")
             assert terminate_button.has_class("-selected")
             await pilot.press("up")
             assert chroma_button.has_class("-selected")
+            await pilot.press("up")
+            assert buffer_button.has_class("-selected")
             await pilot.press("up")
             assert probe_button.has_class("-selected")
             await pilot.press("up")
@@ -2012,11 +2021,76 @@ def test_probe_command_shows_live_details_and_restores_chat(tmp_path) -> None:
             assert "HOST\n" in content.plain
             assert "PAYLOAD\n" in content.plain
             assert "MLX VERSION\n 0.32.1\n" in content.plain
-            assert "MODEL SIZE\n 8.00 GiB (8,589,934,592 B)\n" in content.plain
+            assert "MODEL SIZE\n 8.00 GiB\n" in content.plain
             assert "ADAPTER SIZE\n —\n" in content.plain
             assert "IDENTITY\n" not in content.plain
             assert "GENERATION\n" not in content.plain
             assert "FIDELITY\n" not in content.plain
+
+            await pilot.press("escape")
+            await pilot.pause()
+
+            assert app.query_one("#chat").display
+            assert not app.query_one("#specs").display
+            assert runtime.session is session
+            assert session.fingerprint == fingerprint
+            assert composer.has_focus
+
+    asyncio.run(verify())
+
+
+def test_buffer_command_shows_fitted_context_and_restores_chat(tmp_path) -> None:
+    """Check the context sheet lists active references without changing chat."""
+    chat = ChatConfig(
+        output=tmp_path,
+        context_policy="recorded-window-drop-oldest",
+        participant_name="person_01",
+    )
+    generation = GenerationConfig(max_prompt_tokens=100)
+    runtime = BufferRuntime(chat, generation)
+    assistant = _assistant()
+    assert assistant.base_data is not None
+    assistant = replace(
+        assistant,
+        base_data=replace(assistant.base_data, format="chat"),
+    )
+    app = ChatApp(
+        chat,
+        generation,
+        initial_assistant=assistant,
+        runtime_factory=cast(Callable[..., ChatRuntime], lambda *_args: runtime),
+    )
+
+    async def verify() -> None:
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_chat(app, pilot)
+            composer = app.query_one(Composer)
+            composer.insert("Keep this context")
+            await pilot.press("enter")
+            for _ in range(20):
+                await pilot.pause()
+                if runtime.last_prompt is not None:
+                    break
+
+            session = runtime.session
+            assert session is not None
+            fingerprint = session.fingerprint
+            composer.insert("/buffer")
+            await pilot.press("enter")
+            await pilot.pause()
+
+            assert app.query_one("#specs").display
+            assert str(app.query_one("#specs-identity", Static).content) == "BUFFER"
+            content = app.query_one("#specs-body", Static).content
+            assert isinstance(content, SpecsDocument)
+            assert "CONTEXT\n" in content.plain
+            assert "TURNS\n 1 / 32\n" in content.plain
+            assert "TOKENS\n 2 / 100 (2.0%)\n" in content.plain
+            assert "EVICTED\n 0\n" in content.plain
+            assert "HEAD\n @OP:00\n" in content.plain
+            assert "RESIDENT\n" in content.plain
+            assert "@OP:00\n" in content.plain
+            assert "Keep this context" not in content.plain
 
             await pilot.press("escape")
             await pilot.pause()
@@ -2294,12 +2368,14 @@ class BlockingRuntime:
             (("max_buffer_size", 5 * 1024**3), ("unified_memory", True)),
         )
         self.load_probe = LoadProbe("f" * 64, 8 * 1024**3, None, 1.25)
+        self.last_prompt = None
 
     def ensure_worker(self) -> None:
         """Keep the fake runtime ready."""
 
     def select(self, assistant: Assistant) -> ChatSession:
         """Wait before the fake model becomes ready."""
+        self.last_prompt = None
         self.session = ChatSession(assistant, self.chat, self.generation)
         self.state = WorkerState.LOADING
         self.started.set()
@@ -2310,6 +2386,7 @@ class BlockingRuntime:
 
     def attach(self, session: ChatSession) -> None:
         """Wait before attaching one existing fake session."""
+        self.last_prompt = None
         self.session = session
         self.state = WorkerState.LOADING
         self.started.set()
@@ -2352,6 +2429,30 @@ class ImmediateRuntime(BlockingRuntime):
     def close(self) -> None:
         """Record fake runtime shutdown."""
         self.closed = True
+
+
+class BufferRuntime(ImmediateRuntime):
+    """Record one fitted prompt for BUFFER page tests."""
+
+    def generate(
+        self,
+        attempt: int = 0,
+        prompt_progress: Callable[[int, int], None] | None = None,
+    ) -> Iterator[str]:
+        """Record context and commit one synthetic assistant reply."""
+        del prompt_progress
+        if self.session is None:
+            raise RuntimeError("No fake chat session")
+        self.session.begin_generation()
+        self.last_prompt = prepare_prompt(self.session, lambda _value: 2, attempt)
+        yield "Synthetic reply"
+        self.session.finish_generation(
+            "Synthetic reply",
+            "length",
+            101 + attempt,
+            TurnTelemetry(2, 2),
+            attempt=attempt,
+        )
 
 
 class TranscriptRuntime(ImmediateRuntime):

@@ -45,7 +45,12 @@ from idiolect.tui.commands import (
     parse_command,
 )
 from idiolect.tui.markdown import is_web_link
-from idiolect.tui.specs import HalfCellScrollBarRender, render_probe, render_specs
+from idiolect.tui.specs import (
+    HalfCellScrollBarRender,
+    render_buffer,
+    render_probe,
+    render_specs,
+)
 from idiolect.tui.widgets import (
     ChromaMenuModal,
     CommandBar,
@@ -382,6 +387,7 @@ class ChatApp(App[None]):
         self._specs_key: str | None = None
         self._specs_from_chat = False
         self._probe_view = False
+        self._buffer_view = False
         self._active_trace: SavedChat | None = None
         self._link_id: str | None = None
         self._accent_theme_index = next(
@@ -1603,6 +1609,8 @@ class ChatApp(App[None]):
             self._show_chat_specs()
         elif name == "probe":
             self._show_chat_probe()
+        elif name == "buffer":
+            self._show_chat_buffer()
         elif name == "chroma":
             self._open_chroma()
         elif name == "trace":
@@ -2046,6 +2054,7 @@ class ChatApp(App[None]):
         """Show details for one registry entry without loading its model."""
         self._specs_from_chat = False
         self._probe_view = False
+        self._buffer_view = False
         self._specs_key = key
         self.query_one("#landing").display = False
         self.query_one("#chat").display = False
@@ -2061,6 +2070,7 @@ class ChatApp(App[None]):
         """Show model details as a temporary view over the active chat."""
         self._specs_from_chat = True
         self._probe_view = False
+        self._buffer_view = False
         self._specs_key = None
         self.query_one("#landing").display = False
         self.query_one("#chat").display = False
@@ -2082,6 +2092,7 @@ class ChatApp(App[None]):
         """Show live hardware and load details over the active chat."""
         self._specs_from_chat = True
         self._probe_view = True
+        self._buffer_view = False
         self._specs_key = None
         self.query_one("#landing").display = False
         self.query_one("#chat").display = False
@@ -2098,12 +2109,34 @@ class ChatApp(App[None]):
         specs_scroll.scroll_to(y=0, animate=False)
         specs_scroll.focus()
 
+    def _show_chat_buffer(self) -> None:
+        """Show context-window details over the active chat."""
+        self._specs_from_chat = True
+        self._probe_view = False
+        self._buffer_view = True
+        self._specs_key = None
+        self.query_one("#landing").display = False
+        self.query_one("#chat").display = False
+        self.query_one("#specs").display = True
+        specs_link = self.query_one("#specs-link", Static)
+        specs_link.update(_link_label(self._link_id))
+        specs_link.display = True
+        self.query_one("#specs-hints", Static).update(
+            "↑↓ SCROLL    ESC LINK    CTRL+C TERMINATE"
+        )
+        self.query_one("#specs-identity", Static).update("BUFFER")
+        self._render_specs()
+        specs_scroll = self.query_one("#specs-scroll", SpecsScroll)
+        specs_scroll.scroll_to(y=0, animate=False)
+        specs_scroll.focus()
+
     def _restore_chat_from_specs(self) -> None:
         """Return from temporary model details without changing chat state."""
         self.query_one("#specs").display = False
         self.query_one("#chat").display = True
         self._specs_from_chat = False
         self._probe_view = False
+        self._buffer_view = False
         self.query_one(Composer).focus()
 
     def _show_registry(self) -> None:
@@ -2112,6 +2145,7 @@ class ChatApp(App[None]):
         self.query_one("#landing").display = True
         self._specs_from_chat = False
         self._probe_view = False
+        self._buffer_view = False
         self._specs_key = None
         self.query_one("#chooser", OptionList).focus()
 
@@ -2142,6 +2176,13 @@ class ChatApp(App[None]):
                     self.runtime.runtime_probe,
                     self.runtime.load_probe,
                 )
+            )
+            return
+        if self._buffer_view:
+            session = self._session()
+            self.query_one("#specs-identity", Static).update("BUFFER")
+            self.query_one("#specs-body", Static).update(
+                render_buffer(session, getattr(self.runtime, "last_prompt", None))
             )
             return
         if self._specs_from_chat:

@@ -172,14 +172,18 @@ prompt text. Enter activates a selected slash command; Tab does not autocomplete
 Commands with arguments use a command bar above the composer, and a command
 replaces any selected reference. `/specs` shows recorded model policy and
 lineage. `/probe` shows only live MLX, hardware, Metal/device, and current
-model-load measurements under `SYSTEM`, `HOST`, and `PAYLOAD`; it does not save
-them in a TRACE. Use `/chroma` in
+model-load measurements under `SYSTEM`, `HOST`, and `PAYLOAD`. Sizes use one
+compact IEC unit, and load time uses seconds; the values are not saved in a
+TRACE. `/buffer` opens the active context sheet. It reports the
+fitted turn and token use, evicted-turn count, state identity, the newest
+resident reference as `HEAD`, and every `RESIDENT` reference without its message
+preview. Use `/chroma` in
 chat or press `C` in `REGISTRY` to open `CHROMA` and
 preview the red LOOKOUT, yellow PICKPOCKET, green HACKER, blue LOCKSMITH,
 magenta MOLE, and cyan GENTLEMAN themes with the arrow keys; `ENTER EQUIP`
 commits one and reports a `SYS: ACK NAME equipped.` acknowledgement.
-Chat, `/specs`, and `/probe` headers show `LINK#XXXXXX`, using a random six-digit
-hexadecimal link ID in uppercase. SPECS opened from REGISTRY has no link.
+Chat, `/specs`, `/probe`, and `/buffer` headers show `LINK#XXXXXX`, using a
+random six-digit hexadecimal link ID in uppercase. SPECS opened from REGISTRY has no link.
 Hexadecimal IDs in SPECS are uppercase. Alerts and errors share a row with
 loading status, command and reference menus, or the selected command bar. They
 use a dimmed `SYS:` prefix, followed by `ACK` or `ERR` and the message in the

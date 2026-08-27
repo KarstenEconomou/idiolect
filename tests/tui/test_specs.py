@@ -7,13 +7,19 @@ from rich.color import Color
 from rich.console import Console
 
 from idiolect.chat.discovery import Assistant
+from idiolect.chat.state import ChatSession, ChatTurn, TurnTelemetry, prepare_prompt
 from idiolect.chat.storage import SavedChat
 from idiolect.chat.worker import LoadProbe, RuntimeProbe
 from idiolect.config import ChatConfig, GenerationConfig, TrainDataConfig
 from idiolect.data.local import BuildResult
 from idiolect.model import ModelSpec
 from idiolect.train.base import LoadedRun
-from idiolect.tui.specs import HalfCellScrollBarRender, render_probe, render_specs
+from idiolect.tui.specs import (
+    HalfCellScrollBarRender,
+    render_buffer,
+    render_probe,
+    render_specs,
+)
 from idiolect.types import DatasetId, DatasetRef, PersonId, RunId, RunRef, Split
 
 _NOW = datetime(2026, 8, 22, 12, tzinfo=UTC)
@@ -47,12 +53,12 @@ def test_probe_shows_only_live_hardware_runtime_and_load_details() -> None:
     assert "MLX-LM VERSION\n 0.31.3\n" in document.plain
     assert "DEVICE\n Device(gpu, 0)\n" in document.plain
     assert "HOST\n" in document.plain
-    assert "MAX BUFFER SIZE\n 5.00 GiB (5,368,709,120 B)\n" in document.plain
-    assert "WORKING SET LIMIT\n 4.00 GiB (4,294,967,296 B)\n" in document.plain
-    assert "MEMORY\n 16.00 GiB (17,179,869,184 B)\n" in document.plain
+    assert "MAX BUFFER SIZE\n 5.00 GiB\n" in document.plain
+    assert "WORKING SET LIMIT\n 4.00 GiB\n" in document.plain
+    assert "MEMORY\n 16.00 GiB\n" in document.plain
     assert "PAYLOAD\n" in document.plain
-    assert "MODEL SIZE\n 8.00 GiB (8,589,934,592 B)\n" in document.plain
-    assert "ADAPTER SIZE\n 64.00 MiB (67,108,864 B)\n" in document.plain
+    assert "MODEL SIZE\n 8.00 GiB\n" in document.plain
+    assert "ADAPTER SIZE\n 64.00 MiB\n" in document.plain
     assert "LOAD TIME\n 2.346 S\n" in document.plain
     assert ("a" * 64).upper() in document.plain
     assert "IDENTITY\n" not in document.plain
@@ -65,8 +71,61 @@ def test_probe_marks_an_absent_base_adapter_size() -> None:
     """Check that a base-model load does not invent an adapter measurement."""
     document = render_probe(None, LoadProbe("a" * 64, 512, None, 0.5))
 
+    assert "MODEL SIZE\n 512 B\n" in document.plain
     assert "ADAPTER SIZE\n —\n" in document.plain
     assert "No Metal device properties were reported." in document.plain
+
+
+def test_buffer_shows_context_measurements_and_active_references(tmp_path: Path) -> None:
+    """Check BUFFER reports fitted context and complete active bubble text."""
+    assistant = _base(tmp_path)
+    assert assistant.base_data is not None
+    assistant = Assistant(
+        assistant.name,
+        assistant.target_name,
+        assistant.model_basename,
+        assistant.run,
+        assistant.dataset,
+        assistant.context_messages,
+        assistant.base_model,
+        TrainDataConfig(
+            format="chat",
+            system_prompt=assistant.base_data.system_prompt,
+            prompt_role=assistant.base_data.prompt_role,
+            completion_role=assistant.base_data.completion_role,
+        ),
+        assistant.base_model_digest,
+    )
+    session = ChatSession(
+        assistant,
+        ChatConfig(
+            context_policy="recorded-window-drop-oldest",
+            participant_name="person_01",
+        ),
+        GenerationConfig(max_prompt_tokens=100),
+        (
+            ChatTurn("user", "old"),
+            ChatTurn("assistant", "first\n[new message]\nsecond", telemetry=TurnTelemetry(2, 2)),
+            ChatTurn("user", "active question"),
+        ),
+    )
+    prepared = prepare_prompt(session, lambda _value: 25, 0)
+
+    document = render_buffer(session, prepared)
+
+    assert "CONTEXT\n" in document.plain
+    assert "POLICY\n" not in document.plain
+    assert "TURNS\n 3 / 32\n" in document.plain
+    assert "TOKENS\n 25 / 100 (25.0%)\n" in document.plain
+    assert "EVICTED\n 0\n" in document.plain
+    assert "STATE DIGEST\n" in document.plain
+    assert "HEAD\n @OP:03\n" in document.plain
+    assert "RESIDENT\n" in document.plain
+    assert "@OP:00\n" in document.plain
+    assert "@DIXIE:01\n" in document.plain
+    assert "@DIXIE:02\n" in document.plain
+    assert "@OP:03\n" in document.plain
+    assert "active question" not in document.plain
 
 
 def test_construct_specs_show_verified_lineage_and_no_invented_evaluation(

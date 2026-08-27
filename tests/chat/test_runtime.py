@@ -97,6 +97,12 @@ def test_generation_reports_measured_prefill_progress() -> None:
     assert pieces == ["Reply"]
     assert progress == [(0, 5), (5, 5)]
     assert session.turns[-1].content == "Reply"
+    assert runtime.last_prompt is not None
+    assert runtime.last_prompt.prompt_tokens == 5
+    assert runtime.last_prompt.active_turns == 1
+    assert [reference.content for reference in runtime.last_prompt.active_references] == [
+        "Hello"
+    ]
 
 
 def test_abandoned_reply_cancels_the_worker_and_drains_events() -> None:

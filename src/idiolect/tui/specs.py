@@ -16,6 +16,7 @@ from rich.text import Text
 from textual.scrollbar import ScrollBarRender
 
 from idiolect.chat.discovery import Assistant
+from idiolect.chat.state import ChatBubble, ChatSession, PreparedPrompt
 from idiolect.chat.storage import SavedChat
 from idiolect.chat.worker import LoadProbe, RuntimeProbe
 from idiolect.config import GenerationConfig
@@ -256,6 +257,68 @@ def render_probe(
     return document
 
 
+def render_buffer(
+    session: ChatSession,
+    prepared: PreparedPrompt | None,
+) -> SpecsDocument:
+    """Return context use and resident reference details."""
+    document = SpecsDocument()
+    _section(document, "CONTEXT")
+    _field(
+        document,
+        "TURNS",
+        f"— / {session.assistant.context_messages:,}"
+        if prepared is None
+        else f"{prepared.active_turns:,} / {session.assistant.context_messages:,}",
+    )
+    _field(
+        document,
+        "TOKENS",
+        f"— / {session.generation.max_prompt_tokens:,}"
+        if prepared is None
+        else (
+            f"{prepared.prompt_tokens:,} / {session.generation.max_prompt_tokens:,} "
+            f"({100 * prepared.prompt_tokens / session.generation.max_prompt_tokens:.1f}%)"
+        ),
+        abbreviate=False,
+    )
+    _field(
+        document,
+        "EVICTED",
+        None if prepared is None else prepared.dropped_messages,
+    )
+    _field(
+        document,
+        "STATE DIGEST",
+        None if prepared is None else _upper_hex(prepared.prompt_digest),
+    )
+    _field(
+        document,
+        "HEAD",
+        None
+        if prepared is None or not prepared.active_references
+        else _buffer_reference_name(session, prepared.active_references[-1]),
+    )
+
+    _section(document, "RESIDENT")
+    if prepared is None:
+        _note(document, "No prompt state is resident.")
+    elif not prepared.active_references:
+        _note(document, "No references are resident.")
+    else:
+        for reference in prepared.active_references:
+            document.append_line(
+                Text(_buffer_reference_name(session, reference), style=_FIELD_NAME)
+            )
+    return document
+
+
+def _buffer_reference_name(session: ChatSession, reference: ChatBubble) -> str:
+    """Return one stable BUFFER reference identity."""
+    name = "OP" if reference.role == "user" else session.assistant.target_name
+    return f"@{name.upper()}:{reference.index:02d}"
+
+
 def _byte_property(name: str, value: object) -> bool:
     """Return true when one integer device property reports bytes."""
     normalized = name.casefold()
@@ -266,7 +329,7 @@ def _byte_property(name: str, value: object) -> bool:
 
 
 def _format_bytes(value: object) -> str:
-    """Return exact bytes with a compact IEC measurement when useful."""
+    """Return one byte measurement with a compact IEC unit."""
     if not isinstance(value, int) or isinstance(value, bool):
         return _display(value)
     if value < 1024:
@@ -278,7 +341,7 @@ def _format_bytes(value: object) -> str:
         unit = candidate
         if amount < 1024 or candidate == "PiB":
             break
-    return f"{amount:.2f} {unit} ({value:,} B)"
+    return f"{amount:.2f} {unit}"
 
 
 def _upper_hex(value: str | None) -> str | None:
@@ -299,9 +362,10 @@ def _field(
     value: object,
     *,
     value_style: str | Style = _DESCRIPTION,
+    abbreviate: bool = True,
 ) -> None:
     """Append one aligned field and preserve multiline values."""
-    label = _label(name)
+    label = _label(name) if abbreviate else name.upper()
     field_name = name.replace(" ", "_").casefold()
     if field_name in _PROMPT_BLOCK_FIELDS:
         _prompt_block_field(

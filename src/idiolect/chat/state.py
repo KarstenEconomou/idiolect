@@ -68,6 +68,8 @@ class PreparedPrompt:
     prompt_tokens: int
     seed: int
     dropped_messages: int
+    active_turns: int
+    active_references: tuple[ChatBubble, ...]
 
 
 class ChatSession:
@@ -227,6 +229,8 @@ def prepare_prompt(
                 token_count,
                 derive_seed(state.chat.seed, digest, attempt),
                 dropped,
+                len(selected),
+                _active_references(state.turns, dropped),
             )
         if len(selected) == 1:
             raise ChatStateError(
@@ -259,7 +263,9 @@ def enumerate_bubbles(turns: tuple[ChatTurn, ...] | list[ChatTurn]) -> tuple[Cha
         segments = (
             (turn.content,)
             if turn.role == "user"
-            else tuple(segment for segment in split_bubbles(turn.content) if segment.strip())
+            else tuple(
+                segment for segment in split_bubbles(turn.content) if segment.strip()
+            )
         )
         if not segments:
             segments = (turn.content,)
@@ -267,6 +273,34 @@ def enumerate_bubbles(turns: tuple[ChatTurn, ...] | list[ChatTurn]) -> tuple[Cha
             ChatBubble(len(bubbles), turn.role, content) for content in segments
         )
     return tuple(bubbles)
+
+
+def _active_references(
+    turns: tuple[ChatTurn, ...] | list[ChatTurn],
+    dropped_messages: int,
+) -> tuple[ChatBubble, ...]:
+    """Return numbered bubbles in one fitted model-message window."""
+    active: list[ChatBubble] = []
+    model_index = 0
+    bubble_index = 0
+    for turn in turns:
+        if turn.role == "env":
+            continue
+        segments = (
+            (turn.content,)
+            if turn.role == "user"
+            else tuple(segment for segment in split_bubbles(turn.content) if segment.strip())
+        )
+        if not segments:
+            segments = (turn.content,)
+        if model_index >= dropped_messages:
+            active.extend(
+                ChatBubble(bubble_index + offset, turn.role, content)
+                for offset, content in enumerate(segments)
+            )
+        bubble_index += len(segments)
+        model_index += 1
+    return tuple(active)
 
 
 def _model_input_digest(value: ModelInput) -> str:

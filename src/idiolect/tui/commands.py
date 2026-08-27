@@ -9,6 +9,7 @@ COMMANDS = (
     "/trace",
     "/specs",
     "/probe",
+    "/buffer",
     "/chroma",
 )
 
@@ -19,6 +20,7 @@ COMMAND_DESCRIPTIONS = {
     "/trace": "Save TRACE.",
     "/specs": "View SPECS.",
     "/probe": "View LINK.",
+    "/buffer": "View CTX.",
     "/chroma": "Select CHROMA.",
 }
 

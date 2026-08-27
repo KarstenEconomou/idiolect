@@ -156,6 +156,7 @@ that starts at the beginning of a word. Commands are:
 - `/trace`: save a TRACE checkpoint and keep the chat open;
 - `/specs`: temporarily view the active model's SPECS;
 - `/probe`: temporarily view live hardware, runtime, and model-load details;
+- `/buffer`: temporarily view fitted context and active references;
 - `/chroma`: open the CHROMA theme menu.
 
 In chat, CHROMA reserves space above the composer so the newest dialogue stays
@@ -210,9 +211,22 @@ hardware-oriented details under a `PROBE` page header. `SYSTEM` reports the MLX
 and MLX-LM versions, default device, and machine architecture. `HOST` reports
 every Metal/device property returned by MLX, with the working-set limit and
 memory labels shortened for display. `PAYLOAD` reports the verified model
-digest, model and adapter sizes, and load time. These values describe the active
-worker and its current model load. They are not stored in a TRACE. Escape
-restores the unchanged chat, and Ctrl+C follows the same behavior as `/specs`.
+digest, model and adapter sizes, and load time. Byte measurements use one compact
+IEC unit such as `GiB`, `MiB`, or `B`; load time uses seconds. These values
+describe the active worker and its current model load. They are not stored in a
+TRACE. Escape restores the unchanged chat, and Ctrl+C follows the same behavior
+as `/specs`.
+
+`/buffer` uses the same temporary sheet controls under a `BUFFER` page header.
+`CONTEXT` reports fitted and total turn use, measured and total token use with
+its percentage, evicted-turn count, state digest, and the newest resident
+reference as `HEAD` for the latest fitted prompt. `RESIDENT` lists only the
+identity of every numbered chat bubble in that prompt. An operator bubble uses
+`@OP:NN`; an assistant bubble uses its target name. Before the first prompt,
+measured fields are unavailable and `RESIDENT` reports that no prompt state is
+resident. These values are derived session state and are not stored in a TRACE.
+Escape restores the unchanged chat, and Ctrl+C follows the same behavior as
+`/specs`.
 
 `/trace` is available only when the transcript contains new unsaved data and no
 reply is active. Otherwise it is shown as unavailable and cannot be selected;

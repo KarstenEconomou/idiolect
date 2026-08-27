@@ -48,6 +48,33 @@ def test_prompt_rejects_newest_message_that_cannot_fit() -> None:
         prepare_prompt(state, lambda _value: 2, 0)
 
 
+def test_prompt_records_stable_references_in_the_fitted_context_window() -> None:
+    """Check BUFFER can report only bubbles kept in the active prompt."""
+    state = _state(context=2)
+    state.add_user("first")
+    state.begin_generation()
+    state.finish_generation(
+        "one\n[new message]\ntwo",
+        "stop",
+        1,
+        TurnTelemetry(10, 2),
+    )
+    state.add_user("newest")
+
+    prepared = prepare_prompt(state, lambda _value: 10, 0)
+
+    assert prepared.dropped_messages == 1
+    assert prepared.active_turns == 2
+    assert [
+        (reference.index, reference.role, reference.content)
+        for reference in prepared.active_references
+    ] == [
+        (1, "assistant", "one"),
+        (2, "assistant", "two"),
+        (3, "user", "newest"),
+    ]
+
+
 def test_env_turns_are_display_only_and_do_not_enter_prompt() -> None:
     """Check local ENV output leaves model context and user ordering intact."""
     state = _state()

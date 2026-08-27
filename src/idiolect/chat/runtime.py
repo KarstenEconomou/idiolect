@@ -5,7 +5,12 @@ from collections.abc import Callable, Generator
 from dataclasses import dataclass, replace
 
 from idiolect.chat.discovery import Assistant
-from idiolect.chat.state import ChatSession, TurnTelemetry, prepare_prompt
+from idiolect.chat.state import (
+    ChatSession,
+    PreparedPrompt,
+    TurnTelemetry,
+    prepare_prompt,
+)
 from idiolect.chat.worker import (
     CompleteEvent,
     DeltaEvent,
@@ -152,6 +157,7 @@ class ChatRuntime:
         self.state = WorkerState.PROBING
         self.runtime_probe: RuntimeProbe | None = None
         self.load_probe: LoadProbe | None = None
+        self.last_prompt: PreparedPrompt | None = None
         self.diagnostics: list[str] = []
 
     def select(self, assistant: Assistant) -> ChatSession:
@@ -161,6 +167,7 @@ class ChatRuntime:
             raise ChatError("The model worker is not running")
         self.runtime_probe = None
         self.load_probe = None
+        self.last_prompt = None
         self.worker.send(ProbeCommand())
         self.worker.send(_load_command(assistant))
         self.chat = self._configured_chat
@@ -176,6 +183,7 @@ class ChatRuntime:
             raise ChatError("The model worker is not running")
         self.runtime_probe = None
         self.load_probe = None
+        self.last_prompt = None
         self.worker.send(ProbeCommand())
         self.worker.send(_load_command(session.assistant))
         self.chat = session.chat
@@ -193,7 +201,9 @@ class ChatRuntime:
             raise ChatError("Select an assistant before generation")
         if not self.session.generating:
             self.session.begin_generation()
+        self.last_prompt = None
         prepared = prepare_prompt(self.session, self.worker.count_tokens, attempt)
+        self.last_prompt = prepared
         self.worker.send(
             GenerateCommand(prepared.value, prepared.seed, self.generation)
         )
