@@ -2005,10 +2005,12 @@ def test_probe_command_shows_live_details_and_restores_chat(tmp_path) -> None:
             await pilot.pause()
 
             assert app.query_one("#specs").display
-            assert str(app.query_one("#specs-identity", Static).content) == "LINK"
+            assert str(app.query_one("#specs-identity", Static).content) == "PROBE"
             content = app.query_one("#specs-body", Static).content
             assert isinstance(content, SpecsDocument)
-            assert "RUNTIME\n" in content.plain
+            assert "SYSTEM\n" in content.plain
+            assert "HOST\n" in content.plain
+            assert "PAYLOAD\n" in content.plain
             assert "MLX VERSION\n 0.32.1\n" in content.plain
             assert "MODEL SIZE\n 8.00 GiB (8,589,934,592 B)\n" in content.plain
             assert "ADAPTER SIZE\n —\n" in content.plain

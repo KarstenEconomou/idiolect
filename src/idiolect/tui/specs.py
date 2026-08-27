@@ -37,6 +37,10 @@ _PROMPT_BLOCK_FIELDS = frozenset(
         "completion_suffix",
     }
 )
+_PROBE_LABELS = {
+    "max_recommended_working_set_size": "working_set_limit",
+    "memory_size": "memory",
+}
 _DEFAULT_SCROLL_BACK = Color.parse("#555555")
 _DEFAULT_SCROLL_BAR = Color.parse("bright_magenta")
 _FIELD_NAME = Style(bold=False)
@@ -204,7 +208,7 @@ def render_probe(
 ) -> SpecsDocument:
     """Return one hardware and model-load probe document."""
     document = SpecsDocument()
-    _section(document, "RUNTIME")
+    _section(document, "SYSTEM")
     _field(document, "MLX VERSION", None if runtime is None else runtime.mlx_version)
     _field(
         document,
@@ -218,15 +222,15 @@ def render_probe(
         None if runtime is None else runtime.architecture,
     )
 
-    _section(document, "METAL / DEVICE")
+    _section(document, "HOST")
     if runtime is None or not runtime.device_properties:
         _note(document, "No Metal device properties were reported.")
     else:
         for name, value in runtime.device_properties:
             displayed = _format_bytes(value) if _byte_property(name, value) else value
-            _field(document, name, displayed)
+            _field(document, _PROBE_LABELS.get(name, name), displayed)
 
-    _section(document, "LOADING")
+    _section(document, "PAYLOAD")
     _field(
         document,
         "MODEL DIGEST",
@@ -246,7 +250,7 @@ def render_probe(
     )
     _field(
         document,
-        "LOAD DURATION",
+        "LOAD TIME",
         None if load is None else f"{load.load_duration:.3f} S",
     )
     return document

@@ -206,12 +206,13 @@ Left and Right do not cycle registry models in this temporary view. Ctrl+C
 restores chat and opens the normal exit menu when the session has unsaved data.
 
 `/probe` uses the same temporary sheet controls, but its body contains only live
-hardware-oriented details. It reports the MLX and MLX-LM versions, default
-device, machine architecture, every Metal/device property returned by MLX, the
-verified model digest, model and adapter sizes, and load duration. These values
-describe the active worker and its current model load. They are not stored in a
-TRACE. Escape restores the unchanged chat, and Ctrl+C follows the same behavior
-as `/specs`.
+hardware-oriented details under a `PROBE` page header. `SYSTEM` reports the MLX
+and MLX-LM versions, default device, and machine architecture. `HOST` reports
+every Metal/device property returned by MLX, with the working-set limit and
+memory labels shortened for display. `PAYLOAD` reports the verified model
+digest, model and adapter sizes, and load time. These values describe the active
+worker and its current model load. They are not stored in a TRACE. Escape
+restores the unchanged chat, and Ctrl+C follows the same behavior as `/specs`.
 
 `/trace` is available only when the transcript contains new unsaved data and no
 reply is active. Otherwise it is shown as unavailable and cannot be selected;

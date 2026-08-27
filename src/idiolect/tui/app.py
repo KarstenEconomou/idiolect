@@ -2092,7 +2092,7 @@ class ChatApp(App[None]):
         self.query_one("#specs-hints", Static).update(
             "↑↓ SCROLL    ESC LINK    CTRL+C TERMINATE"
         )
-        self.query_one("#specs-identity", Static).update("LINK")
+        self.query_one("#specs-identity", Static).update("PROBE")
         self._render_specs()
         specs_scroll = self.query_one("#specs-scroll", SpecsScroll)
         specs_scroll.scroll_to(y=0, animate=False)
@@ -2136,7 +2136,7 @@ class ChatApp(App[None]):
     def _render_specs(self) -> None:
         """Render the selected model details at the current terminal width."""
         if self._probe_view:
-            self.query_one("#specs-identity", Static).update("LINK")
+            self.query_one("#specs-identity", Static).update("PROBE")
             self.query_one("#specs-body", Static).update(
                 render_probe(
                     self.runtime.runtime_probe,

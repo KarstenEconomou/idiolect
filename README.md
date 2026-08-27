@@ -172,7 +172,8 @@ prompt text. Enter activates a selected slash command; Tab does not autocomplete
 Commands with arguments use a command bar above the composer, and a command
 replaces any selected reference. `/specs` shows recorded model policy and
 lineage. `/probe` shows only live MLX, hardware, Metal/device, and current
-model-load measurements; it does not save them in a TRACE. Use `/chroma` in
+model-load measurements under `SYSTEM`, `HOST`, and `PAYLOAD`; it does not save
+them in a TRACE. Use `/chroma` in
 chat or press `C` in `REGISTRY` to open `CHROMA` and
 preview the red LOOKOUT, yellow PICKPOCKET, green HACKER, blue LOCKSMITH,
 magenta MOLE, and cyan GENTLEMAN themes with the arrow keys; `ENTER EQUIP`

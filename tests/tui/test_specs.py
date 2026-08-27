@@ -34,21 +34,26 @@ def test_probe_shows_only_live_hardware_runtime_and_load_details() -> None:
             (
                 ("architecture", "applegpu_g16g"),
                 ("max_buffer_size", 5 * 1024**3),
+                ("max_recommended_working_set_size", 4 * 1024**3),
+                ("memory_size", 16 * 1024**3),
                 ("unified_memory", True),
             ),
         ),
         LoadProbe("a" * 64, 8 * 1024**3, 64 * 1024**2, 2.3456),
     )
 
-    assert "RUNTIME\n" in document.plain
+    assert "SYSTEM\n" in document.plain
     assert "MLX VERSION\n 0.32.1\n" in document.plain
     assert "MLX-LM VERSION\n 0.31.3\n" in document.plain
     assert "DEVICE\n Device(gpu, 0)\n" in document.plain
-    assert "METAL / DEVICE\n" in document.plain
+    assert "HOST\n" in document.plain
     assert "MAX BUFFER SIZE\n 5.00 GiB (5,368,709,120 B)\n" in document.plain
+    assert "WORKING SET LIMIT\n 4.00 GiB (4,294,967,296 B)\n" in document.plain
+    assert "MEMORY\n 16.00 GiB (17,179,869,184 B)\n" in document.plain
+    assert "PAYLOAD\n" in document.plain
     assert "MODEL SIZE\n 8.00 GiB (8,589,934,592 B)\n" in document.plain
     assert "ADAPTER SIZE\n 64.00 MiB (67,108,864 B)\n" in document.plain
-    assert "LOAD DURATION\n 2.346 S\n" in document.plain
+    assert "LOAD TIME\n 2.346 S\n" in document.plain
     assert ("a" * 64).upper() in document.plain
     assert "IDENTITY\n" not in document.plain
     assert "GENERATION\n" not in document.plain
