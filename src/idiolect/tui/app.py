@@ -582,6 +582,7 @@ class ChatApp(App[None]):
         if self.query_one("#landing").display:
             self._update_catalog_hints()
         else:
+            self._update_confirmation_spacing()
             self._update_footer()
         themes = tuple((name, label) for name, _, label in _ACCENT_THEMES)
         current = _ACCENT_THEMES[self._accent_theme_index][0]
@@ -592,16 +593,23 @@ class ChatApp(App[None]):
 
     def _after_chroma(self, choice: str | None) -> None:
         """Commit or cancel the CHROMA preview."""
+        equipped = None
         if choice is None:
             name = _ACCENT_THEMES[self._chroma_initial_theme_index][0]
             self._set_accent_theme(name)
         else:
             self._set_accent_theme(choice)
+            equipped = next(
+                label for name, _, label in _ACCENT_THEMES if name == choice
+            )
         self._chroma_menu_open = False
         if self.query_one("#landing").display:
             self._update_catalog_hints()
         else:
+            self._update_confirmation_spacing()
             self._update_footer()
+        if equipped is not None:
+            self._show_alert(f"{equipped} equipped")
 
     def _set_accent_theme(self, name: str) -> None:
         """Apply one configured ANSI accent theme across the interface."""
@@ -1521,7 +1529,7 @@ class ChatApp(App[None]):
 
     def _update_footer(self) -> None:
         if self._chroma_menu_open:
-            self._set_footer("←→ MOVE    ENTER SELECT    ESC CANCEL")
+            self._set_footer("←→ MOVE    ENTER EQUIP    ESC CANCEL")
             return
         if self._confirmation_open:
             self._set_footer(
@@ -1766,7 +1774,7 @@ class ChatApp(App[None]):
 
     def _update_confirmation_spacing(self) -> None:
         scroller = self.query_one("#transcript-scroll", VerticalScroll)
-        bottom = 3 if self._confirmation_open else 1
+        bottom = 3 if self._confirmation_open or self._chroma_menu_open else 1
         if (
             self._reference_selected
             or self._command_selected
@@ -2227,7 +2235,7 @@ class ChatApp(App[None]):
         """Show actions available for the current registry row."""
         if self._chroma_menu_open:
             self.query_one("#catalog-hints", Static).update(
-                "←→ MOVE    ENTER SELECT    ESC CANCEL"
+                "←→ MOVE    ENTER EQUIP    ESC CANCEL"
             )
             return
         if self._trace_menu_id is not None:

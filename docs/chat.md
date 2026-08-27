@@ -77,7 +77,9 @@ Press C in REGISTRY to open the `CHROMA` menu. It presents the ANSI themes in
 this order: `RED - LOOKOUT`, `YELLOW - PICKPOCKET`, `GREEN - HACKER`,
 `BLUE - LOCKSMITH`, `MAGENTA - MOLE`, and `CYAN - GENTLEMAN`. Green is the
 default. Use Left and Right to preview every theme with wrapping; the interface
-changes as the highlight moves. Enter selects the highlighted theme. Escape
+changes as the highlight moves. The navigation bar shows `ENTER EQUIP`. Enter
+equips the highlighted theme and reports
+`SYS: ACK NAME equipped.` Escape
 cancels the preview and restores the theme that was active when the menu opened.
 The registry navigation hints include `C CHROMA`.
 
@@ -155,6 +157,11 @@ that starts at the beginning of a word. Commands are:
 - `/specs`: temporarily view the active model's SPECS;
 - `/probe`: temporarily view live hardware, runtime, and model-load details;
 - `/chroma`: open the CHROMA theme menu.
+
+In chat, CHROMA reserves space above the composer so the newest dialogue stays
+visible above its two-row menu. Enter equips the highlighted theme and shows the
+same `SYS: ACK NAME equipped.` acknowledgement used in REGISTRY. Escape
+cancels the preview without an acknowledgement.
 
 Commands with arguments remove their slash token from the composer and show a
 dimmed command bar above it. The command description follows the command in the

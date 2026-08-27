@@ -175,7 +175,8 @@ lineage. `/probe` shows only live MLX, hardware, Metal/device, and current
 model-load measurements; it does not save them in a TRACE. Use `/chroma` in
 chat or press `C` in `REGISTRY` to open `CHROMA` and
 preview the red LOOKOUT, yellow PICKPOCKET, green HACKER, blue LOCKSMITH,
-magenta MOLE, and cyan GENTLEMAN themes with the arrow keys; Enter selects one.
+magenta MOLE, and cyan GENTLEMAN themes with the arrow keys; `ENTER EQUIP`
+commits one and reports a `SYS: ACK NAME equipped.` acknowledgement.
 Chat, `/specs`, and `/probe` headers show `LINK#XXXXXX`, using a random six-digit
 hexadecimal link ID in uppercase. SPECS opened from REGISTRY has no link.
 Hexadecimal IDs in SPECS are uppercase. Alerts and errors share a row with

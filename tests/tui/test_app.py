@@ -155,7 +155,7 @@ def test_registry_chroma_menu_previews_all_themes_and_persists(tmp_path) -> None
                 == 0
             )
             assert str(app.query_one("#catalog-hints", Static).content) == (
-                "←→ MOVE    ENTER SELECT    ESC CANCEL"
+                "←→ MOVE    ENTER EQUIP    ESC CANCEL"
             )
 
             await pilot.press("up", "down")
@@ -184,9 +184,12 @@ def test_registry_chroma_menu_previews_all_themes_and_persists(tmp_path) -> None
                 assert style.color is not None and style.color.number == ansi
 
             hints = str(app.query_one("#catalog-hints", Static).content)
-            assert hints == "←→ MOVE    ENTER SELECT    ESC CANCEL"
+            assert hints == "←→ MOVE    ENTER EQUIP    ESC CANCEL"
             await pilot.press("enter")
             await pilot.pause()
+            assert app.query_one("#catalog-alert", LoadingStatus).state == (
+                "SYS: ACK HACKER equipped."
+            )
             assert str(app.query_one("#catalog-hints", Static).content) == (
                 "↑↓ MOVE    ENTER CONNECT    S SPECS    C CHROMA    CTRL+C TERMINATE"
             )
@@ -231,6 +234,13 @@ def test_chroma_command_opens_menu_in_chat(tmp_path) -> None:
         async with app.run_test() as pilot:
             await _wait_for_chat(app, pilot)
             composer = app.query_one(Composer)
+            composer.insert("Visible dialogue")
+            await pilot.press("enter")
+            for _ in range(20):
+                await pilot.pause()
+                if "Synthetic reply" in app.query_one(Transcript).plain:
+                    break
+            footer_before = str(app.query_one("#footer", Static).content)
             composer.insert("/chroma")
             await pilot.press("enter")
             await pilot.pause()
@@ -240,10 +250,16 @@ def test_chroma_command_opens_menu_in_chat(tmp_path) -> None:
             assert dialog.region.bottom == app.query_one(
                 "#composer-bar", Horizontal
             ).region.y
+            assert app.query_one(Transcript).region.bottom <= dialog.region.y
             assert app.focused is not None
             assert app.focused.id == "chroma-green"
             assert str(app.query_one("#footer", Static).content) == (
-                "←→ MOVE    ENTER SELECT    ESC CANCEL"
+                "←→ MOVE    ENTER EQUIP    ESC CANCEL"
+            )
+            assert (
+                app.query_one("#transcript-scroll", VerticalScroll)
+                .styles.padding.bottom
+                == 3
             )
 
             await pilot.press("right")
@@ -254,7 +270,26 @@ def test_chroma_command_opens_menu_in_chat(tmp_path) -> None:
             await pilot.pause()
             assert app.query_one("#chat").display
             assert app.has_class("-accent-green")
-            assert str(app.query_one("#footer", Static).content) == ""
+            assert str(app.query_one("#footer", Static).content) == footer_before
+            assert (
+                app.query_one("#transcript-scroll", VerticalScroll)
+                .styles.padding.bottom
+                == 1
+            )
+
+            composer.insert("/chroma")
+            await pilot.press("enter", "right", "enter")
+            await pilot.pause()
+            assert app.has_class("-accent-blue")
+            assert app.query_one("#chat-alert", LoadingStatus).state == (
+                "SYS: ACK LOCKSMITH equipped."
+            )
+            assert str(app.query_one("#footer", Static).content) == footer_before
+            assert (
+                app.query_one("#transcript-scroll", VerticalScroll)
+                .styles.padding.bottom
+                == 1
+            )
 
     asyncio.run(verify())
 
