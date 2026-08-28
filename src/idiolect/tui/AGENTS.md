@@ -13,14 +13,14 @@ TUI tests.
 ## Visual language
 
 - Keep the interface sparse. Use the terminal default for the screen, surfaces,
-  primary text, and inactive row names. Use the selected ANSI green, yellow,
-  blue, magenta, or cyan only for accents and active primary labels;
+  primary text, and inactive row names. Use the selected declared CHROMA hex
+  color only for accents and active primary labels;
   bright black for metadata, help text, telemetry, inactive actions, dividers,
   and idle borders; a dimmed current accent prefix and bright-black message
   text for transient alerts and errors; and ANSI white for table and menu
   headings. Use terminal `grey23` as the character-width
-  background for transcript code. Do not add RGB colors, opaque modal backdrops,
-  tints, or separate surface colors.
+  background for transcript code. Do not add other RGB colors, opaque modal
+  backdrops, tints, or separate surface colors.
 - Bold product marks, primary page titles, canonical chat identities, table and
   menu headings, ready status labels, and the primary label of the current
   selection. Do not bold body text outside focused transcript Markdown,
@@ -57,11 +57,14 @@ TUI tests.
   slash-command descriptions: use metadata gray while idle and the dimmed
   selection accent while selected.
   Treat unavailable rows like unavailable `/trace`: metadata gray and dimmed.
-- Let `C` in REGISTRY open the `CHROMA` menu. Present ANSI red LOOKOUT, yellow
-  PICKPOCKET, green HACKER, blue LOCKSMITH, magenta MOLE, and cyan GENTLEMAN in
-  that order. Use green by default. Preview themes with the arrow keys, select
-  with Enter, cancel with Escape, and advertise `C CHROMA` in the navigation
-  hints.
+- Let `C` in REGISTRY open the `CHROMA` menu. Present blue LOCKSMITH, red
+  LOOKOUT, yellow PICKPOCKET, pink CLEANER, violet MOLE, teal GENTLEMAN, green
+  HACKER, and orange REDHEAD in that order. Use green by default. Preview themes
+  with the arrow keys, keep the focused theme visible with horizontal scrolling
+  at narrow widths, select with Enter, cancel with Escape, and advertise `C
+  CHROMA` in the navigation hints. Do not let pointer input focus, preview,
+  scroll, or select a theme. Keep the action viewport one cell to the right of
+  the `CHROMA` heading, including while horizontally scrolled.
 - For a `TRACE`, keep its `TARGET::RUN` identity first and show its trace name
   to the right in the remaining primary-column width. Ellipsize only the trace
   name when it does not fit. Expand trace names by default. Let Space toggle

@@ -74,15 +74,20 @@ an immutable replacement with the same lineage parent. Select `ERASE` to
 permanently remove that verified lineage leaf. A trace with a child cannot be
 renamed or erased.
 
-Press C in REGISTRY to open the `CHROMA` menu. It presents the ANSI themes in
-this order: `RED - LOOKOUT`, `YELLOW - PICKPOCKET`, `GREEN - HACKER`,
-`BLUE - LOCKSMITH`, `MAGENTA - MOLE`, and `CYAN - GENTLEMAN`. Green is the
-default. Use Left and Right to preview every theme with wrapping; the interface
+Press C in REGISTRY to open the `CHROMA` menu. It presents the themes in this
+order: `BLUE - LOCKSMITH`, `RED - LOOKOUT`, `YELLOW - PICKPOCKET`,
+`PINK - CLEANER`, `VIOLET - MOLE`, `TEAL - GENTLEMAN`, `GREEN - HACKER`, and
+`ORANGE - REDHEAD`. Green is the default. Use Left and Right to preview every
+theme with wrapping; the interface
 changes as the highlight moves. The navigation bar shows `ENTER EQUIP`. Enter
 equips the highlighted theme and reports
 `SYS: ACK NAME equipped.` Escape
 cancels the preview and restores the theme that was active when the menu opened.
-The registry navigation hints include `C CHROMA`.
+At narrow terminal widths, the action row scrolls horizontally without a visible
+scrollbar to keep the highlighted theme visible. Resizing preserves that
+selection and visibility. Its left clipping edge remains one cell to the right
+of the `CHROMA` heading while scrolled. CHROMA ignores mouse focus, scrolling,
+preview, and selection. The registry navigation hints include `C CHROMA`.
 
 Press S on any `READY` row to open `SPECS` without resolving or loading the
 model. The scrollable page shows the complete verified model identity in

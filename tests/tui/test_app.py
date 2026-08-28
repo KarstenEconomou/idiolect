@@ -9,10 +9,11 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import ClassVar, cast
 
+from rich.color import ColorTriplet
 from rich.console import Console, RenderableType
 from rich.text import Text
 from textual import events
-from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.containers import Horizontal, HorizontalScroll, Vertical, VerticalScroll
 from textual.pilot import Pilot
 from textual.widgets import Input, OptionList, Rule, Static
 
@@ -23,7 +24,14 @@ from idiolect.chat.storage import ChatStorageError, ChatStore, SavedChat
 from idiolect.chat.worker import LoadProbe, RuntimeProbe, WorkerState
 from idiolect.config import ChatConfig, GenerationConfig, TrainDataConfig
 from idiolect.model import ModelSpec
-from idiolect.tui.app import ChatApp, _episode_segments, _random_link_id
+from idiolect.tui.app import (
+    ChatApp,
+    ChromaTheme,
+    _accent_theme_css,
+    _episode_segments,
+    _random_link_id,
+    _watermark,
+)
 from idiolect.tui.specs import HalfCellScrollBarRender, SpecsDocument
 from idiolect.tui.widgets import (
     CommandMenu,
@@ -35,6 +43,8 @@ from idiolect.tui.widgets import (
     StatusLine,
     Transcript,
 )
+
+_HACKER_RGB = ColorTriplet(128, 255, 0)
 
 
 def test_registry_opens_highlighted_assistant_from_keyboard(tmp_path) -> None:
@@ -64,10 +74,17 @@ def test_registry_opens_highlighted_assistant_from_keyboard(tmp_path) -> None:
                 console,
                 watermark.plain.index("Someone, reconstructed."),
             )
-            assert mark_style.color is not None and mark_style.color.number == 2
+            assert mark_style.color is not None
+            mark_color = mark_style.color.get_truecolor()
+            assert (mark_color.red, mark_color.green, mark_color.blue) == (128, 255, 0)
             assert mark_style.bold
             assert tagline_style.color is not None
-            assert tagline_style.color.number == 2
+            tagline_color = tagline_style.color.get_truecolor()
+            assert (tagline_color.red, tagline_color.green, tagline_color.blue) == (
+                128,
+                255,
+                0,
+            )
             assert not tagline_style.bold
             assert tagline_style.dim
             assert str(app.query_one("#catalog-title", Static).content) == "REGISTRY"
@@ -140,20 +157,26 @@ def test_registry_chroma_menu_previews_all_themes_and_persists(tmp_path) -> None
             assert [
                 str(button.label) for button in app.screen.query(KeyboardButton)
             ] == [
+                "LOCKSMITH",
                 "LOOKOUT",
                 "PICKPOCKET",
-                "HACKER",
-                "LOCKSMITH",
+                "CLEANER",
                 "MOLE",
                 "GENTLEMAN",
+                "HACKER",
+                "REDHEAD",
             ]
             assert app.focused is not None
             assert app.focused.id == "chroma-green"
             assert (
-                app.screen.query_one("#chroma-red", KeyboardButton).content_region.x
+                app.screen.query_one("#chroma-blue", KeyboardButton).content_region.x
                 - app.screen.query_one("#chroma-message", Static).content_region.x
-                == 0
+                == 1
             )
+            assert app.screen.query_one(
+                "#chroma-orange",
+                KeyboardButton,
+            ).region.right <= dialog.content_region.right
             assert str(app.query_one("#catalog-hints", Static).content) == (
                 "←→ MOVE    ENTER EQUIP    ESC CANCEL"
             )
@@ -163,13 +186,30 @@ def test_registry_chroma_menu_previews_all_themes_and_persists(tmp_path) -> None
             assert app.focused.id == "chroma-green"
             assert app.has_class("-accent-green")
 
-            for name, ansi in (
-                ("blue", 4),
-                ("magenta", 5),
-                ("cyan", 6),
-                ("red", 1),
-                ("yellow", 3),
-                ("green", 2),
+            await pilot.resize_terminal(24, 24)
+            await pilot.pause()
+            actions = app.screen.query_one("#chroma-actions", HorizontalScroll)
+            heading = app.screen.query_one("#chroma-message", Static)
+            assert actions.scroll_x > 0
+            assert actions.content_region.x - heading.content_region.x == 1
+            await pilot.resize_terminal(80, 24)
+
+            await pilot.click("#chroma-blue")
+            await pilot.pause()
+            assert app.focused is not None
+            assert app.focused.id == "chroma-green"
+            assert app.has_class("-accent-green")
+            assert len(app.screen.query("#chroma-dialog")) == 1
+
+            for name, accent in (
+                ("orange", "#FF5500"),
+                ("blue", "#00AAFF"),
+                ("red", "#FF002B"),
+                ("yellow", "#FFD500"),
+                ("pink", "#FF00D5"),
+                ("violet", "#AA00FF"),
+                ("teal", "#00FFFF"),
+                ("green", "#80FF00"),
             ):
                 await pilot.press("right")
                 await pilot.pause()
@@ -177,11 +217,20 @@ def test_registry_chroma_menu_previews_all_themes_and_persists(tmp_path) -> None
                 selected = chooser.get_component_rich_style(
                     "option-list--option-highlighted"
                 )
-                assert selected.color is not None and selected.color.number == ansi
+                assert selected.color is not None
+                selected_color = selected.color.get_truecolor()
+                expected = tuple(bytes.fromhex(accent[1:]))
+                assert (
+                    selected_color.red,
+                    selected_color.green,
+                    selected_color.blue,
+                ) == expected
                 watermark = app.query_one("#watermark", Static).content
                 assert isinstance(watermark, Text)
                 style = watermark.get_style_at_offset(Console(), 0)
-                assert style.color is not None and style.color.number == ansi
+                assert style.color is not None
+                truecolor = style.color.get_truecolor()
+                assert (truecolor.red, truecolor.green, truecolor.blue) == expected
 
             hints = str(app.query_one("#catalog-hints", Static).content)
             assert hints == "←→ MOVE    ENTER EQUIP    ESC CANCEL"
@@ -195,17 +244,21 @@ def test_registry_chroma_menu_previews_all_themes_and_persists(tmp_path) -> None
             )
             await pilot.press("s")
             await pilot.pause()
-            assert app.query_one("#specs-identity", Static).styles.color.ansi == 2
+            assert app.query_one("#specs-identity", Static).styles.color.hex == (
+                "#80FF00"
+            )
             assert app.query_one("#specs-link", Static).display is False
 
             assert app.has_class("-accent-green")
             await pilot.press("escape", "enter")
             await _wait_for_chat(app, pilot)
-            assert app.query_one("#identity", Static).styles.color.ansi == 2
+            assert app.query_one("#identity", Static).styles.color.hex == "#80FF00"
             chat_link = app.query_one("#chat-link", Static)
             assert re.fullmatch(r"LINK#[0-9A-F]{6}", str(chat_link.content))
-            assert chat_link.styles.color.ansi == 2
-            assert app.query_one("#composer-prompt", Static).styles.color.ansi == 2
+            assert chat_link.styles.color.hex == "#80FF00"
+            assert app.query_one("#composer-prompt", Static).styles.color.hex == (
+                "#80FF00"
+            )
             transcript = app.query_one("#transcript", Transcript)
             transcript.set_turns((("OP", "Theme check"),))
             segments = tuple(
@@ -213,7 +266,13 @@ def test_registry_chroma_menu_previews_all_themes_and_persists(tmp_path) -> None
             )
             label = next(segment for segment in segments if segment.text == "OP:")
             assert label.style is not None
-            assert label.style.color is not None and label.style.color.number == 2
+            assert label.style.color is not None
+            label_color = label.style.color.get_truecolor()
+            assert (label_color.red, label_color.green, label_color.blue) == (
+                128,
+                255,
+                0,
+            )
 
     asyncio.run(verify())
 
@@ -264,7 +323,7 @@ def test_chroma_command_opens_menu_in_chat(tmp_path) -> None:
 
             await pilot.press("right")
             await pilot.pause()
-            assert app.has_class("-accent-blue")
+            assert app.has_class("-accent-orange")
 
             await pilot.press("escape")
             await pilot.pause()
@@ -280,9 +339,9 @@ def test_chroma_command_opens_menu_in_chat(tmp_path) -> None:
             composer.insert("/chroma")
             await pilot.press("enter", "right", "enter")
             await pilot.pause()
-            assert app.has_class("-accent-blue")
+            assert app.has_class("-accent-orange")
             assert app.query_one("#chat-alert", StatusLine).state == (
-                "SYS: ACK LOCKSMITH equipped."
+                "SYS: ACK REDHEAD equipped."
             )
             assert str(app.query_one("#footer", Static).content) == footer_before
             assert (
@@ -614,7 +673,7 @@ def test_chat_divider_matches_the_page_gutter(tmp_path) -> None:
             assert re.fullmatch(r"LINK#[0-9A-F]{6}", str(link.content))
             assert link.content_region.right == heading.content_region.right - 1
             assert link.region.right == heading.content_region.right
-            assert link.styles.color.ansi == 2
+            assert link.styles.color.hex == "#80FF00"
 
     asyncio.run(verify())
 
@@ -1198,16 +1257,40 @@ def test_prefill_progress_appears_above_composer(tmp_path) -> None:
         runtime.release_prefill.set()
 
 
-def test_theme_uses_terminal_and_ansi_colors() -> None:
-    """Check the terminal color contract."""
+def test_theme_uses_terminal_surfaces_and_truecolor_accents() -> None:
+    """Check the terminal surface and supplied accent color contract."""
     app = ChatApp(ChatConfig(), GenerationConfig())
 
     assert app.native_ansi_color is True
     assert "ansi_default" in ChatApp.CSS
-    assert "ansi_blue" in ChatApp.CSS
     assert "ansi_bright_black" in ChatApp.CSS
-    assert "ansi_red" in ChatApp.CSS
-    assert re.search(r"#[0-9a-fA-F]{3,8}\b", ChatApp.CSS) is None
+    for accent in (
+        "#00AAFF",
+        "#FF002B",
+        "#FFD500",
+        "#FF00D5",
+        "#AA00FF",
+        "#00FFFF",
+        "#80FF00",
+        "#FF5500",
+    ):
+        assert accent in ChatApp.CSS
+
+
+def test_chroma_declaration_accepts_hex_for_css_and_rich() -> None:
+    """Check one supplied hexadecimal accent reaches both render paths."""
+    theme = ChromaTheme("rose", "#A1B2C3", "CONFIDANT")
+
+    css = _accent_theme_css((theme,))
+    assert ".-accent-rose" in css
+    assert "color: #A1B2C3" in css
+    assert "solid #A1B2C3" in css
+    assert "tall #A1B2C3" in css
+    watermark = _watermark(theme.accent)
+    style = watermark.get_style_at_offset(Console(), 0)
+    assert style.color is not None
+    truecolor = style.color.get_truecolor()
+    assert (truecolor.red, truecolor.green, truecolor.blue) == (161, 178, 195)
 
 
 def test_link_id_uses_three_random_bytes(monkeypatch) -> None:
@@ -1573,7 +1656,7 @@ def test_echo_command_uses_an_env_turn_and_argument_bar(tmp_path) -> None:
             )
             assert command_style.dim
             assert command_style.color is not None
-            assert command_style.color.name == "green"
+            assert command_style.color.get_truecolor() == _HACKER_RGB
             assert description_style.color is not None
             assert description_style.color.name == "bright_black"
             assert composer.text == ""
@@ -1598,7 +1681,7 @@ def test_echo_command_uses_an_env_turn_and_argument_bar(tmp_path) -> None:
             env_text = next(segment for segment in segments if "@hello" in segment.text)
             assert env_label.style is not None and env_label.style.dim
             assert env_label.style.color is not None
-            assert env_label.style.color.name == "green"
+            assert env_label.style.color.get_truecolor() == _HACKER_RGB
             assert env_text.style is not None and not env_text.style.dim
             assert env_text.style.color is not None
             assert env_text.style.color.name == "bright_black"
@@ -1791,25 +1874,25 @@ def test_reference_menu_selects_bubble_and_escape_clears_reference(tmp_path) -> 
             at_style = bar.content.get_style_at_offset(Console(), 0)
             assert at_style.dim
             assert at_style.color is not None
-            assert at_style.color.name == "green"
+            assert at_style.color.get_truecolor() == _HACKER_RGB
             assert bar.region.y + bar.region.height == composer_bar.region.y
-            assert bar.styles.border_top[1].ansi == (
-                app.query_one("#composer-prompt", Static).styles.color.ansi
+            assert bar.styles.border_top[1].hex == (
+                app.query_one("#composer-prompt", Static).styles.color.hex
             )
             border_style = bar.get_style_at(1, 0)
             assert border_style.dim
             assert border_style.color is not None
-            assert border_style.color.name == "green"
+            assert border_style.color.get_truecolor() == _HACKER_RGB
             bottom_border_style = bar.get_style_at(1, bar.size.height - 1)
             assert bottom_border_style.dim
             assert bottom_border_style.color is not None
-            assert bottom_border_style.color.name == "green"
+            assert bottom_border_style.color.get_truecolor() == _HACKER_RGB
             assert bar.get_style_at(0, 1).dim
             assert composer.text == ""
             reference_style = bar.content.get_style_at_offset(Console(), 2)
             assert reference_style.dim
             assert reference_style.color is not None
-            assert reference_style.color.name == "green"
+            assert reference_style.color.get_truecolor() == _HACKER_RGB
             assert (
                 composer_bar.region.x,
                 composer_bar.region.width,
@@ -1898,12 +1981,12 @@ def test_reference_menu_selects_bubble_and_escape_clears_reference(tmp_path) -> 
             assert annotation.style is not None
             assert annotation.style.dim
             assert annotation.style.color is not None
-            assert annotation.style.color.name == "green"
+            assert annotation.style.color.get_truecolor() == _HACKER_RGB
             speaker = next(segment for segment in segments if segment.text == "OP:")
             assert speaker.style is not None
             assert not speaker.style.dim
             assert speaker.style.color is not None
-            assert speaker.style.color.name == "green"
+            assert speaker.style.color.get_truecolor() == _HACKER_RGB
 
     asyncio.run(verify())
 
@@ -2163,7 +2246,7 @@ def test_save_command_checkpoints_only_new_trace_data(tmp_path) -> None:
                 Console(), rendered.plain.index("ACK")
             )
             assert prefix_style.color is not None
-            assert prefix_style.color.name == "green"
+            assert prefix_style.color.get_truecolor() == _HACKER_RGB
             assert prefix_style.dim
             assert message_style.color is not None
             assert message_style.color.name == "bright_black"
@@ -2230,7 +2313,7 @@ def test_chat_errors_align_right_above_composer(tmp_path) -> None:
                 Console(), rendered.plain.index("ERR")
             )
             assert prefix_style.color is not None
-            assert prefix_style.color.name == "green"
+            assert prefix_style.color.get_truecolor() == _HACKER_RGB
             assert prefix_style.dim
             assert message_style.color is not None
             assert message_style.color.name == "bright_black"

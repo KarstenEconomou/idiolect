@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Literal
+from typing import ClassVar, Literal
 
 from textual import events
 from textual.app import ComposeResult
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, HorizontalScroll, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Button, Static
 
@@ -158,9 +158,45 @@ class VerticalMenu(Static):
 class MenuButton(Button):
     """Block pointer activation for one modal menu action."""
 
+    FOCUS_ON_CLICK: ClassVar[bool] = False
+
+    async def _on_mouse_down(self, event: events.MouseDown) -> None:
+        event.prevent_default()
+        event.stop()
+
+    async def _on_mouse_up(self, event: events.MouseUp) -> None:
+        event.prevent_default()
+        event.stop()
+
     async def _on_click(self, event: events.Click) -> None:
         event.prevent_default()
         event.stop()
+
+
+class KeyboardHorizontalScroll(HorizontalScroll):
+    """Allow horizontal menu scrolling only through keyboard focus."""
+
+    def on_resize(self, _event: events.Resize) -> None:
+        """Keep the focused action visible when the viewport changes."""
+        self.call_after_refresh(self._reveal_focused)
+
+    def _reveal_focused(self) -> None:
+        """Reveal the focused menu action without animation."""
+        focused = next(
+            (button for button in self.query(MenuButton) if button.has_focus),
+            None,
+        )
+        if focused is not None:
+            self.scroll_to_widget(focused, animate=False, immediate=True)
+
+    def _block_pointer_scroll(self, event: events.MouseEvent) -> None:
+        event.prevent_default()
+        event.stop()
+
+    _on_mouse_scroll_down = _block_pointer_scroll
+    _on_mouse_scroll_up = _block_pointer_scroll
+    _on_mouse_scroll_right = _block_pointer_scroll
+    _on_mouse_scroll_left = _block_pointer_scroll
 
 
 class HorizontalMenuModal(ModalScreen[str | None]):
@@ -205,7 +241,10 @@ class HorizontalMenuModal(ModalScreen[str | None]):
                 id=self.message_id,
                 classes="menu-heading",
             )
-            with Horizontal(id=self.actions_id, classes="horizontal-menu-actions"):
+            with KeyboardHorizontalScroll(
+                id=self.actions_id,
+                classes="horizontal-menu-actions",
+            ):
                 for item in self.items:
                     yield MenuButton(item.label, id=f"{self.button_prefix}{item.identity}")
 
@@ -216,16 +255,34 @@ class HorizontalMenuModal(ModalScreen[str | None]):
     def _show_dialog(self) -> None:
         self._place_dialog()
         self.query_one(f"#{self.dialog_id}", Vertical).remove_class("-unplaced")
+        self._focus_selected()
+
+    def _focus_selected(self) -> None:
+        """Focus and reveal the selected action without animation."""
         selected = self.cursor.selected
         if selected is not None:
-            self.query_one(
+            button = self.query_one(
                 f"#{self.button_prefix}{selected.identity}",
                 MenuButton,
-            ).focus()
+            )
+            button.focus()
+            self.query_one(
+                f"#{self.actions_id}",
+                KeyboardHorizontalScroll,
+            ).scroll_to_widget(
+                button,
+                animate=False,
+                immediate=True,
+            )
 
-    def on_resize(self) -> None:
+    def on_resize(self, _event: events.Resize) -> None:
         """Place the menu again after a resize."""
-        self.call_after_refresh(self._place_dialog)
+        self.call_after_refresh(self._resize_dialog)
+
+    def _resize_dialog(self) -> None:
+        """Place the resized menu and reveal its selected action."""
+        self._place_dialog()
+        self.call_after_refresh(self._focus_selected)
 
     def _place_dialog(self) -> None:
         """Place the menu above chat controls or registry hints."""
@@ -263,10 +320,7 @@ class HorizontalMenuModal(ModalScreen[str | None]):
             return
         selected = self.cursor.move(-1 if event.key == "left" else 1)
         if selected is not None:
-            self.query_one(
-                f"#{self.button_prefix}{selected.identity}",
-                MenuButton,
-            ).focus()
+            self._focus_selected()
             if self.on_highlight is not None:
                 self.on_highlight(selected.identity)
         event.prevent_default()

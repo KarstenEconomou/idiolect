@@ -178,8 +178,9 @@ TRACE. `/buffer` opens the active context sheet. It separates prompt-token use,
 turn-window use, and the prompt digest, then reports the newest resident
 reference as `HEAD` and all resident identities under `REFS`. Use `/chroma` in
 chat or press `C` in `REGISTRY` to open `CHROMA` and
-preview the red LOOKOUT, yellow PICKPOCKET, green HACKER, blue LOCKSMITH,
-magenta MOLE, and cyan GENTLEMAN themes with the arrow keys; `ENTER EQUIP`
+preview the blue LOCKSMITH, red LOOKOUT, yellow PICKPOCKET, pink CLEANER,
+violet MOLE, teal GENTLEMAN, green HACKER, and orange REDHEAD themes with the
+arrow keys; `ENTER EQUIP`
 commits one and reports a `SYS: ACK NAME equipped.` acknowledgement.
 Slash-command descriptions identify the current TRACE, active LINK, context
 BUFFER, and CONSTRUCT specifications directly.

@@ -86,3 +86,10 @@ wrapping selection, disabled-item skipping, and the three-row viewport. Render
 composer selectors with `VerticalMenu`, and use `HorizontalMenuModal` for
 keyboard-only action rows. A feature wrapper supplies only its domain callback,
 safe initial action, Escape result, anchor, and optional live-preview callback.
+
+Declare each selectable accent with `ChromaTheme(color, accent, name)` in
+`_CHROMA_THEMES`. `color` is the stable lowercase selector identity, `accent`
+accepts either the current ANSI color name or a `#RRGGBB` value, and `name` is
+the uppercase interface name. Keep `_DEFAULT_CHROMA` equal to one declared
+`color`. Replacing the declarations does not require changes to the menu,
+preview, Rich text, or generated Textual CSS paths.

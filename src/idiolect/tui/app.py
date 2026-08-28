@@ -76,16 +76,29 @@ _WATERMARK_SOURCE = """     ╭─╮
   ╰──╮ ╭──╯    Someone, reconstructed.
      ╰─╯"""
 _TAGLINE = "Someone, reconstructed."
-_ACCENT_THEMES = (
-    ("red", "red", "LOOKOUT"),
-    ("yellow", "yellow", "PICKPOCKET"),
-    ("green", "green", "HACKER"),
-    ("blue", "blue", "LOCKSMITH"),
-    ("magenta", "magenta", "MOLE"),
-    ("cyan", "cyan", "GENTLEMAN"),
-)
-_DEFAULT_ACCENT_THEME = "green"
 _UNSAVED_LINK_ID = "------"
+
+
+@dataclass(frozen=True, slots=True)
+class ChromaTheme:
+    """Declare one stable CHROMA identity, accent value, and display name."""
+
+    color: str
+    accent: str
+    name: str
+
+
+_CHROMA_THEMES = (
+    ChromaTheme("blue", "#00AAFF", "LOCKSMITH"),
+    ChromaTheme("red", "#FF002B", "LOOKOUT"),
+    ChromaTheme("yellow", "#FFD500", "PICKPOCKET"),
+    ChromaTheme("pink", "#FF00D5", "CLEANER"),
+    ChromaTheme("violet", "#AA00FF", "MOLE"),
+    ChromaTheme("teal", "#00FFFF", "GENTLEMAN"),
+    ChromaTheme("green", "#80FF00", "HACKER"),
+    ChromaTheme("orange", "#FF5500", "REDHEAD"),
+)
+_DEFAULT_CHROMA = "green"
 
 
 class DialogKind(Enum):
@@ -130,8 +143,8 @@ class ActiveSelector:
     accessory_selected: bool
 
 
-def _watermark(color: str = "green") -> Text:
-    """Return the product watermark in one ANSI accent color."""
+def _watermark(color: str = "#80FF00") -> Text:
+    """Return the product watermark in one accent color."""
     value = Text(_WATERMARK_SOURCE, style=Style(color=color, bold=True))
     tagline_start = _WATERMARK_SOURCE.index(_TAGLINE)
     value.stylize(
@@ -153,8 +166,15 @@ def _random_link_id() -> str:
     return secrets.token_hex(3).upper()
 
 
-def _accent_theme_css() -> str:
-    """Return screen-class overrides for each selectable ANSI accent."""
+def _css_accent(value: str) -> str:
+    """Return one Textual CSS color from an ANSI name or hexadecimal value."""
+    return value if value.startswith("#") else f"ansi_{value}"
+
+
+def _accent_theme_css(
+    themes: tuple[ChromaTheme, ...] = _CHROMA_THEMES,
+) -> str:
+    """Return screen-class overrides for each selectable CHROMA accent."""
     color_selectors = (
         "OptionList > .option-list--option-highlighted",
         "OptionList:focus > .option-list--option-highlighted",
@@ -184,23 +204,24 @@ def _accent_theme_css() -> str:
         "Button.-active",
     )
     rules = []
-    for name, color, _ in _ACCENT_THEMES:
-        prefix = f".-accent-{name} "
+    for theme in themes:
+        prefix = f".-accent-{theme.color} "
+        accent = _css_accent(theme.accent)
         colored = ", ".join(prefix + selector for selector in color_selectors)
         buttons = ", ".join(prefix + selector for selector in button_selectors)
-        rules.append(f"{colored} {{ color: ansi_{color}; }}")
+        rules.append(f"{colored} {{ color: {accent}; }}")
         rules.append(
-            f"{prefix}#composer-bar {{ border: solid ansi_{color}; }}"
+            f"{prefix}#composer-bar {{ border: solid {accent}; }}"
         )
         rules.append(
             f"{prefix}#reference-bar "
-            f"{{ border: solid ansi_{color}; }}"
+            f"{{ border: solid {accent}; }}"
         )
         rules.append(
             f"{prefix}#command-bar "
-            f"{{ border: solid ansi_{color}; }}"
+            f"{{ border: solid {accent}; }}"
         )
-        rules.append(f"{buttons} {{ border: tall ansi_{color}; }}")
+        rules.append(f"{buttons} {{ border: tall {accent}; }}")
     return "\n".join(rules)
 
 
@@ -265,7 +286,7 @@ class ChatApp(App[None]):
 
     CSS = """
     $terminal: ansi_default;
-    $accent: ansi_green;
+    $accent: #80FF00;
     $metadata: ansi_bright_black;
     Screen { background: $terminal; color: $terminal; }
     #landing { align: left top; padding: 0; }
@@ -359,13 +380,13 @@ class ChatApp(App[None]):
     #chroma-dialog { width: 100%; height: 2; padding: 0 1; background: $terminal; border: none; }
     #chroma-dialog.-unplaced { visibility: hidden; }
     #chroma-message { height: 1; color: ansi_white; text-style: bold; }
-    #chroma-actions { height: 1; }
+    #chroma-actions { height: 1; padding: 0 0 0 1; }
     #chroma-actions Button { width: auto; min-width: 0; height: 1; padding: 0; border: none; background: $terminal; color: $metadata; text-style: none; }
     #chroma-actions Button:hover { border: none; background: $terminal; color: $metadata; text-style: none; }
     #chroma-actions Button:focus, #chroma-actions Button.-active { border: none; background: $terminal; color: $accent; text-style: bold; }
     .horizontal-menu { width: 100%; height: 2; padding: 0 1; background: $terminal; border: none; }
     .horizontal-menu.-unplaced { visibility: hidden; }
-    .horizontal-menu-actions { height: 1; }
+    .horizontal-menu-actions { height: 1; overflow-x: auto; overflow-y: hidden; scrollbar-size: 0 0; }
     .horizontal-menu-actions Button { width: auto; min-width: 0; height: 1; padding: 0; border: none; background: $terminal; color: $metadata; text-style: none; }
     .horizontal-menu-actions Button:hover { border: none; background: $terminal; color: $metadata; text-style: none; }
     .horizontal-menu-actions Button:focus, .horizontal-menu-actions Button.-active { border: none; background: $terminal; color: $accent; text-style: bold; }
@@ -446,8 +467,8 @@ class ChatApp(App[None]):
         self._link_id: str | None = None
         self._accent_theme_index = next(
             index
-            for index, (name, _, _) in enumerate(_ACCENT_THEMES)
-            if name == _DEFAULT_ACCENT_THEME
+            for index, theme in enumerate(_CHROMA_THEMES)
+            if theme.color == _DEFAULT_CHROMA
         )
 
     def compose(self) -> ComposeResult:
@@ -502,7 +523,7 @@ class ChatApp(App[None]):
         """Populate the chooser or open a direct selection."""
         specs_scroll = self.query_one("#specs-scroll", SheetScroll)
         cast(Any, specs_scroll.vertical_scrollbar).renderer = HalfCellScrollBarRender
-        self._set_accent_theme(_DEFAULT_ACCENT_THEME)
+        self._set_accent_theme(_DEFAULT_CHROMA)
         self._fill_chooser()
         self._loading_timer = self.set_interval(0.1, self._refresh_loading_state)
         if self.initial_chat is not None:
@@ -629,8 +650,8 @@ class ChatApp(App[None]):
         else:
             self._update_confirmation_spacing()
             self._update_footer()
-        themes = tuple((name, label) for name, _, label in _ACCENT_THEMES)
-        current = _ACCENT_THEMES[self._accent_theme_index][0]
+        themes = tuple((theme.color, theme.name) for theme in _CHROMA_THEMES)
+        current = _CHROMA_THEMES[self._accent_theme_index].color
         self.push_screen(
             ChromaMenuModal(themes, current, self._set_accent_theme),
             self._after_chroma,
@@ -646,12 +667,12 @@ class ChatApp(App[None]):
             else self._accent_theme_index
         )
         if choice is None:
-            name = _ACCENT_THEMES[initial][0]
+            name = _CHROMA_THEMES[initial].color
             self._set_accent_theme(name)
         else:
             self._set_accent_theme(choice)
             equipped = next(
-                label for name, _, label in _ACCENT_THEMES if name == choice
+                theme.name for theme in _CHROMA_THEMES if theme.color == choice
             )
         self._active_dialog = None
         if self.query_one("#landing").display:
@@ -666,18 +687,18 @@ class ChatApp(App[None]):
         """Apply one configured ANSI accent theme across the interface."""
         theme_index = next(
             index
-            for index, (theme_name, _, _) in enumerate(_ACCENT_THEMES)
-            if theme_name == name
+            for index, theme in enumerate(_CHROMA_THEMES)
+            if theme.color == name
         )
         self._accent_theme_index = theme_index
-        theme_name, color, _ = _ACCENT_THEMES[theme_index]
-        for available_name, _, _ in _ACCENT_THEMES:
-            self.remove_class(f"-accent-{available_name}")
-        self.add_class(f"-accent-{theme_name}")
-        self.query_one("#watermark", Static).update(_watermark(color))
-        self.query_one("#transcript", Transcript).set_accent(color)
-        self.query_one("#command-bar", CommandBar).set_accent(color)
-        self.query_one("#reference-bar", ReferenceBar).set_accent(color)
+        theme = _CHROMA_THEMES[theme_index]
+        for available in _CHROMA_THEMES:
+            self.remove_class(f"-accent-{available.color}")
+        self.add_class(f"-accent-{theme.color}")
+        self.query_one("#watermark", Static).update(_watermark(theme.accent))
+        self.query_one("#transcript", Transcript).set_accent(theme.accent)
+        self.query_one("#command-bar", CommandBar).set_accent(theme.accent)
+        self.query_one("#reference-bar", ReferenceBar).set_accent(theme.accent)
         if self._selected_catalog_key is not None:
             self._refresh_catalog_prompts(self._selected_catalog_key)
 
@@ -2014,7 +2035,7 @@ class ChatApp(App[None]):
         if body and not body.endswith((".", "!", "?")):
             body += "."
         value = f"SYS: {kind.value} {body}"
-        _, accent, _ = _ACCENT_THEMES[self._accent_theme_index]
+        accent = _CHROMA_THEMES[self._accent_theme_index].accent
         content = Text.assemble(
             ("SYS:", Style(color=accent, dim=True)),
             (f" {kind.value} {body}", Style(color="bright_black")),

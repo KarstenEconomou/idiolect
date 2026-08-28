@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 
 from textual.app import App, ComposeResult
-from textual.containers import Horizontal
+from textual.containers import Horizontal, HorizontalScroll
 from textual.widgets import Static
 
 from idiolect.tui.menus import (
@@ -122,6 +122,66 @@ def test_horizontal_menu_focus_wrap_escape_and_highlight() -> None:
             assert highlights == ["c", "a"]
             await pilot.press("escape")
             assert result == ["c"]
+
+    asyncio.run(verify())
+
+
+def test_horizontal_menu_reveals_selection_at_narrow_widths() -> None:
+    """Check focus-following scroll survives narrow widths and resize."""
+    async def verify() -> None:
+        items = tuple(
+            MenuItem(identity, label)
+            for identity, label in (
+                ("a", "LOCKSMITH"),
+                ("b", "LOOKOUT"),
+                ("c", "PICKPOCKET"),
+                ("d", "CLEANER"),
+                ("e", "MOLE"),
+                ("f", "GENTLEMAN"),
+                ("g", "HACKER"),
+                ("h", "REDHEAD"),
+            )
+        )
+        app = _ModalApp()
+        async with app.run_test(size=(80, 20)) as pilot:
+            app.query_one("#landing").display = False
+            app.query_one("#command-bar").display = False
+            app.query_one("#reference-bar").display = False
+            app.push_screen(
+                HorizontalMenuModal(
+                    "CHROMA",
+                    items,
+                    "g",
+                    "g",
+                    anchor="chat",
+                )
+            )
+            await pilot.pause()
+
+            actions = app.screen.query_one(
+                "#horizontal-menu-actions",
+                HorizontalScroll,
+            )
+
+            def selected_is_visible(identity: str) -> bool:
+                button = app.screen.query_one(f"#{identity}", MenuButton)
+                return (
+                    button.region.x >= actions.content_region.x
+                    and button.region.right <= actions.content_region.right
+                )
+
+            assert selected_is_visible("g")
+            await pilot.resize_terminal(48, 20)
+            await pilot.pause()
+            assert selected_is_visible("g")
+            await pilot.resize_terminal(24, 20)
+            await pilot.pause()
+            assert selected_is_visible("g")
+
+            await pilot.press("right")
+            assert selected_is_visible("h")
+            await pilot.press("right")
+            assert selected_is_visible("a")
 
     asyncio.run(verify())
 
