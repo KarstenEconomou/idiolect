@@ -29,7 +29,7 @@ class CatalogLayout:
     def for_terminal(cls, terminal_width: int) -> CatalogLayout:
         """Return the registry layout for one terminal width."""
         content_width = max(24, terminal_width - 4)
-        status_width = 5
+        status_width = 6
         kind_width = (16 if content_width >= 100 else 10) if content_width >= 70 else 0
         base_width = (
             24

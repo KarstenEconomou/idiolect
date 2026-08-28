@@ -50,20 +50,22 @@ snapshots in `REGISTRY`. It has no search field or pointer activation. The
 subtitle reads `Select a CONSTRUCT to establish a LINK.` The
 primary registry column is `CONSTRUCT` and contains the `TARGET::RUN` identity;
 the `BASE` column immediately to its right identifies the base model used by
-each entry. TYPE and ENTRY remain the right-hand metadata columns.
+each entry. TYPE and STATUS remain the right-hand metadata columns. Registry
+rows and the subtitle are inset one cell from their headings.
 The blue watermark keeps its mark and product name bold and gives its tagline a
-dim, non-bold treatment. Chat, `/specs`, and `/probe` identity headers show the active
+dim, non-bold treatment one cell inside the product name. Chat, `/specs`, and
+`/probe` identity headers show the active
 session as `LINK#XXXXXX`, using a random six-digit hexadecimal link ID in
 uppercase. SPECS opened from REGISTRY hides this link because it does not
 represent an active chat session.
 Use the arrow keys to choose a row and Enter to connect. TYPE identifies a BASE,
-CONSTRUCT, or TRACE. TYPE and ENTRY use the same description treatment as slash
+CONSTRUCT, or TRACE. TYPE and STATUS use the same description treatment as slash
 commands: metadata gray while idle and dimmed accent color with their selected
 model. Unavailable FAULT rows use the muted, dimmed treatment of an unavailable
 `/trace`. A saved `TRACE` keeps the canonical model identity first and shows the
 trace name to its right in metadata gray. A long trace name ends with an ellipsis
 before TYPE. Trace names are expanded by default and use the muted selection
-color with their highlighted TRACE, matching TYPE and ENTRY. Press Space from any registry
+color with their highlighted TRACE, matching TYPE and STATUS. Press Space from any registry
 row to collapse or expand all trace names together. Press Backspace while a
 TRACE is highlighted to open the horizontal `TRACE MANAGE` menu. `RETAIN` is
 selected by default and Escape also keeps the trace. The subject trace name

@@ -53,7 +53,8 @@ TUI tests.
   keyboard-only table without search or pointer activation. Start on the first
   available row, skip unavailable rows, and select with arrows and Enter. Keep
   `TARGET::RUN` as the primary row identity and show the `BASE` model in the
-  column immediately to its right. Treat BASE, TYPE, and ENTRY like
+  column immediately to its right. Label the final column `STATUS`. Treat BASE,
+  TYPE, and STATUS like
   slash-command descriptions: use metadata gray while idle and the dimmed
   selection accent while selected.
   Treat unavailable rows like unavailable `/trace`: metadata gray and dimmed.
@@ -69,7 +70,7 @@ TUI tests.
   to the right in the remaining primary-column width. Ellipsize only the trace
   name when it does not fit. Expand trace names by default. Let Space toggle
   all trace names whenever the registry contains a TRACE. Treat an expanded
-  trace name like BASE, TYPE, and ENTRY while its TRACE is highlighted: use the
+  trace name like BASE, TYPE, and STATUS while its TRACE is highlighted: use the
   selection accent with dim styling.
 - Keep slash commands in a vertical menu above the composer. Show at most three
   rows in alphabetical order, with command names in a fixed-width column and
@@ -102,9 +103,11 @@ TUI tests.
 
 ## Layout and state
 
-- Align registry headings and rows, transcript turns, loading status, and footer
-  to the same two-cell gutter. Inset the composer, slash menu, and confirmation
-  by one cell and align their internal content. Give the confirmation the
+- Align registry headings, transcript turns, loading status, and footer to the
+  same two-cell gutter. Inset registry rows and its subtitle one cell from their
+  headings. Inset the watermark tagline one cell from the product name. Inset
+  the composer, slash menu, and confirmation by one cell and align their
+  internal content. Give the confirmation the
   composer width and place it immediately above the composer. Keep the footer
   directly below the composer with no vertical padding.
 - Keep REGISTRY full-width like chat. Do not add an outer horizontal inset or a
@@ -142,6 +145,8 @@ TUI tests.
 - Show `BACKSPACE MANAGE` only for a highlighted TRACE. Confirm it with a `TRACE`
   heading followed directly by its metadata-colored name and horizontal
   `ERASE`, `RENAME`, `RETAIN` actions. Select `RETAIN` first, and make Escape
-  retain the trace. Use the trace name as the rename-field default. Blink the
-  subject trace name while either menu is open.
+  retain the trace. Keep the menu hidden until registry anchoring is complete.
+  Use the trace name as the rename-field default. Keep the name field hidden
+  until its chat or registry anchoring is complete. Blink the subject trace
+  name while either menu is open.
 - Update `docs/chat.md` and `README.md` when visible behavior or controls change.

@@ -181,10 +181,9 @@ def render_specs(
     """Return one responsive model specification document."""
     document = SheetDocument()
     _section(document, "IDENTITY")
-    _field(document, "TYPE", kind)
     _field(document, "CONSTRUCT", assistant.target_run)
     _field(document, "BASE", assistant.model_basename)
-    _field(document, "ENTRY", "READY")
+    _field(document, "TYPE", kind)
 
     _section(document, "MODEL")
     _field(document, "NAME", assistant.model.name)

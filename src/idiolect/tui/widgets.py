@@ -683,14 +683,19 @@ class TraceNameModal(ModalScreen[str | None]):
 
     def compose(self) -> ComposeResult:
         """Create the trace name input."""
-        with Vertical(id="trace-name-dialog"):
+        with Vertical(id="trace-name-dialog", classes="-unplaced"):
             yield Static("TRACE NAME", markup=False, id="trace-name-message")
             yield Input(placeholder=self.default_name, id="trace-name")
 
     def on_mount(self) -> None:
-        """Focus the trace name and place the dialog."""
+        """Place the hidden trace name dialog before it receives focus."""
+        self.call_after_refresh(self._show_dialog)
+
+    def _show_dialog(self) -> None:
+        """Place the trace name field before it becomes visible."""
+        self._place_dialog()
+        self.query_one("#trace-name-dialog", Vertical).remove_class("-unplaced")
         self.query_one(Input).focus()
-        self.call_after_refresh(self._place_dialog)
 
     def on_resize(self) -> None:
         """Place the dialog next to the composer."""
@@ -712,10 +717,11 @@ class TraceNameModal(ModalScreen[str | None]):
             )
         dialog = self.query_one("#trace-name-dialog", Vertical)
         inset = 1 if self.registry else 0
+        height = dialog.region.height or 2
         dialog.styles.width = anchor.region.width - (2 * inset)
         dialog.styles.offset = (
             anchor.region.x + inset,
-            anchor.region.y - dialog.region.height,
+            anchor.region.y - height,
         )
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
@@ -748,6 +754,7 @@ class TraceMenuModal(HorizontalMenuModal):
             dialog_id="trace-dialog",
             message_id="trace-message",
             actions_id="trace-actions",
+            hidden_until_placed=True,
         )
 
 

@@ -167,6 +167,9 @@ def test_construct_specs_show_verified_lineage_and_no_invented_evaluation(
     assert "DIXIE::AAAAAAAA" in document.plain
     assert "CONSTRUCT\n DIXIE::AAAAAAAA" in document.plain
     assert "BASE" in document.plain
+    assert document.plain.index("CONSTRUCT\n") < document.plain.index("BASE\n")
+    assert document.plain.index("BASE\n") < document.plain.index("TYPE\n")
+    assert "ENTRY" not in document.plain
     assert "MODEL\nNAME\n example/M\n" in document.plain
     assert "RUN\nID\n" in document.plain
     assert "DATASET\nID\n" in document.plain

@@ -73,7 +73,7 @@ from idiolect.tui.widgets import (
 _WATERMARK_SOURCE = """     ╭─╮
   ╭──╯ ╰──╮
   │  · ·  │    IDIOLECT
-  ╰──╮ ╭──╯    Someone, reconstructed.
+  ╰──╮ ╭──╯     Someone, reconstructed.
      ╰─╯"""
 _TAGLINE = "Someone, reconstructed."
 _UNSAVED_LINK_ID = "------"
@@ -295,12 +295,12 @@ class ChatApp(App[None]):
     #catalog-heading { height: 1; margin-top: 1; padding: 0 2; }
     #catalog-title { text-style: bold; }
     #catalog-subtitle { height: 1; padding: 0 2; color: $metadata; }
-    #catalog-description { width: 1fr; }
+    #catalog-description { width: 1fr; padding: 0 0 0 1; }
     #catalog-rule { height: 1; margin: 0; padding: 0 2; color: $metadata; }
     #catalog-columns { height: 1; padding: 0 2; color: ansi_white; text-style: bold; }
     #load-status { display: none; height: 1; padding: 0 2; color: $metadata; }
     #chooser { height: 1fr; padding: 0 2; border: none; color: $terminal; background: $terminal; background-tint: transparent; scrollbar-color: $metadata; scrollbar-background: $terminal; }
-    OptionList > .option-list--option { padding: 0; color: $terminal; background: $terminal; }
+    OptionList > .option-list--option { padding: 0 0 0 1; color: $terminal; background: $terminal; }
     OptionList > .option-list--option-highlighted, OptionList:focus > .option-list--option-highlighted { color: $accent; background: $terminal; text-style: bold; }
     OptionList > .option-list--option-disabled { color: $metadata; text-style: dim; }
     OptionList > .option-list--option-hover { color: $accent; background: $terminal; text-style: bold; }
@@ -366,6 +366,7 @@ class ChatApp(App[None]):
     #confirm-actions Button:hover { border: none; background: $terminal; color: $metadata; text-style: none; }
     #confirm-actions Button:focus, #confirm-actions Button.-active { border: none; background: $terminal; color: $accent; text-style: bold; }
     #trace-name-dialog { width: 100%; height: 2; padding: 0 1; background: $terminal; border: none; }
+    #trace-name-dialog.-unplaced { visibility: hidden; }
     #trace-name-message { height: 1; color: ansi_white; text-style: bold; }
     #trace-name { height: 1; border: none; padding: 0 1; background: $terminal; color: $terminal; }
     #trace-name:focus { border: none; }
@@ -2118,7 +2119,7 @@ class ChatApp(App[None]):
         saved_chats = () if self.store is None else self.store.leaves()
         layout = CatalogLayout.for_terminal(self.size.width)
         self.query_one("#catalog-columns", Static).update(
-            layout.line("CONSTRUCT", "BASE", "TYPE", "ENTRY")
+            layout.line("CONSTRUCT", "BASE", "TYPE", "STATUS")
         )
         for index, row in enumerate(self.assistants):
             if row.available and row.assistant is not None:

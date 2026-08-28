@@ -9,13 +9,13 @@ from idiolect.tui.catalog import CatalogLayout
 def test_catalog_columns_follow_terminal_width() -> None:
     """Check the fields that fit at each supported width."""
     narrow = CatalogLayout.for_terminal(45).line(
-        "CONSTRUCT", "BASE", "TYPE", "ENTRY"
+        "CONSTRUCT", "BASE", "TYPE", "STATUS"
     )
     medium = CatalogLayout.for_terminal(62).line(
-        "CONSTRUCT", "BASE", "TYPE", "ENTRY"
+        "CONSTRUCT", "BASE", "TYPE", "STATUS"
     )
     wide = CatalogLayout.for_terminal(100).line(
-        "CONSTRUCT", "BASE", "TYPE", "ENTRY"
+        "CONSTRUCT", "BASE", "TYPE", "STATUS"
     )
 
     assert "TYPE" not in narrow
@@ -23,7 +23,7 @@ def test_catalog_columns_follow_terminal_width() -> None:
     assert "TYPE" in wide
     assert "BASE" not in narrow
     assert "BASE" in medium
-    assert all("ENTRY" in line for line in (narrow, medium, wide))
+    assert all("STATUS" in line for line in (narrow, medium, wide))
 
 
 def test_catalog_row_has_a_stable_cell_width_for_unicode_names() -> None:
@@ -47,10 +47,10 @@ def test_catalog_status_labels_fill_the_right_edge() -> None:
         for status in ("READY", "FAULT")
     }
 
-    assert all(row.endswith(status) for status, row in rows.items())
+    assert all(row.rstrip().endswith(status) for status, row in rows.items())
     assert all(cell_len(row) == 76 for row in rows.values())
     assert len({row.index(status) for status, row in rows.items()}) == 1
-    assert layout.status == 5
+    assert layout.status == 6
 
 
 def test_catalog_metadata_columns_leave_room_for_values() -> None:
@@ -58,13 +58,13 @@ def test_catalog_metadata_columns_leave_room_for_values() -> None:
     layout = CatalogLayout.for_terminal(80)
 
     assert (layout.target_run, layout.base, layout.kind, layout.status) == (
-        40,
+        39,
         18,
         10,
-        5,
+        6,
     )
 
-    line = layout.line("TARGET::RUN", "QWEN", "CONSTRUCT", "ENTRY")
+    line = layout.line("TARGET::RUN", "QWEN", "CONSTRUCT", "STATUS")
     base_gap = line.index("CONSTRUCT") - (line.index("QWEN") + len("QWEN"))
     assert base_gap == 15
 
@@ -81,8 +81,8 @@ def test_catalog_type_labels_identify_entry_lineage() -> None:
     assert all(kind in row for kind, row in rows.items())
 
 
-def test_catalog_type_and_entry_follow_description_selection_style() -> None:
-    """Check TYPE and ENTRY use the same slash-description styling."""
+def test_catalog_type_and_status_follow_description_selection_style() -> None:
+    """Check TYPE and STATUS use the same slash-description styling."""
     layout = CatalogLayout.for_terminal(80)
     unselected = layout.text("TARGET::RUN", "BASE", "BASE", "READY")
     selected = layout.text(
@@ -93,24 +93,24 @@ def test_catalog_type_and_entry_follow_description_selection_style() -> None:
     type_style = unselected.get_style_at_offset(
         console, unselected.plain.index("BASE")
     )
-    entry_style = unselected.get_style_at_offset(
+    status_style = unselected.get_style_at_offset(
         console, unselected.plain.index("READY")
     )
     selected_type_style = selected.get_style_at_offset(
         console, selected.plain.index("BASE")
     )
-    selected_entry_style = selected.get_style_at_offset(
+    selected_status_style = selected.get_style_at_offset(
         console, selected.plain.index("READY")
     )
 
     assert type_style.color is not None and type_style.color.number == 8
-    assert entry_style.color is not None and entry_style.color.number == 8
+    assert status_style.color is not None and status_style.color.number == 8
     assert not type_style.dim and type_style.bold is False
-    assert not entry_style.dim and entry_style.bold is False
+    assert not status_style.dim and status_style.bold is False
     assert selected_type_style.color is None and selected_type_style.dim
-    assert selected_entry_style.color is None and selected_entry_style.dim
+    assert selected_status_style.color is None and selected_status_style.dim
     assert selected_type_style.bold is False
-    assert selected_entry_style.bold is False
+    assert selected_status_style.bold is False
 
 
 def test_catalog_fault_matches_an_unavailable_slash_command() -> None:

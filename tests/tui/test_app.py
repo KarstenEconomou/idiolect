@@ -41,6 +41,7 @@ from idiolect.tui.widgets import (
     ReferenceMenu,
     SpecsScroll,
     StatusLine,
+    TraceMenuModal,
     Transcript,
 )
 
@@ -87,6 +88,10 @@ def test_registry_opens_highlighted_assistant_from_keyboard(tmp_path) -> None:
             )
             assert not tagline_style.bold
             assert tagline_style.dim
+            watermark_lines = watermark.plain.splitlines()
+            assert watermark_lines[3].index("Someone, reconstructed.") == (
+                watermark_lines[2].index("IDIOLECT") + 1
+            )
             assert str(app.query_one("#catalog-title", Static).content) == "REGISTRY"
             assert str(app.query_one("#catalog-description", Static).content) == (
                 "Select a CONSTRUCT to establish a LINK."
@@ -96,12 +101,18 @@ def test_registry_opens_highlighted_assistant_from_keyboard(tmp_path) -> None:
             assert "CONSTRUCT" in columns
             assert "BASE" in columns
             assert "TYPE" in str(app.query_one("#catalog-columns", Static).content)
+            assert "STATUS" in columns
+            assert "ENTRY" not in columns
             assert len(app.query("#catalog-summary")) == 0
             assert len(app.query("#search")) == 0
             assert app.query_one("#landing").region.x == 0
             assert app.query_one("#landing-box").region.width == 80
             assert app.query_one("#catalog-heading").content_region.x == 2
+            assert app.query_one("#catalog-description").content_region.x == 3
             assert chooser.content_region.x == 2
+            assert chooser.get_component_styles(
+                "option-list--option"
+            ).padding.left == 1
             assert app.query_one("#catalog-hints", Static).content_region.x == 2
             assert chooser.highlighted == 1
             assert chooser.has_focus
@@ -812,6 +823,9 @@ def test_registry_confirms_trace_erasure(tmp_path) -> None:
             await pilot.press("down", "backspace")
             await pilot.pause()
 
+            assert isinstance(app.screen, TraceMenuModal)
+            assert app.screen.hidden_until_placed
+            assert not app.screen.query_one("#trace-dialog").has_class("-unplaced")
             heading = app.screen.query_one("#trace-message", Static).content
             assert str(heading) == "TRACE MANAGE"
             assert [
@@ -847,7 +861,7 @@ def test_registry_confirms_trace_erasure(tmp_path) -> None:
             assert "Night session" not in hidden_subject.plain
             assert "\n" not in hidden_subject.plain
             assert hidden_subject.plain.startswith(saved.assistant.target_run)
-            assert hidden_subject.plain.endswith("READY")
+            assert hidden_subject.plain.rstrip().endswith("READY")
             app._trace_blink_visible = True
             app._refresh_catalog_prompts(f"saved-{saved.id}")
 
@@ -893,6 +907,9 @@ def test_registry_renames_trace_with_current_name_as_default(tmp_path) -> None:
             name = app.screen.query_one("#trace-name", Input)
             assert name.has_focus
             assert name.placeholder == "Night session"
+            assert app.screen.query_one("#trace-name-dialog").region.bottom == (
+                app.query_one("#catalog-hints").region.y
+            )
             trace_name_message = app.screen.query_one(
                 "#trace-name-message", Static
             )
@@ -1433,6 +1450,9 @@ def test_save_requests_trace_name_and_uses_default_for_blank(tmp_path) -> None:
             name = app.screen.query_one("#trace-name", Input)
             assert name.has_focus
             assert name.placeholder == "default trace name"
+            assert app.screen.query_one("#trace-name-dialog").region.bottom == (
+                app.query_one("#composer-bar").region.y
+            )
             name.value = value
             await pilot.press("enter")
             await pilot.pause()
