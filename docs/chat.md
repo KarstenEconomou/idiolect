@@ -166,22 +166,22 @@ Escape to close the menu without clearing the composer. There is no Tab
 completion. The menu is visible only while the cursor is inside a slash token
 that starts at the beginning of a word. Unavailable commands are metadata gray
 and dim and cannot be selected. The interface does not use red to mark semantic
-states. Commands are:
+states. Commands are displayed alphabetically:
 
+- `/buffer` — `View context BUFFER.`: temporarily view fitted context and
+  active references;
+- `/chroma` — `Equip CHROMA.`: open the CHROMA theme menu;
+- `/disconnect` — `Disconnect active LINK.`: return to `REGISTRY` when no reply
+  is active;
+- `/echo <text>` — `SYS echo.`: show `<text>` as a dimmed `SYS` turn without
+  adding it to model context;
+- `/probe` — `View active LINK.`: temporarily view live hardware, runtime, and
+  model-load details;
+- `/specs` — `View CONSTRUCT specifications.`: temporarily view active model's
+  SPECS;
 - `/terminate` — `Terminate IDIOLECT.`: stop an active reply or terminate when
   idle;
-- `/echo <text>`: show `<text>` as a dimmed `SYS` turn without adding it to model context;
-- `/disconnect` — `Disconnect the active LINK.`: return to `REGISTRY` when no
-  reply is active;
-- `/trace` — `Save the current TRACE.`: save a TRACE checkpoint and keep the
-  chat open;
-- `/specs` — `View CONSTRUCT specifications.`: temporarily view the active
-  model's SPECS;
-- `/probe` — `View the active LINK.`: temporarily view live hardware, runtime,
-  and model-load details;
-- `/buffer` — `View the context BUFFER.`: temporarily view fitted context and
-  active references;
-- `/chroma` — `Equip CHROMA.`: open the CHROMA theme menu.
+- `/trace` — `Save current TRACE.`: save a TRACE checkpoint and keep chat open.
 
 In chat, CHROMA reserves space above the composer so the newest dialogue stays
 visible above its two-row menu. Enter equips the highlighted theme and shows the

@@ -1477,9 +1477,10 @@ def test_command_menu_filters_navigates_and_returns_to_registry(tmp_path) -> Non
                 ".command-name", Static
             )
             assert str(terminate_name.content) == "/terminate"
-            assert terminate_name.content_region.width >= len("/terminate")
+            disconnect_name = disconnect_button.query_one(".command-name", Static)
+            assert disconnect_name.content_region.width >= len("/disconnect")
             assert (
-                terminate_button.query_one(".command-name", Static).content_region.x
+                disconnect_name.content_region.x
                 - menu.query_one("#command-message", Static).content_region.x
                 == 1
             )
@@ -1488,33 +1489,34 @@ def test_command_menu_filters_navigates_and_returns_to_registry(tmp_path) -> Non
             ) == "Terminate IDIOLECT."
             assert str(
                 disconnect_button.query_one(".command-description", Static).content
-            ) == "Disconnect the active LINK."
+            ) == "Disconnect active LINK."
             assert str(
                 trace_button.query_one(".command-description", Static).content
-            ) == "Save the current TRACE."
+            ) == "Save current TRACE."
             assert str(
                 specs_button.query_one(".command-description", Static).content
             ) == "View CONSTRUCT specifications."
             assert str(
                 probe_button.query_one(".command-description", Static).content
-            ) == "View the active LINK."
+            ) == "View active LINK."
             assert str(
                 buffer_button.query_one(".command-description", Static).content
-            ) == "View the context BUFFER."
+            ) == "View context BUFFER."
             assert str(
                 chroma_button.query_one(".command-description", Static).content
             ) == "Equip CHROMA."
-            assert specs_button.display is False
+            assert terminate_button.display is False
             assert trace_button.has_class("-disabled")
             assert trace_button.has_class("-selected") is False
             assert trace_button.query_one(".command-name", Static).styles.color == (
                 app.query_one("#catalog-subtitle").styles.color
             )
-            assert disconnect_button.region.y == terminate_button.region.y + 2
-            assert terminate_button.has_class("-selected")
+            assert chroma_button.region.y == buffer_button.region.y + 1
+            assert disconnect_button.region.y == chroma_button.region.y + 1
+            assert buffer_button.has_class("-selected")
             assert disconnect_button.has_class("-selected") is False
-            selected_name = terminate_button.query_one(".command-name", Static)
-            selected_description = terminate_button.query_one(
+            selected_name = buffer_button.query_one(".command-name", Static)
+            selected_description = buffer_button.query_one(
                 ".command-description", Static
             )
             assert selected_description.styles.color == selected_name.styles.color
@@ -1537,34 +1539,33 @@ def test_command_menu_filters_navigates_and_returns_to_registry(tmp_path) -> Non
             app._clear_notice()
 
             await pilot.press("down")
-            assert menu.query_one("#command-echo", Horizontal).has_class(
-                "-selected"
-            )
+            assert chroma_button.has_class("-selected")
             await pilot.press("down")
             assert disconnect_button.has_class("-selected")
             await pilot.press("down")
-            assert specs_button.has_class("-selected")
-            assert specs_button.display
-            assert terminate_button.display is False
+            echo_button = menu.query_one("#command-echo", Horizontal)
+            assert echo_button.has_class("-selected")
+            assert echo_button.display
+            assert buffer_button.display is False
             await pilot.press("down")
             assert probe_button.has_class("-selected")
             assert probe_button.display
             await pilot.press("down")
-            assert buffer_button.has_class("-selected")
-            assert buffer_button.display
-            await pilot.press("down")
-            assert chroma_button.has_class("-selected")
-            assert chroma_button.display
+            assert specs_button.has_class("-selected")
+            assert specs_button.display
             await pilot.press("down")
             assert terminate_button.has_class("-selected")
-            await pilot.press("up")
-            assert chroma_button.has_class("-selected")
-            await pilot.press("up")
+            assert terminate_button.display
+            await pilot.press("down")
             assert buffer_button.has_class("-selected")
+            await pilot.press("up")
+            assert terminate_button.has_class("-selected")
+            await pilot.press("up")
+            assert specs_button.has_class("-selected")
             await pilot.press("up")
             assert probe_button.has_class("-selected")
             await pilot.press("up")
-            assert specs_button.has_class("-selected")
+            assert echo_button.has_class("-selected")
             await pilot.press("up")
             assert disconnect_button.has_class("-selected")
 

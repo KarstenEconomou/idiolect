@@ -8,13 +8,13 @@ from idiolect.tui.commands import CommandError, completions, parse_command
 @pytest.mark.parametrize(
     "value",
     [
-        "/terminate",
-        "/disconnect",
-        "/trace",
-        "/specs",
-        "/probe",
         "/buffer",
         "/chroma",
+        "/disconnect",
+        "/probe",
+        "/specs",
+        "/terminate",
+        "/trace",
         "/terminate   ",
     ],
 )
@@ -57,14 +57,14 @@ def test_unknown_commands_and_arguments_are_rejected(
 def test_command_completion_requires_one_command_prefix() -> None:
     """Check command matching for composer prefixes."""
     assert completions("/") == (
-        "/terminate",
-        "/echo",
-        "/disconnect",
-        "/trace",
-        "/specs",
-        "/probe",
         "/buffer",
         "/chroma",
+        "/disconnect",
+        "/echo",
+        "/probe",
+        "/specs",
+        "/terminate",
+        "/trace",
     )
     assert completions("/di") == ("/disconnect",)
     assert completions("/tr") == ("/trace",)

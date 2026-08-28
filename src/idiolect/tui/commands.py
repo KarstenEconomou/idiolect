@@ -2,27 +2,17 @@
 
 from dataclasses import dataclass
 
-COMMANDS = (
-    "/terminate",
-    "/echo",
-    "/disconnect",
-    "/trace",
-    "/specs",
-    "/probe",
-    "/buffer",
-    "/chroma",
-)
-
 COMMAND_DESCRIPTIONS = {
-    "/terminate": "Terminate IDIOLECT.",
-    "/echo": "SYS echo.",
-    "/disconnect": "Disconnect the active LINK.",
-    "/trace": "Save the current TRACE.",
-    "/specs": "View CONSTRUCT specifications.",
-    "/probe": "View the active LINK.",
-    "/buffer": "View the context BUFFER.",
+    "/buffer": "View context BUFFER.",
     "/chroma": "Equip CHROMA.",
+    "/disconnect": "Disconnect active LINK.",
+    "/echo": "SYS echo.",
+    "/probe": "View active LINK.",
+    "/specs": "View CONSTRUCT specifications.",
+    "/terminate": "Terminate IDIOLECT.",
+    "/trace": "Save current TRACE.",
 }
+COMMANDS = tuple(sorted(COMMAND_DESCRIPTIONS))
 
 COMMAND_ARGUMENTS = frozenset({"/echo"})
 

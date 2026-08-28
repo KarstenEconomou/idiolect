@@ -72,8 +72,9 @@ TUI tests.
   trace name like BASE, TYPE, and ENTRY while its TRACE is highlighted: use the
   selection accent with dim styling.
 - Keep slash commands in a vertical menu above the composer. Show at most three
-  rows, with command names in a fixed-width column and descriptions in the
-  remaining width. Keep composer focus. Wrap enabled commands with arrow keys;
+  rows in alphabetical order, with command names in a fixed-width column and
+  descriptions in the remaining width. Omit `the` from command descriptions.
+  Keep composer focus. Wrap enabled commands with arrow keys;
   Tab completes the selection plus one trailing space; Enter runs it; Escape
   closes the menu without clearing the composer. Prefix alerts and errors with
   dimmed `ENV:`, then use `ACK` or `ERR` with footer-colored message text.
