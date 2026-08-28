@@ -160,6 +160,13 @@ class MenuButton(Button):
 
     FOCUS_ON_CLICK: ClassVar[bool] = False
 
+    def on_mount(self) -> None:
+        """Apply optional flush label alignment after default button styles."""
+        if self.has_class("-flush-label"):
+            self.styles.line_pad = 0
+            self.styles.text_align = "left"
+            self.styles.content_align = ("left", "middle")
+
     async def _on_mouse_down(self, event: events.MouseDown) -> None:
         event.prevent_default()
         event.stop()
@@ -216,6 +223,7 @@ class HorizontalMenuModal(ModalScreen[str | None]):
         actions_id: str = "horizontal-menu-actions",
         button_prefix: str = "",
         hidden_until_placed: bool = False,
+        flush_items: bool = False,
     ) -> None:
         """Keep the menu declaration and placement policy."""
         super().__init__()
@@ -230,6 +238,7 @@ class HorizontalMenuModal(ModalScreen[str | None]):
         self.actions_id = actions_id
         self.button_prefix = button_prefix
         self.hidden_until_placed = hidden_until_placed
+        self.flush_items = flush_items
 
     def compose(self) -> ComposeResult:
         """Create the heading and horizontal actions."""
@@ -246,7 +255,13 @@ class HorizontalMenuModal(ModalScreen[str | None]):
                 classes="horizontal-menu-actions",
             ):
                 for item in self.items:
-                    yield MenuButton(item.label, id=f"{self.button_prefix}{item.identity}")
+                    button = MenuButton(
+                        item.label,
+                        id=f"{self.button_prefix}{item.identity}",
+                    )
+                    if self.flush_items:
+                        button.add_class("-flush-label")
+                    yield button
 
     def on_mount(self) -> None:
         """Place the menu and focus its initial action."""

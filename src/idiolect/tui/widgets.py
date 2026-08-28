@@ -773,4 +773,5 @@ class ChromaMenuModal(HorizontalMenuModal):
             actions_id="chroma-actions",
             button_prefix="chroma-",
             hidden_until_placed=True,
+            flush_items=True,
         )

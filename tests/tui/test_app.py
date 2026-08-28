@@ -168,9 +168,12 @@ def test_registry_chroma_menu_previews_all_themes_and_persists(tmp_path) -> None
             ]
             assert app.focused is not None
             assert app.focused.id == "chroma-green"
+            heading = app.screen.query_one("#chroma-message", Static)
+            blue = app.screen.query_one("#chroma-blue", KeyboardButton)
+            assert blue.render_line(0).text.startswith("LOCKSMITH")
             assert (
-                app.screen.query_one("#chroma-blue", KeyboardButton).content_region.x
-                - app.screen.query_one("#chroma-message", Static).content_region.x
+                blue.content_region.x
+                - heading.content_region.x
                 == 1
             )
             assert app.screen.query_one(
@@ -189,7 +192,6 @@ def test_registry_chroma_menu_previews_all_themes_and_persists(tmp_path) -> None
             await pilot.resize_terminal(24, 24)
             await pilot.pause()
             actions = app.screen.query_one("#chroma-actions", HorizontalScroll)
-            heading = app.screen.query_one("#chroma-message", Static)
             assert actions.scroll_x > 0
             assert actions.content_region.x - heading.content_region.x == 1
             await pilot.resize_terminal(80, 24)
