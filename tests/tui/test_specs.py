@@ -1,5 +1,6 @@
 """Test model specification rendering."""
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -40,9 +41,10 @@ def test_probe_shows_only_live_hardware_runtime_and_load_details() -> None:
             (
                 ("architecture", "applegpu_g16g"),
                 ("device_name", "Apple M4 Max"),
-                ("max_buffer_size", 5 * 1024**3),
+                ("max_buffer_length", 5 * 1024**3),
                 ("max_recommended_working_set_size", 4 * 1024**3),
                 ("memory_size", 16 * 1024**3),
+                ("resource_limit", 499_000),
                 ("unified_memory", True),
             ),
         ),
@@ -52,13 +54,16 @@ def test_probe_shows_only_live_hardware_runtime_and_load_details() -> None:
     assert "STACK\n" in document.plain
     assert "MLX VERSION\n 0.32.1\n" in document.plain
     assert "MLX-LM VERSION\n 0.31.3\n" in document.plain
-    assert "DEVICE\n GPU\n" in document.plain
-    assert document.plain.count("DEVICE\n") == 2
-    assert "NAME\n Apple M4 Max\n" in document.plain
+    assert "DEVICE TYPE\n GPU\n" in document.plain
+    assert document.plain.count("DEVICE\n") == 1
+    assert "DEVICE\nNAME\n Apple M4 Max\nARCHITECTURE\n" in document.plain
+    assert "HOST ARCHITECTURE\n arm64\n" in document.plain
+    assert "ARCHITECTURE\n applegpu_g16g\n" in document.plain
     assert "HOST\n" not in document.plain
-    assert "MAX BUFFER SIZE\n 5.00 GiB\n" in document.plain
+    assert "MAX BUFFER LENGTH\n 5.00 GiB\n" in document.plain
     assert "WORKING SET LIMIT\n 4.00 GiB\n" in document.plain
     assert "MEMORY\n 16.00 GiB\n" in document.plain
+    assert "RESOURCE LIMIT\n 499,000 BUFFERS\n" in document.plain
     assert "PAYLOAD\n" in document.plain
     assert "MODEL SIZE\n 8.00 GiB\n" in document.plain
     assert "ADAPTER SIZE\n 64.00 MiB\n" in document.plain
@@ -70,13 +75,13 @@ def test_probe_shows_only_live_hardware_runtime_and_load_details() -> None:
     assert "FIDELITY\n" not in document.plain
 
 
-def test_probe_marks_an_absent_base_adapter_size() -> None:
-    """Check that a base-model load does not invent an adapter measurement."""
+def test_probe_omits_structurally_absent_device_and_base_adapter() -> None:
+    """Check that a base load omits sections and fields that do not apply."""
     document = render_probe(None, LoadProbe("a" * 64, 512, None, 0.5))
 
     assert "MODEL SIZE\n 512 B\n" in document.plain
-    assert "ADAPTER SIZE\n —\n" in document.plain
-    assert "No Metal device properties were reported." in document.plain
+    assert "ADAPTER SIZE\n" not in document.plain
+    assert "DEVICE\n" not in document.plain
 
 
 def test_buffer_shows_context_measurements_and_active_references(tmp_path: Path) -> None:
@@ -116,19 +121,31 @@ def test_buffer_shows_context_measurements_and_active_references(tmp_path: Path)
 
     document = render_buffer(session, prepared)
 
-    assert "CONTEXT\n" in document.plain
+    assert "PROMPT\n" in document.plain
     assert "POLICY\n" not in document.plain
-    assert "TURNS\n 3 / 32\n" in document.plain
-    assert "TOKENS\n 25 / 100 (25.0%)\n" in document.plain
+    assert "PROMPT\nDIGEST\n" in document.plain
+    assert "TOKENS\n" in document.plain
+    assert "TOKENS\nPROMPT\n 25 TOK\n" in document.plain
+    assert "LIMIT\n 100 TOK\n" in document.plain
+    assert "UTILIZATION\n 25.0%\n" in document.plain
+    assert "TURNS\n" in document.plain
+    assert "TURNS\nACTIVE\n 3\n" in document.plain
+    assert "CAPACITY\n 32\n" in document.plain
     assert "EVICTED\n 0\n" in document.plain
-    assert "STATE DIGEST\n" in document.plain
-    assert "HEAD\n @OP:03\n" in document.plain
     assert "RESIDENT\n" in document.plain
+    assert "HEAD\n @OP:03\n" in document.plain
+    assert "REFS\n @OP:00\n @DIXIE:01\n @DIXIE:02\n @OP:03\n" in document.plain
     assert "@OP:00\n" in document.plain
     assert "@DIXIE:01\n" in document.plain
     assert "@DIXIE:02\n" in document.plain
     assert "@OP:03\n" in document.plain
     assert "active question" not in document.plain
+
+    empty = render_buffer(session, None)
+    assert "TOKENS\nPROMPT\n —\nLIMIT\n 100 TOK\nUTILIZATION\n —\n" in empty.plain
+    assert "TURNS\nACTIVE\n —\nCAPACITY\n 32\nEVICTED\n —\n" in empty.plain
+    assert "RESIDENT\nHEAD\n —\nREFS\n —\n" in empty.plain
+    assert "No references are resident." not in empty.plain
 
 
 def test_construct_specs_show_verified_lineage_and_no_invented_evaluation(
@@ -150,9 +167,16 @@ def test_construct_specs_show_verified_lineage_and_no_invented_evaluation(
     assert "DIXIE::AAAAAAAA" in document.plain
     assert "CONSTRUCT\n DIXIE::AAAAAAAA" in document.plain
     assert "BASE" in document.plain
+    assert "MODEL\nNAME\n example/M\n" in document.plain
+    assert "RUN\nID\n" in document.plain
+    assert "DATASET\nID\n" in document.plain
+    assert "ADAPTER\nPATH\n" in document.plain
     assert "TRAIN 90    VALID 10    TEST 5" in document.plain
-    assert "TRAINING\n" in document.plain
+    assert "TRAINING\nSEED\n 7\nMAX SEQUENCE TOKENS\n 2,048 TOK\n" in document.plain
     assert "TRAINING POLICY" not in document.plain
+    assert "RUN ID\n" not in document.plain
+    assert "DATASET ID\n" not in document.plain
+    assert "ADAPTER PATH\n" not in document.plain
     assert "LORA RANK" in document.plain
     assert "NOT EVALUATED" in document.plain
     assert "SYNTHETIC // UI FIXTURE" not in document.plain
@@ -172,7 +196,11 @@ def test_trace_specs_add_snapshot_lineage_to_the_underlying_model(
         assistant,
         ChatConfig(output=tmp_path),
         GenerationConfig(backend="mlx-lm", temperature=0.3),
-        (),
+        (
+            ChatTurn("env", "local"),
+            ChatTurn("user", "hello"),
+            ChatTurn("assistant", "hi"),
+        ),
     )
 
     document = render_specs(
@@ -183,22 +211,25 @@ def test_trace_specs_add_snapshot_lineage_to_the_underlying_model(
     )
 
     assert "Night session" in document.plain
+    assert "TRACE\nNAME\n Night session\n" in document.plain
     assert trace.id.upper() in document.plain
     assert _TRACE_PARENT_ID.upper() in document.plain
     assert _NOW.isoformat() in document.plain
     assert "NOT EVALUATED" in document.plain
+    assert "TURNS\n 2\n" in document.plain
     console = Console(width=36, color_system=None)
     model_digest = assistant.model_digest
     assert model_digest is not None
     with console.capture() as capture:
         console.print(document)
     rendered = capture.get().splitlines()
-    for label, next_label, value in (
-        ("MODEL DIGEST", "TRUST REMOTE CODE", model_digest.upper()),
-        ("TRACE ID", "TRACE PATH", trace.id.upper()),
-        ("TRACE PATH", "PARENT ID", trace.path),
+    trace_start = rendered.index("TRACE")
+    for label, next_label, value, search_start in (
+        ("DIGEST", "TRUST REMOTE CODE", model_digest.upper(), 0),
+        ("ID", "PATH", trace.id.upper(), trace_start),
+        ("PATH", "PARENT ID", trace.path, trace_start),
     ):
-        start = rendered.index(label) + 1
+        start = rendered.index(label, search_start) + 1
         end = next(
             index
             for index in range(start, len(rendered))
@@ -210,10 +241,10 @@ def test_trace_specs_add_snapshot_lineage_to_the_underlying_model(
         assert "".join(line[1:] for line in value_lines) == str(value)
 
 
-def test_specs_abbreviate_telemetry_and_align_prompt_format_blocks(
+def test_specs_group_generation_policy_and_align_prompt_format_blocks(
     tmp_path: Path,
 ) -> None:
-    """Check compact labels and one fixed prompt-format value offset."""
+    """Check contextual policy labels and one prompt-format value offset."""
     document = render_specs(
         _base(tmp_path),
         GenerationConfig(
@@ -224,28 +255,30 @@ def test_specs_abbreviate_telemetry_and_align_prompt_format_blocks(
         "BASE",
     )
 
-    assert "CTX MESSAGES" in document.plain
-    assert "GENERATION\n" in document.plain
-    assert "MAX PROMPT TOK" in document.plain
-    assert "REP PENALTY" in document.plain
-    assert "REP CTX SIZE" in document.plain
+    assert "CONVERSATION\nFORMAT\n chat-template\nTURN CAPACITY\n 32\n" in document.plain
+    assert "DIGEST\n —\n" in document.plain
+    assert "LINEAGE\n" not in document.plain
+    assert "TRACE\n" not in document.plain
+    assert "GENERATION\n" not in document.plain
+    assert "BACKEND\n" not in document.plain
+    assert "SYSTEM\n First line.\n \n Second line.\n" in document.plain
+    assert "PROMPT\nROLE\n user\nPREFIX\n —\nSUFFIX\n \\n\nLIMIT\n 1,920 TOK\n" in document.plain
+    assert "COMPLETION\nROLE\n assistant\n" in document.plain
+    assert "PREFIX\n <assistant>\\n\nSUFFIX\n —\nLIMIT\n 128 TOK\n" in document.plain
+    assert "SAMPLING\nTEMPERATURE\n 0.7\nTOP-P\n 0.8\n" in document.plain
+    assert "TOP-K\n 20\nMIN-P\n 0\nMIN-P FLOOR\n 1 TOK\n" in document.plain
+    assert "REPETITION\nPENALTY\n 1.1\nWINDOW\n 20 TOK\n" in document.plain
     assert "FIDELITY\n" in document.plain
     offset = " "
     assert (
-        f"SYSTEM PROMPT\n{offset}First line.\n{offset}\n{offset}Second line."
+        f"SYSTEM\n{offset}First line.\n{offset}\n{offset}Second line."
         in document.plain
     )
-    assert f"PROMPT PREFIX\n{offset}—" in document.plain
-    assert f"PROMPT SUFFIX\n{offset}\\n" in document.plain
-    assert f"COMPLETION PREFIX\n{offset}<assistant>\\n" in document.plain
-    assert f"COMPLETION SUFFIX\n{offset}—" in document.plain
     assert "↵" not in document.plain
-    assert "CONTEXT" not in document.plain
-    assert "TOKENS" not in document.plain
-    assert "REPETITION" not in document.plain
+    assert "CONTEXT TURNS" not in document.plain
     assert "EVALUATION" not in document.plain
     assert "GENERATION POLICY" not in document.plain
-    assert "GENERATION\n" in document.plain
+    assert "GENERATION\n" not in document.plain
     assert "FIDELITY\n" in document.plain
 
 
@@ -259,11 +292,37 @@ def test_prompt_blocks_drop_trailing_system_blank(
     )
 
     document = render_specs(assistant, GenerationConfig(), "BASE")
-    system_block = document.plain.split("SYSTEM PROMPT\n", 1)[1].split(
-        "PROMPT ROLE",
+    system_block = document.plain.split("SYSTEM\n", 1)[1].split(
+        "\nPROMPT\n",
         1,
     )[0]
     assert system_block == " First line.\n \n Second line.\n"
+
+
+def test_completion_format_omits_structurally_invalid_system_and_roles(
+    tmp_path: Path,
+) -> None:
+    """Check completion policies show only fields that can apply."""
+    assistant = _base(tmp_path)
+    assert assistant.base_data is not None
+    assistant = replace(
+        assistant,
+        base_data=replace(
+            assistant.base_data,
+            format="completion",
+            system_prompt="",
+            prompt_role="",
+            completion_role="",
+        ),
+    )
+
+    document = render_specs(assistant, GenerationConfig(), "BASE")
+    policy = document.plain.split("CONVERSATION\n", 1)[1].split("\nSAMPLING\n", 1)[0]
+
+    assert "SYSTEM\n" not in policy
+    assert "ROLE\n" not in policy
+    assert "PROMPT\nPREFIX\n —\nSUFFIX\n \\n\nLIMIT\n 0 TOK\n" in policy
+    assert "COMPLETION\nPREFIX\n <assistant>\\n\nSUFFIX\n —\nLIMIT\n 128 TOK\n" in policy
 
 
 def test_specs_scrollbar_uses_a_half_cell_thumb() -> None:

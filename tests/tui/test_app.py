@@ -72,7 +72,7 @@ def test_registry_opens_highlighted_assistant_from_keyboard(tmp_path) -> None:
             assert tagline_style.dim
             assert str(app.query_one("#catalog-title", Static).content) == "REGISTRY"
             assert str(app.query_one("#catalog-description", Static).content) == (
-                "CONNECT to a BASE, CONSTRUCT, or TRACE."
+                "Select a CONSTRUCT to establish a LINK."
             )
             assert app.query_one("#catalog-columns", Static).styles.color.ansi == 7
             columns = str(app.query_one("#catalog-columns", Static).content)
@@ -496,11 +496,11 @@ def test_specs_prompt_wrap_uses_the_transcript_inset(tmp_path) -> None:
                 body.render_line(y).text.rstrip()
                 for y in range(body.virtual_size.height)
             ]
-            start = rendered.index("SYSTEM PROMPT") + 1
+            start = rendered.index("SYSTEM") + 1
             end = next(
                 index
                 for index in range(start, len(rendered))
-                if rendered[index].startswith("PROMPT ROLE")
+                if rendered[index] == ""
             )
             prompt_lines = rendered[start:end]
 
@@ -1176,9 +1176,9 @@ def test_prefill_progress_appears_above_composer(tmp_path) -> None:
             status = app.query_one("#status", LoadingStatus)
             scroller = app.query_one("#transcript-scroll", VerticalScroll)
             rendered = status.render()
-            assert status.state == "PREFILL 0/4"
+            assert status.state == "PREFILL 0/4 TOK"
             assert isinstance(rendered, Text)
-            assert rendered.plain.endswith(" PREFILL 0/4")
+            assert rendered.plain.endswith(" PREFILL 0/4 TOK")
             assert status.display is True
             assert status.content_region.x == scroller.content_region.x
             assert status.styles.color == app.query_one("#catalog-subtitle").styles.color
@@ -1402,25 +1402,25 @@ def test_command_menu_filters_navigates_and_returns_to_registry(tmp_path) -> Non
             )
             assert str(
                 terminate_button.query_one(".command-description", Static).content
-            ) == "TERMINATE IDIOLECT."
+            ) == "Terminate IDIOLECT."
             assert str(
                 disconnect_button.query_one(".command-description", Static).content
-            ) == "DISCONNECT LINK."
+            ) == "Disconnect the active LINK."
             assert str(
                 trace_button.query_one(".command-description", Static).content
-            ) == "Save TRACE."
+            ) == "Save the current TRACE."
             assert str(
                 specs_button.query_one(".command-description", Static).content
-            ) == "View SPECS."
+            ) == "View CONSTRUCT specifications."
             assert str(
                 probe_button.query_one(".command-description", Static).content
-            ) == "View LINK."
+            ) == "View the active LINK."
             assert str(
                 buffer_button.query_one(".command-description", Static).content
-            ) == "View CTX."
+            ) == "View the context BUFFER."
             assert str(
                 chroma_button.query_one(".command-description", Static).content
-            ) == "Select CHROMA."
+            ) == "Equip CHROMA."
             assert specs_button.display is False
             assert trace_button.has_class("-disabled")
             assert trace_button.has_class("-selected") is False
@@ -1963,7 +1963,7 @@ def test_specs_command_restores_the_unchanged_trace_chat(tmp_path) -> None:
             content = app.query_one("#specs-body", Static).content
             assert isinstance(content, SpecsDocument)
             assert "TYPE\n TRACE\n" in content.plain
-            assert f"TRACE ID\n {trace.id.upper()}\n" in content.plain
+            assert f"ID\n {trace.id.upper()}\n" in content.plain
             assert "TEMPERATURE\n 0.3\n" in content.plain
 
             await pilot.press("ctrl+c")
@@ -2014,15 +2014,17 @@ def test_probe_command_shows_live_details_and_restores_chat(tmp_path) -> None:
             await pilot.pause()
 
             assert app.query_one("#specs").display
-            assert str(app.query_one("#specs-identity", Static).content) == "PROBE"
+            assert str(app.query_one("#specs-identity", Static).content) == (
+                session.assistant.name
+            )
             content = app.query_one("#specs-body", Static).content
             assert isinstance(content, SpecsDocument)
             assert "STACK\n" in content.plain
-            assert "DEVICE\n GPU\n" in content.plain
+            assert "DEVICE TYPE\n GPU\n" in content.plain
             assert "PAYLOAD\n" in content.plain
             assert "MLX VERSION\n 0.32.1\n" in content.plain
             assert "MODEL SIZE\n 8.00 GiB\n" in content.plain
-            assert "ADAPTER SIZE\n —\n" in content.plain
+            assert "ADAPTER SIZE\n" not in content.plain
             assert "IDENTITY\n" not in content.plain
             assert "GENERATION\n" not in content.plain
             assert "FIDELITY\n" not in content.plain
@@ -2080,15 +2082,21 @@ def test_buffer_command_shows_fitted_context_and_restores_chat(tmp_path) -> None
             await pilot.pause()
 
             assert app.query_one("#specs").display
-            assert str(app.query_one("#specs-identity", Static).content) == "BUFFER"
+            assert str(app.query_one("#specs-identity", Static).content) == (
+                session.assistant.name
+            )
             content = app.query_one("#specs-body", Static).content
             assert isinstance(content, SpecsDocument)
-            assert "CONTEXT\n" in content.plain
-            assert "TURNS\n 1 / 32\n" in content.plain
-            assert "TOKENS\n 2 / 100 (2.0%)\n" in content.plain
+            assert "PROMPT\n" in content.plain
+            assert "TOKENS\nPROMPT\n 2 TOK\n" in content.plain
+            assert "LIMIT\n 100 TOK\n" in content.plain
+            assert "UTILIZATION\n 2.0%\n" in content.plain
+            assert "TURNS\nACTIVE\n 1\n" in content.plain
+            assert "CAPACITY\n 32\n" in content.plain
             assert "EVICTED\n 0\n" in content.plain
             assert "HEAD\n @OP:00\n" in content.plain
             assert "RESIDENT\n" in content.plain
+            assert "REFS\n @OP:00\n" in content.plain
             assert "@OP:00\n" in content.plain
             assert "Keep this context" not in content.plain
 
@@ -2316,6 +2324,17 @@ def test_commands_follow_generation_navigation_rules(tmp_path) -> None:
             await pilot.pause()
             disconnect = app.query_one("#command-disconnect", Horizontal)
             assert disconnect.has_class("-disabled")
+            disabled_name = disconnect.query_one(".command-name", Static)
+            disabled_description = disconnect.query_one(
+                ".command-description",
+                Static,
+            )
+            assert disabled_name.styles.color == app.query_one(
+                "#catalog-subtitle"
+            ).styles.color
+            assert disabled_description.styles.color == disabled_name.styles.color
+            assert disabled_name.styles.text_style.dim
+            assert disabled_description.styles.text_style.dim
             await pilot.press("enter")
             await pilot.pause()
             assert app.query_one("#chat").display
@@ -2328,6 +2347,46 @@ def test_commands_follow_generation_navigation_rules(tmp_path) -> None:
             await pilot.pause()
             assert app.query_one("#chat").display
             assert runtime.closed is False
+
+    try:
+        asyncio.run(verify())
+    finally:
+        runtime.release_prefill.set()
+
+
+def test_message_during_generation_reports_error_and_retains_text(tmp_path) -> None:
+    """Check a second message is rejected visibly without losing its text."""
+    chat = ChatConfig(output=tmp_path)
+    generation = GenerationConfig(max_prompt_tokens=100)
+    runtime = ProgressRuntime(chat, generation)
+    app = ChatApp(
+        chat,
+        generation,
+        runtime_factory=cast(Callable[..., ChatRuntime], lambda *_args: runtime),
+        initial_assistant=_assistant(),
+    )
+
+    async def verify() -> None:
+        async with app.run_test() as pilot:
+            await _wait_for_chat(app, pilot)
+            composer = app.query_one(Composer)
+            composer.insert("hold reply")
+            await pilot.press("enter")
+            assert await asyncio.to_thread(runtime.prefill_started.wait, 1)
+
+            composer.insert("send later")
+            await pilot.press("enter")
+            await pilot.pause()
+
+            assert app.query_one("#chat-alert", LoadingStatus).state == (
+                "SYS: ERR CONSTRUCT is generating."
+            )
+            assert composer.text == "send later"
+            session = runtime.session
+            assert session is not None
+            assert [turn.content for turn in session.turns if turn.role == "user"] == [
+                "hold reply"
+            ]
 
     try:
         asyncio.run(verify())

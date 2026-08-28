@@ -47,6 +47,7 @@ does not download a model.
 
 The landing screen displays the base persona, verified adapters, and saved
 snapshots in `REGISTRY`. It has no search field or pointer activation. The
+subtitle reads `Select a CONSTRUCT to establish a LINK.` The
 primary registry column is `CONSTRUCT` and contains the `TARGET::RUN` identity;
 the `BASE` column immediately to its right identifies the base model used by
 each entry. TYPE and ENTRY remain the right-hand metadata columns.
@@ -87,8 +88,16 @@ Press S on any `READY` row to open `SPECS` without resolving or loading the
 model. The scrollable page shows the complete verified model identity in
 `IDIOLECT // TARGET::RUN [BASE]` form, with hexadecimal identifiers displayed in
 uppercase, source,
-revision, digests, prompt and generation policy, and available run, dataset, and
-TRACE lineage. It uses the compact `CTX`, `TOK`, `REP`, `GEN`, and `EVAL` labels.
+revision, digests, prompt policy, generation limits, sampling policy, repetition
+policy, and available run, dataset, and
+TRACE lineage. `CONVERSATION` reports `FORMAT`, `TURN CAPACITY`, and the
+applicable `SYSTEM` prompt. `PROMPT` and `COMPLETION` each contain their
+applicable `ROLE`, `PREFIX`, `SUFFIX`, and token `LIMIT`. It uses the
+compact `CTX` and `EVAL` labels where those terms are part of a more specific
+field name. Remaining generation settings are grouped directly under `SAMPLING`
+and `REPETITION`; the sheet does not add a redundant `GENERATION`, `BACKEND`, or
+`TOKENS` heading.
+Token limits use `TOK` as their value unit.
 Its IDENTITY section repeats the `CONSTRUCT` and `BASE` values used by the
 registry columns; the CONSTRUCT value is the `TARGET::RUN` identity.
 Field names use the command menu's primary text, while values use its
@@ -127,7 +136,9 @@ The ID can also be an artifact directory path when the CLI is used directly.
 Enter submits. Shift+Enter inserts a line break. Alt+Enter is the terminal-safe
 line-break fallback. Escape stops active generation at the next token boundary.
 Ctrl+C stops active generation or opens the idle quit confirmation. The composer
-remains available during generation, but a second message is not queued. Use the
+remains available during generation. Submitting a second message reports
+`SYS: ERR CONSTRUCT is generating.`, preserves the unsent composer text, and
+does not queue another turn. Use the
 mouse wheel, or Ctrl+Up and Ctrl+Down without leaving the composer, to scroll the
 transcript. Transcript turns use `OP` and the short uppercase assistant name.
 One model invocation generates one response episode. When the reply contains the
@@ -148,16 +159,24 @@ three command descriptions in vertical rows. Use Up and Down to move, Left and
 Right to move through composer text, Enter to activate the selected command, and
 Escape to close the menu without clearing the composer. There is no Tab
 completion. The menu is visible only while the cursor is inside a slash token
-that starts at the beginning of a word. Commands are:
+that starts at the beginning of a word. Unavailable commands are metadata gray
+and dim and cannot be selected. The interface does not use red to mark semantic
+states. Commands are:
 
-- `/terminate`: stop an active reply or terminate when idle;
+- `/terminate` — `Terminate IDIOLECT.`: stop an active reply or terminate when
+  idle;
 - `/echo <text>`: show `<text>` as a dimmed `SYS` turn without adding it to model context;
-- `/disconnect`: return to `REGISTRY` when no reply is active;
-- `/trace`: save a TRACE checkpoint and keep the chat open;
-- `/specs`: temporarily view the active model's SPECS;
-- `/probe`: temporarily view live hardware, runtime, and model-load details;
-- `/buffer`: temporarily view fitted context and active references;
-- `/chroma`: open the CHROMA theme menu.
+- `/disconnect` — `Disconnect the active LINK.`: return to `REGISTRY` when no
+  reply is active;
+- `/trace` — `Save the current TRACE.`: save a TRACE checkpoint and keep the
+  chat open;
+- `/specs` — `View CONSTRUCT specifications.`: temporarily view the active
+  model's SPECS;
+- `/probe` — `View the active LINK.`: temporarily view live hardware, runtime,
+  and model-load details;
+- `/buffer` — `View the context BUFFER.`: temporarily view fitted context and
+  active references;
+- `/chroma` — `Equip CHROMA.`: open the CHROMA theme menu.
 
 In chat, CHROMA reserves space above the composer so the newest dialogue stays
 visible above its two-row menu. Enter equips the highlighted theme and shows the
@@ -200,32 +219,42 @@ streaming output is not referenceable until it is stored as a completed or
 cancelled turn. Alerts and confirmation dialogues remain above the reference
 bar.
 
-`/specs` uses the active session's recorded generation policy and includes full
-TRACE lineage for a resumed or newly saved snapshot. It does not change turns,
+`/specs` uses the active session's recorded token limits, sampling policy, and
+repetition policy. Construct sheets
+separate recorded `RUN`, `DATASET`, `ADAPTER`, and `TRAINING` details, and use
+contextual field names such as `ID`, `PATH`, and `DIGEST`. They include full
+`TRACE` lineage for a resumed or newly saved snapshot. It does not change turns,
 unsaved state, or transcript content. Escape restores the same chat directly;
 Left and Right do not cycle registry models in this temporary view. Ctrl+C
 restores chat and opens the normal exit menu when the session has unsaved data.
 
 `/probe` uses the same temporary sheet controls, but its body contains only live
-hardware-oriented details under a `PROBE` page header. `STACK` reports the MLX
+hardware-oriented details under the active model identity header used by
+`/specs`. `STACK` reports the MLX
 and MLX-LM versions, default device type, and machine architecture. `DEVICE`
-reports every Metal/device property returned by MLX, with `DEVICE NAME`
-shortened to `NAME` and the working-set limit and memory labels shortened for
-display. `PAYLOAD` reports the verified model digest, model and adapter sizes,
+reports every Metal/device property returned by MLX in a stable display order.
+It is omitted when the runtime reports no properties. `HOST ARCHITECTURE` names
+the machine architecture, while `ARCHITECTURE` and `NAME` under `DEVICE`
+identify the accelerator. The working-set limit and memory labels are shortened
+for display. `MAX BUFFER LENGTH` uses an IEC byte unit, while `RESOURCE LIMIT`
+uses `BUFFERS` because it limits live Metal buffer resources. `PAYLOAD` reports
+the verified model digest, model size, applicable adapter size,
 and load time. Byte measurements use one compact
 IEC unit such as `GiB`, `MiB`, or `B`; load time uses seconds. These values
 describe the active worker and its current model load. They are not stored in a
 TRACE. Escape restores the unchanged chat, and Ctrl+C follows the same behavior
 as `/specs`.
 
-`/buffer` uses the same temporary sheet controls under a `BUFFER` page header.
-`CONTEXT` reports fitted and total turn use, measured and total token use with
-its percentage, evicted-turn count, state digest, and the newest resident
-reference as `HEAD` for the latest fitted prompt. `RESIDENT` lists only the
-identity of every numbered chat bubble in that prompt. An operator bubble uses
-`@OP:NN`; an assistant bubble uses its target name. Before the first prompt,
-measured fields are unavailable and `RESIDENT` reports that no prompt state is
-resident. These values are derived session state and are not stored in a TRACE.
+`/buffer` uses the same temporary sheet controls and active model identity
+header as `/specs`. `PROMPT` reports `DIGEST`. `TOKENS` separates `PROMPT`,
+`LIMIT`, and `UTILIZATION`. `TURNS` separates `ACTIVE`, `CAPACITY`, and
+`EVICTED`.
+Token field names use `TOKENS`, and their measured values use `TOK` as the unit.
+`RESIDENT` contains `HEAD` for the newest resident reference and `REFS` for all
+numbered chat bubbles in the fitted prompt. An operator bubble uses `@OP:NN`;
+an assistant bubble uses its target name. Before the first prompt, unavailable
+fields show `—`. These values are derived session state and are not stored in a
+TRACE.
 Escape restores the unchanged chat, and Ctrl+C follows the same behavior as
 `/specs`.
 
@@ -307,7 +336,7 @@ reports active loading states above the composer with a `LINK` prefix, including
 `LINK LOADING`, and reports `SYS: ACK LINK established.` when loading completes.
 It reports `SYS: ERR LINK not established.` if input is submitted before the
 connection completes. It hides the ready state. During prompt processing, it reports the
-measured prefill token count and total from MLX-LM.
+measured prefill token count and total from MLX-LM in `PREFILL N/N TOK` form.
 
 The footer reports the last measured turn when no action menu is open. It puts
 context use first, then groups output tokens and generation rate under `GEN`.

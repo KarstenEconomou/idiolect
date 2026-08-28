@@ -7,6 +7,8 @@ import threading
 import time
 import traceback
 from collections.abc import Callable, Iterable
+from dataclasses import dataclass
+from enum import Enum
 from typing import Any, ClassVar, cast
 
 from rich.style import Style
@@ -45,8 +47,10 @@ from idiolect.tui.commands import (
     parse_command,
 )
 from idiolect.tui.markdown import is_web_link
+from idiolect.tui.sheets import InfoSheet, SheetPage, SheetScroll
 from idiolect.tui.specs import (
     HalfCellScrollBarRender,
+    SheetDocument,
     render_buffer,
     render_probe,
     render_specs,
@@ -61,7 +65,6 @@ from idiolect.tui.widgets import (
     LoadingStatus,
     ReferenceBar,
     ReferenceMenu,
-    SpecsScroll,
     TraceMenuModal,
     TraceNameModal,
     Transcript,
@@ -83,6 +86,41 @@ _ACCENT_THEMES = (
 )
 _DEFAULT_ACCENT_THEME = "green"
 _UNSAVED_LINK_ID = "------"
+
+
+class DialogKind(Enum):
+    """Identify the active modal dialog."""
+
+    CHROMA = "chroma"
+    CONFIRM = "confirm"
+    TRACE_NAME = "trace-name"
+    TRACE_MANAGE = "trace-manage"
+    TRACE_RENAME = "trace-rename"
+
+
+class SelectorKind(Enum):
+    """Identify the active composer selector."""
+
+    COMMAND = "command"
+    REFERENCE = "reference"
+
+
+@dataclass(frozen=True, slots=True)
+class ActiveDialog:
+    """Keep the one active dialog and its domain context."""
+
+    kind: DialogKind
+    trace_id: str | None = None
+    initial_theme_index: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ActiveSelector:
+    """Keep the active selector and accessory state."""
+
+    kind: SelectorKind
+    menu_open: bool
+    accessory_selected: bool
 
 
 def _watermark(color: str = "green") -> Text:
@@ -122,7 +160,10 @@ def _accent_theme_css() -> str:
         ".command-action.-selected .command-description",
         ".reference-action.-selected .reference-name",
         ".reference-action.-selected .reference-preview",
+        ".menu-action.-selected .menu-name",
+        ".menu-action.-selected .menu-description",
         "#command-bar",
+        ".selection-bar",
         "#confirm-actions Button:focus",
         "#confirm-actions Button.-active",
         "#trace-actions Button:focus",
@@ -219,7 +260,6 @@ class ChatApp(App[None]):
     $terminal: ansi_default;
     $accent: ansi_green;
     $metadata: ansi_bright_black;
-    $failure: ansi_red;
     Screen { background: $terminal; color: $terminal; }
     #landing { align: left top; padding: 0; }
     #landing-box { width: 100%; max-width: 100%; height: 100%; background: $terminal; }
@@ -261,6 +301,14 @@ class ChatApp(App[None]):
     #composer .text-area--cursor-line, #composer .text-area--matching-bracket { background: $terminal; }
     #composer .text-area--gutter, #composer .text-area--suggestion, #composer .text-area--placeholder { color: $metadata; background: $terminal; }
     #command-menu { display: none; width: 100%; height: auto; max-height: 4; margin: 0 1; padding: 0 1; background: $terminal; }
+    .menu-heading { height: 1; color: ansi_white; text-style: bold; }
+    .menu-actions { height: auto; max-height: 3; }
+    .menu-action { height: 1; }
+    .menu-name { padding: 0 1; color: $terminal; }
+    .menu-description { color: $metadata; }
+    .menu-action.-selected .menu-name { color: $accent; text-style: bold; }
+    .menu-action.-selected .menu-description { color: $accent; text-style: dim; }
+    .menu-action.-disabled .menu-name, .menu-action.-disabled .menu-description, .menu-action.-muted .menu-name, .menu-action.-muted .menu-description { color: $metadata; text-style: dim; }
     #command-message { height: 1; color: ansi_white; text-style: bold; }
     #command-actions { height: auto; max-height: 3; }
     .command-action { height: 1; }
@@ -268,8 +316,7 @@ class ChatApp(App[None]):
     .command-description { width: 1fr; height: 1; color: $metadata; }
     .command-action.-selected .command-name { color: $accent; text-style: bold; }
     .command-action.-selected .command-description { color: $accent; text-style: dim; }
-    .command-action.-disabled .command-name, .command-action.-disabled .command-description { color: $failure; text-style: dim; }
-    .command-action.-trace-disabled .command-name, .command-action.-trace-disabled .command-description { color: $metadata; text-style: dim; }
+    .command-action.-disabled .command-name, .command-action.-disabled .command-description { color: $metadata; text-style: dim; }
     #activity-row { height: auto; min-height: 0; align: left middle; }
     #activity-primary { width: 1fr; min-width: 0; height: auto; min-height: 0; }
     #command-bar { display: none; width: 100%; height: auto; min-height: 3; margin: 0 1; padding: 0 1; border: solid $accent; background: $terminal; }
@@ -309,6 +356,12 @@ class ChatApp(App[None]):
     #chroma-actions Button { width: auto; min-width: 0; height: 1; padding: 0; border: none; background: $terminal; color: $metadata; text-style: none; }
     #chroma-actions Button:hover { border: none; background: $terminal; color: $metadata; text-style: none; }
     #chroma-actions Button:focus, #chroma-actions Button.-active { border: none; background: $terminal; color: $accent; text-style: bold; }
+    .horizontal-menu { width: 100%; height: 2; padding: 0 1; background: $terminal; border: none; }
+    .horizontal-menu.-unplaced { visibility: hidden; }
+    .horizontal-menu-actions { height: 1; }
+    .horizontal-menu-actions Button { width: auto; min-width: 0; height: 1; padding: 0; border: none; background: $terminal; color: $metadata; text-style: none; }
+    .horizontal-menu-actions Button:hover { border: none; background: $terminal; color: $metadata; text-style: none; }
+    .horizontal-menu-actions Button:focus, .horizontal-menu-actions Button.-active { border: none; background: $terminal; color: $accent; text-style: bold; }
     Button { border: tall $metadata; background: $terminal; color: $terminal; }
     Button:hover, Button:focus, Button.-active { border: tall $accent; background: $terminal; color: $terminal; background-tint: transparent; tint: transparent; text-style: reverse bold; }
     ModalScreen { background: transparent; }
@@ -369,12 +422,8 @@ class ChatApp(App[None]):
         self._reference_token_span: tuple[int, int] | None = None
         self._reference_selected = False
         self._dismissed_reference_text: str | None = None
-        self._confirmation_open = False
-        self._trace_name_open = False
-        self._trace_menu_id: str | None = None
-        self._trace_rename_open = False
-        self._chroma_menu_open = False
-        self._chroma_initial_theme_index = 0
+        self._active_dialog: ActiveDialog | None = None
+        self._active_selector: ActiveSelector | None = None
         self._trace_blink_visible = True
         self._trace_blink_timer: Timer | None = None
         self._load_status_text: str | None = None
@@ -385,9 +434,7 @@ class ChatApp(App[None]):
         self._alert_timer: Timer | None = None
         self._selected_catalog_key: str | None = None
         self._specs_key: str | None = None
-        self._specs_from_chat = False
-        self._probe_view = False
-        self._buffer_view = False
+        self._active_sheet: SheetPage | None = None
         self._active_trace: SavedChat | None = None
         self._link_id: str | None = None
         self._accent_theme_index = next(
@@ -404,7 +451,7 @@ class ChatApp(App[None]):
                 yield Static("REGISTRY", markup=False, id="catalog-title")
             with Horizontal(id="catalog-subtitle"):
                 yield Static(
-                    "CONNECT to a BASE, CONSTRUCT, or TRACE.",
+                    "Select a CONSTRUCT to establish a LINK.",
                     markup=False,
                     id="catalog-description",
                 )
@@ -418,23 +465,7 @@ class ChatApp(App[None]):
                 markup=False,
                 id="catalog-hints",
             )
-        with Container(id="specs"):
-            with Horizontal(id="specs-heading"):
-                yield Static("", markup=False, id="specs-identity")
-                yield Static(
-                    _link_label(None),
-                    markup=False,
-                    id="specs-link",
-                    classes="brand-link",
-                )
-            yield Rule(line_style="solid", id="specs-rule")
-            with SpecsScroll(id="specs-scroll"):
-                yield Static("", markup=False, id="specs-body")
-            yield Static(
-                "↑↓ SCROLL    ←→ CONSTRUCT    ENTER CONNECT    ESC REGISTRY    CTRL+C TERMINATE",
-                markup=False,
-                id="specs-hints",
-            )
+        yield InfoSheet(id="specs")
         with Container(id="chat"):
             with Horizontal(id="chat-heading"):
                 yield Static("", markup=False, id="identity")
@@ -452,9 +483,9 @@ class ChatApp(App[None]):
                     yield CommandMenu(id="command-menu")
                     yield ReferenceMenu(id="reference-menu")
                     yield LoadingStatus(id="status")
-                    yield CommandBar(id="command-bar")
+                    yield CommandBar(id="command-bar", classes="selection-bar")
                 yield LoadingStatus(id="chat-alert")
-            yield ReferenceBar(id="reference-bar")
+            yield ReferenceBar(id="reference-bar", classes="selection-bar")
             with Horizontal(id="composer-bar"):
                 yield Static(">", markup=False, id="composer-prompt")
                 yield Composer(id="composer", language=None)
@@ -462,7 +493,7 @@ class ChatApp(App[None]):
 
     def on_mount(self) -> None:
         """Populate the chooser or open a direct selection."""
-        specs_scroll = self.query_one("#specs-scroll", VerticalScroll)
+        specs_scroll = self.query_one("#specs-scroll", SheetScroll)
         cast(Any, specs_scroll.vertical_scrollbar).renderer = HalfCellScrollBarRender
         self._set_accent_theme(_DEFAULT_ACCENT_THEME)
         self._fill_chooser()
@@ -501,7 +532,7 @@ class ChatApp(App[None]):
             self.call_after_refresh(self._render_command)
             self.call_after_refresh(self._render_reference)
         elif self.query_one("#specs").display:
-            self.call_after_refresh(self._render_specs)
+            self.call_after_refresh(self.query_one(InfoSheet).refresh_page)
 
     def on_key(self, event: events.Key) -> None:
         """Keep Escape reference behavior consistent with app bindings."""
@@ -548,8 +579,7 @@ class ChatApp(App[None]):
         """Open the action menu when the highlighted row is a saved trace."""
         row = self._rows.get(event.key)
         if isinstance(row, SavedChat):
-            self._trace_menu_id = row.id
-            self._trace_rename_open = False
+            self._active_dialog = ActiveDialog(DialogKind.TRACE_MANAGE, row.id)
             self._start_trace_blink()
             self._refresh_catalog_prompts(event.key)
             self.push_screen(
@@ -562,7 +592,7 @@ class ChatApp(App[None]):
         event: KeyboardOptionList.SpecsRequested,
     ) -> None:
         """Open model details for one available registry row."""
-        if self._loading or self._trace_menu_id is not None:
+        if self._loading or self._active_dialog is not None:
             return
         row = self._rows.get(event.key)
         if isinstance(row, DiscoveryItem):
@@ -577,14 +607,16 @@ class ChatApp(App[None]):
     ) -> None:
         """Open the registry's accent theme menu."""
         del event
-        if self._loading or self._trace_menu_id is not None:
+        if self._loading or self._active_dialog is not None:
             return
         self._open_chroma()
 
     def _open_chroma(self) -> None:
         """Open the accent theme menu from the active screen."""
-        self._chroma_initial_theme_index = self._accent_theme_index
-        self._chroma_menu_open = True
+        self._active_dialog = ActiveDialog(
+            DialogKind.CHROMA,
+            initial_theme_index=self._accent_theme_index,
+        )
         if self.query_one("#landing").display:
             self._update_catalog_hints()
         else:
@@ -600,15 +632,21 @@ class ChatApp(App[None]):
     def _after_chroma(self, choice: str | None) -> None:
         """Commit or cancel the CHROMA preview."""
         equipped = None
+        initial = (
+            self._active_dialog.initial_theme_index
+            if self._active_dialog is not None
+            and self._active_dialog.initial_theme_index is not None
+            else self._accent_theme_index
+        )
         if choice is None:
-            name = _ACCENT_THEMES[self._chroma_initial_theme_index][0]
+            name = _ACCENT_THEMES[initial][0]
             self._set_accent_theme(name)
         else:
             self._set_accent_theme(choice)
             equipped = next(
                 label for name, _, label in _ACCENT_THEMES if name == choice
             )
-        self._chroma_menu_open = False
+        self._active_dialog = None
         if self.query_one("#landing").display:
             self._update_catalog_hints()
         else:
@@ -636,27 +674,32 @@ class ChatApp(App[None]):
         if self._selected_catalog_key is not None:
             self._refresh_catalog_prompts(self._selected_catalog_key)
 
-    def on_specs_scroll_cycle_requested(
+    def on_sheet_scroll_cycle_requested(
         self,
-        event: SpecsScroll.CycleRequested,
+        event: SheetScroll.CycleRequested,
     ) -> None:
         """Show the adjacent available registry entry in SPECS."""
         self._cycle_specs(event.offset)
 
-    def on_specs_scroll_connect_requested(
+    def on_sheet_scroll_connect_requested(
         self,
-        event: SpecsScroll.ConnectRequested,
+        event: SheetScroll.ConnectRequested,
     ) -> None:
         """Connect to the selected registry entry from SPECS."""
         del event
-        if self._specs_from_chat or self._loading or self._specs_key is None:
+        if (
+            self._active_sheet is None
+            or not self._active_sheet.connect
+            or self._loading
+            or self._specs_key is None
+        ):
             return
         self.query_one("#specs").display = False
         self._open_row(self._specs_key)
 
     def _after_trace_action(self, trace: SavedChat, choice: str | None) -> None:
         if choice == "rename":
-            self._trace_rename_open = True
+            self._active_dialog = ActiveDialog(DialogKind.TRACE_RENAME, trace.id)
             self._update_catalog_hints()
             self.push_screen(
                 TraceNameModal(trace.title, registry=True),
@@ -700,8 +743,7 @@ class ChatApp(App[None]):
             self._trace_blink_timer.stop()
             self._trace_blink_timer = None
         self._trace_blink_visible = True
-        self._trace_menu_id = None
-        self._trace_rename_open = False
+        self._active_dialog = None
         if selected_key is not None:
             self._refresh_catalog_prompts(selected_key)
         else:
@@ -716,7 +758,11 @@ class ChatApp(App[None]):
 
     def _toggle_trace_blink(self) -> None:
         """Toggle the managed TRACE name without changing row height."""
-        if self._trace_menu_id is None or self._selected_catalog_key is None:
+        if (
+            self._active_dialog is None
+            or self._active_dialog.trace_id is None
+            or self._selected_catalog_key is None
+        ):
             return
         self._trace_blink_visible = not self._trace_blink_visible
         self._refresh_catalog_prompts(self._selected_catalog_key)
@@ -1030,6 +1076,7 @@ class ChatApp(App[None]):
                 self._command(command.name, command.arguments)
                 return
             if self._generating:
+                self._show_error("CONSTRUCT is generating")
                 return
             session = self._session()
             reference = self._reference_index if self._reference_selected else None
@@ -1053,7 +1100,7 @@ class ChatApp(App[None]):
     def action_stop(self) -> None:
         """Stop active generation at a token boundary."""
         if self.query_one("#specs").display:
-            if self._specs_from_chat:
+            if self._active_sheet is not None and self._active_sheet.origin == "chat":
                 self._restore_chat_from_specs()
             else:
                 self._show_registry()
@@ -1078,7 +1125,11 @@ class ChatApp(App[None]):
 
     def action_interrupt(self) -> None:
         """Stop active work or open the idle quit confirmation."""
-        if self.query_one("#specs").display and self._specs_from_chat:
+        if (
+            self.query_one("#specs").display
+            and self._active_sheet is not None
+            and self._active_sheet.origin == "chat"
+        ):
             self._restore_chat_from_specs()
         if self._generating:
             self.runtime.cancel()
@@ -1161,7 +1212,7 @@ class ChatApp(App[None]):
         self._show_error(message)
 
     def _report_prefill(self, current: int, total: int) -> None:
-        self.call_from_thread(self._set_status, f"prefill {current}/{total}")
+        self.call_from_thread(self._set_status, f"prefill {current}/{total} TOK")
 
     def _show_chat(self) -> None:
         session = self._session()
@@ -1474,6 +1525,7 @@ class ChatApp(App[None]):
             composer.reference_menu_active = False
             composer.reference_menu_escape_enabled = False
             composer.reference_selected = self._reference_selected
+            self._sync_active_selector()
             self._update_footer()
             self._align_activity_alert()
             return
@@ -1528,26 +1580,38 @@ class ChatApp(App[None]):
         composer.reference_menu_active = active
         composer.reference_menu_escape_enabled = active
         composer.reference_selected = self._reference_selected
+        self._sync_active_selector()
         self._update_footer()
         self._align_activity_alert()
         if active:
             self.call_after_refresh(self._scroll_transcript_end)
 
     def _update_footer(self) -> None:
-        if self._chroma_menu_open:
+        if self._active_dialog is not None and self._active_dialog.kind is DialogKind.CHROMA:
             self._set_footer("←→ MOVE    ENTER EQUIP    ESC CANCEL")
             return
-        if self._confirmation_open:
+        if self._active_dialog is not None and self._active_dialog.kind in {
+            DialogKind.CONFIRM,
+            DialogKind.TRACE_NAME,
+        }:
             self._set_footer(
                 "ENTER TRACE    ESC RESUME"
-                if self._trace_name_open
+                if self._active_dialog.kind is DialogKind.TRACE_NAME
                 else "←→ MOVE    ENTER SELECT    ESC RESUME"
             )
             return
-        if self.query_one("#reference-menu", ReferenceMenu).display:
+        if (
+            self._active_selector is not None
+            and self._active_selector.kind is SelectorKind.REFERENCE
+            and self._active_selector.menu_open
+        ):
             self._set_footer("↑↓ MOVE    ENTER REF    ESC CLOSE")
             return
-        if self._command_matches:
+        if (
+            self._active_selector is not None
+            and self._active_selector.kind is SelectorKind.COMMAND
+            and self._active_selector.menu_open
+        ):
             self._set_footer("↑↓ MOVE    ENTER COMMAND    ESC CLOSE")
             return
         session = self._session()
@@ -1628,8 +1692,7 @@ class ChatApp(App[None]):
             elif self._generating:
                 self._show_error("CONSTRUCT is generating")
             else:
-                self._confirmation_open = True
-                self._trace_name_open = True
+                self._active_dialog = ActiveDialog(DialogKind.TRACE_NAME)
                 self._update_confirmation_spacing()
                 self._update_footer()
                 self.push_screen(
@@ -1708,6 +1771,7 @@ class ChatApp(App[None]):
         composer.command_menu_escape_enabled = not self._generating
         composer.command_selected = self._command_selected
         composer.reference_selected = self._reference_selected
+        self._sync_active_selector()
         self._update_footer()
         self._align_activity_alert()
         if was_visible or visible_matches:
@@ -1763,34 +1827,59 @@ class ChatApp(App[None]):
         self.exit()
 
     def _push_confirmation(self, callback: Callable[[str | None], None]) -> None:
-        self._confirmation_open = True
-        self._trace_name_open = False
+        self._active_dialog = ActiveDialog(DialogKind.CONFIRM)
         self._update_confirmation_spacing()
         self._update_footer()
         self.push_screen(ConfirmModal(), callback)
 
     def _push_trace_name(self, callback: Callable[[str | None], None]) -> None:
-        self._trace_name_open = True
+        self._active_dialog = ActiveDialog(DialogKind.TRACE_NAME)
         self._update_footer()
         self.push_screen(TraceNameModal(default_chat_title(self._session())), callback)
 
     def _close_confirmation(self) -> None:
-        self._confirmation_open = False
-        self._trace_name_open = False
+        self._active_dialog = None
         self._update_confirmation_spacing()
         self._update_footer()
 
     def _update_confirmation_spacing(self) -> None:
         scroller = self.query_one("#transcript-scroll", VerticalScroll)
-        bottom = 3 if self._confirmation_open or self._chroma_menu_open else 1
-        if (
-            self._reference_selected
-            or self._command_selected
-            or self.query_one("#command-bar", CommandBar).display
-        ):
+        overlay = self._active_dialog is not None and self._active_dialog.kind in {
+            DialogKind.CHROMA,
+            DialogKind.CONFIRM,
+            DialogKind.TRACE_NAME,
+        }
+        bottom = 3 if overlay else 1
+        self._sync_active_selector()
+        if self._active_selector is not None and self._active_selector.accessory_selected:
             bottom += 2
         scroller.styles.padding = (1, 2, bottom, 2)
         self.call_after_refresh(self._scroll_transcript_end)
+
+    def _sync_active_selector(self) -> None:
+        """Derive the one active selector record from rendered controls."""
+        command_menu = self.query_one("#command-menu", CommandMenu).display
+        reference_menu = self.query_one("#reference-menu", ReferenceMenu).display
+        command_selected = self._command_selected or self.query_one(
+            "#command-bar", CommandBar
+        ).display
+        reference_selected = self._reference_selected or self.query_one(
+            "#reference-bar", ReferenceBar
+        ).display
+        if command_menu or command_selected:
+            self._active_selector = ActiveSelector(
+                SelectorKind.COMMAND,
+                command_menu,
+                command_selected,
+            )
+        elif reference_menu or reference_selected:
+            self._active_selector = ActiveSelector(
+                SelectorKind.REFERENCE,
+                reference_menu,
+                reference_selected,
+            )
+        else:
+            self._active_selector = None
 
     def _save_from_confirmation(self, title: str) -> bool:
         if self.store is None:
@@ -2052,100 +2141,76 @@ class ChatApp(App[None]):
 
     def _show_specs(self, key: str) -> None:
         """Show details for one registry entry without loading its model."""
-        self._specs_from_chat = False
-        self._probe_view = False
-        self._buffer_view = False
         self._specs_key = key
-        self.query_one("#landing").display = False
-        self.query_one("#chat").display = False
-        self.query_one("#specs").display = True
-        self.query_one("#specs-link", Static).display = False
-        self.query_one("#specs-hints", Static).update(
-            "↑↓ SCROLL    ←→ CONSTRUCT    ENTER CONNECT    ESC REGISTRY    CTRL+C TERMINATE"
-        )
-        self._render_specs()
-        self.query_one("#specs-scroll", VerticalScroll).focus()
+        self._open_sheet(self._registry_sheet_page())
 
     def _show_chat_specs(self) -> None:
         """Show model details as a temporary view over the active chat."""
-        self._specs_from_chat = True
-        self._probe_view = False
-        self._buffer_view = False
+        session = self._session()
         self._specs_key = None
-        self.query_one("#landing").display = False
-        self.query_one("#chat").display = False
-        self.query_one("#specs").display = True
-        specs_link = self.query_one("#specs-link", Static)
-        specs_link.update(
-            _link_label(self._link_id)
+        self._open_sheet(
+            SheetPage(
+                session.assistant.name,
+                self._render_chat_specs_document,
+                "chat",
+                _link_label(self._link_id),
+                "↑↓ SCROLL    ESC LINK    CTRL+C TERMINATE",
+            )
         )
-        specs_link.display = True
-        self.query_one("#specs-hints", Static).update(
-            "↑↓ SCROLL    ESC LINK    CTRL+C TERMINATE"
-        )
-        self._render_specs()
-        specs_scroll = self.query_one("#specs-scroll", SpecsScroll)
-        specs_scroll.scroll_to(y=0, animate=False)
-        specs_scroll.focus()
 
     def _show_chat_probe(self) -> None:
         """Show live hardware and load details over the active chat."""
-        self._specs_from_chat = True
-        self._probe_view = True
-        self._buffer_view = False
+        session = self._session()
         self._specs_key = None
-        self.query_one("#landing").display = False
-        self.query_one("#chat").display = False
-        self.query_one("#specs").display = True
-        specs_link = self.query_one("#specs-link", Static)
-        specs_link.update(_link_label(self._link_id))
-        specs_link.display = True
-        self.query_one("#specs-hints", Static).update(
-            "↑↓ SCROLL    ESC LINK    CTRL+C TERMINATE"
+        self._open_sheet(
+            SheetPage(
+                session.assistant.name,
+                lambda: render_probe(
+                    self.runtime.runtime_probe,
+                    self.runtime.load_probe,
+                ),
+                "chat",
+                _link_label(self._link_id),
+                "↑↓ SCROLL    ESC LINK    CTRL+C TERMINATE",
+            )
         )
-        self.query_one("#specs-identity", Static).update("PROBE")
-        self._render_specs()
-        specs_scroll = self.query_one("#specs-scroll", SpecsScroll)
-        specs_scroll.scroll_to(y=0, animate=False)
-        specs_scroll.focus()
 
     def _show_chat_buffer(self) -> None:
         """Show context-window details over the active chat."""
-        self._specs_from_chat = True
-        self._probe_view = False
-        self._buffer_view = True
+        session = self._session()
         self._specs_key = None
+        self._open_sheet(
+            SheetPage(
+                session.assistant.name,
+                lambda: render_buffer(
+                    session,
+                    getattr(self.runtime, "last_prompt", None),
+                ),
+                "chat",
+                _link_label(self._link_id),
+                "↑↓ SCROLL    ESC LINK    CTRL+C TERMINATE",
+            )
+        )
+
+    def _open_sheet(self, page: SheetPage) -> None:
+        """Open one sheet through the shared sheet component."""
         self.query_one("#landing").display = False
         self.query_one("#chat").display = False
-        self.query_one("#specs").display = True
-        specs_link = self.query_one("#specs-link", Static)
-        specs_link.update(_link_label(self._link_id))
-        specs_link.display = True
-        self.query_one("#specs-hints", Static).update(
-            "↑↓ SCROLL    ESC LINK    CTRL+C TERMINATE"
-        )
-        self.query_one("#specs-identity", Static).update("BUFFER")
-        self._render_specs()
-        specs_scroll = self.query_one("#specs-scroll", SpecsScroll)
-        specs_scroll.scroll_to(y=0, animate=False)
-        specs_scroll.focus()
+        self._active_sheet = page
+        self.query_one(InfoSheet).open(page)
 
     def _restore_chat_from_specs(self) -> None:
         """Return from temporary model details without changing chat state."""
-        self.query_one("#specs").display = False
+        self.query_one(InfoSheet).close()
         self.query_one("#chat").display = True
-        self._specs_from_chat = False
-        self._probe_view = False
-        self._buffer_view = False
+        self._active_sheet = None
         self.query_one(Composer).focus()
 
     def _show_registry(self) -> None:
         """Return from model details to the unchanged registry selection."""
-        self.query_one("#specs").display = False
+        self.query_one(InfoSheet).close()
         self.query_one("#landing").display = True
-        self._specs_from_chat = False
-        self._probe_view = False
-        self._buffer_view = False
+        self._active_sheet = None
         self._specs_key = None
         self.query_one("#chooser", OptionList).focus()
 
@@ -2164,66 +2229,67 @@ class ChatApp(App[None]):
         option_index, key = available[(current + offset) % len(available)]
         self._specs_key = key
         chooser.highlighted = option_index
-        self._render_specs()
-        self.query_one("#specs-scroll", SpecsScroll).scroll_to(y=0, animate=False)
+        page = self._registry_sheet_page()
+        self._active_sheet = page
+        self.query_one(InfoSheet).open(page)
 
-    def _render_specs(self) -> None:
-        """Render the selected model details at the current terminal width."""
-        if self._probe_view:
-            self.query_one("#specs-identity", Static).update("PROBE")
-            self.query_one("#specs-body", Static).update(
-                render_probe(
-                    self.runtime.runtime_probe,
-                    self.runtime.load_probe,
-                )
-            )
-            return
-        if self._buffer_view:
-            session = self._session()
-            self.query_one("#specs-identity", Static).update("BUFFER")
-            self.query_one("#specs-body", Static).update(
-                render_buffer(session, getattr(self.runtime, "last_prompt", None))
-            )
-            return
-        if self._specs_from_chat:
-            session = self._session()
-            assistant = session.assistant
-            generation = session.generation
-            trace = self._active_trace
-            kind = (
-                "TRACE"
-                if trace is not None
-                else "BASE"
-                if assistant.run is None
-                else "CONSTRUCT"
-            )
+    def _registry_sheet_page(self) -> SheetPage:
+        """Return the page declaration for the selected registry row."""
+        row = self._rows.get(self._specs_key or "")
+        if isinstance(row, DiscoveryItem):
+            title = "SPECS" if row.assistant is None else row.assistant.name
+        elif isinstance(row, SavedChat):
+            title = row.assistant.name
         else:
-            row = self._rows.get(self._specs_key or "")
-            if isinstance(row, DiscoveryItem) and row.assistant is not None:
-                assistant = row.assistant
-                kind = "BASE" if assistant.run is None else "CONSTRUCT"
-                generation = self.generation
-                trace = None
-            elif isinstance(row, SavedChat):
-                assistant = row.assistant
-                kind = "TRACE"
-                generation = row.generation
-                trace = row
-            else:
-                return
-        self.query_one("#specs-identity", Static).update(assistant.name)
-        body = render_specs(
-            assistant,
-            generation,
-            kind,
-            trace,
+            title = "SPECS"
+        return SheetPage(
+            title,
+            self._render_registry_specs_document,
+            "registry",
+            None,
+            "↑↓ SCROLL    ←→ CONSTRUCT    ENTER CONNECT    ESC REGISTRY    CTRL+C TERMINATE",
+            cycle=True,
+            connect=True,
         )
-        self.query_one("#specs-body", Static).update(body)
+
+    def _render_registry_specs_document(self) -> SheetDocument:
+        """Render the current registry SPECS document."""
+        row = self._rows.get(self._specs_key or "")
+        if isinstance(row, DiscoveryItem) and row.assistant is not None:
+            assistant = row.assistant
+            kind = "BASE" if assistant.run is None else "CONSTRUCT"
+            generation = self.generation
+            trace = None
+        elif isinstance(row, SavedChat):
+            assistant = row.assistant
+            kind = "TRACE"
+            generation = row.generation
+            trace = row
+        else:
+            return SheetDocument()
+        return render_specs(assistant, generation, kind, trace)
+
+    def _render_chat_specs_document(self) -> SheetDocument:
+        """Render the active chat SPECS document."""
+        session = self._session()
+        assistant = session.assistant
+        trace = self._active_trace
+        kind = (
+            "TRACE"
+            if trace is not None
+            else "BASE"
+            if assistant.run is None
+            else "CONSTRUCT"
+        )
+        return render_specs(assistant, session.generation, kind, trace)
 
     def _refresh_catalog_prompts(self, selected_key: str) -> None:
         self._selected_catalog_key = selected_key
         chooser = self.query_one("#chooser", OptionList)
         layout = CatalogLayout.for_terminal(self.size.width)
+        managed_trace_id = (
+            None if self._active_dialog is None else self._active_dialog.trace_id
+        )
         for option in chooser.options:
             if option.id is None:
                 continue
@@ -2257,13 +2323,13 @@ class ChatApp(App[None]):
                     trace_name=(
                         None
                         if not self._trace_details_expanded
-                        and row.id != self._trace_menu_id
+                        and row.id != managed_trace_id
                         else row.title
                     ),
-                    trace_active=row.id == self._trace_menu_id,
+                    trace_active=row.id == managed_trace_id,
                     trace_visible=(
                         self._trace_blink_visible
-                        if row.id == self._trace_menu_id
+                        if row.id == managed_trace_id
                         else True
                     ),
                 )
@@ -2274,15 +2340,15 @@ class ChatApp(App[None]):
 
     def _update_catalog_hints(self) -> None:
         """Show actions available for the current registry row."""
-        if self._chroma_menu_open:
+        if self._active_dialog is not None and self._active_dialog.kind is DialogKind.CHROMA:
             self.query_one("#catalog-hints", Static).update(
                 "←→ MOVE    ENTER EQUIP    ESC CANCEL"
             )
             return
-        if self._trace_menu_id is not None:
+        if self._active_dialog is not None and self._active_dialog.trace_id is not None:
             self.query_one("#catalog-hints", Static).update(
                 "ENTER NAME    ESC RETAIN"
-                if self._trace_rename_open
+                if self._active_dialog.kind is DialogKind.TRACE_RENAME
                 else "←→ MOVE    ENTER SELECT    ESC RETAIN"
             )
             return

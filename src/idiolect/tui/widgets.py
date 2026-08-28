@@ -13,16 +13,26 @@ from rich.text import Text
 from textual import events
 from textual.app import ComposeResult, RenderResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.containers import Horizontal, Vertical
 from textual.geometry import Region
 from textual.message import Message
 from textual.screen import ModalScreen
 from textual.strip import Strip
 from textual.widget import Widget
-from textual.widgets import Button, Input, OptionList, Static, TextArea
+from textual.widgets import Input, OptionList, Static, TextArea
 
 from idiolect.tui.commands import COMMAND_DESCRIPTIONS, COMMANDS
 from idiolect.tui.markdown import ChatMarkdown
+from idiolect.tui.menus import (
+    HorizontalMenuModal,
+    MenuButton,
+    MenuCursor,
+    MenuItem,
+    VerticalMenu,
+)
+from idiolect.tui.sheets import SheetScroll
+
+SpecsScroll = SheetScroll
 
 
 class KeyboardOptionList(OptionList):
@@ -112,42 +122,7 @@ class KeyboardOptionList(OptionList):
         event.stop()
 
 
-class SpecsScroll(VerticalScroll):
-    """Scroll specifications and request registry navigation."""
-
-    class CycleRequested(Message):
-        """Request the next or previous specification sheet."""
-
-        def __init__(self, offset: int) -> None:
-            """Set the registry movement direction."""
-            self.offset = offset
-            super().__init__()
-
-    class ConnectRequested(Message):
-        """Request connection to the selected registry entry."""
-
-    async def _on_key(self, event: events.Key) -> None:
-        if event.key == "enter":
-            event.prevent_default()
-            event.stop()
-            self.post_message(self.ConnectRequested())
-            return
-        if event.key in {"left", "right"}:
-            event.prevent_default()
-            event.stop()
-            self.post_message(
-                self.CycleRequested(-1 if event.key == "left" else 1)
-            )
-            return
-        await super()._on_key(event)
-
-
-class KeyboardButton(Button):
-    """Activate a modal action with the keyboard."""
-
-    async def _on_click(self, event: events.Click) -> None:
-        event.prevent_default()
-        event.stop()
+KeyboardButton = MenuButton
 
 
 class Composer(TextArea):
@@ -165,6 +140,35 @@ class Composer(TextArea):
 
         def __init__(self, value: str) -> None:
             self.value = value
+            super().__init__()
+
+    class SelectorMoved(Message):
+        """Report generic selector movement."""
+
+        def __init__(self, selector: str, offset: int) -> None:
+            self.selector = selector
+            self.offset = offset
+            super().__init__()
+
+    class SelectorAccepted(Message):
+        """Report generic selector acceptance."""
+
+        def __init__(self, selector: str) -> None:
+            self.selector = selector
+            super().__init__()
+
+    class SelectorDismissed(Message):
+        """Report generic selector dismissal."""
+
+        def __init__(self, selector: str) -> None:
+            self.selector = selector
+            super().__init__()
+
+    class AccessoryEscaped(Message):
+        """Report removal of one selected composer accessory."""
+
+        def __init__(self, selector: str) -> None:
+            self.selector = selector
             super().__init__()
 
     class CommandMoved(Message):
@@ -213,6 +217,11 @@ class Composer(TextArea):
                 if self.command_selected
                 else self.ReferenceEscaped()
             )
+            self.post_message(
+                self.AccessoryEscaped(
+                    "command" if self.command_selected else "reference"
+                )
+            )
 
     async def _on_key(self, event: events.Key) -> None:
         if self.command_menu_active and event.key in {"up", "down"}:
@@ -220,6 +229,7 @@ class Composer(TextArea):
             event.stop()
             offset = -1 if event.key == "up" else 1
             self.post_message(self.CommandMoved(offset))
+            self.post_message(self.SelectorMoved("command", offset))
             return
         if self.command_menu_active and event.key == "tab":
             event.prevent_default()
@@ -233,12 +243,14 @@ class Composer(TextArea):
             event.prevent_default()
             event.stop()
             self.post_message(self.CommandDismissed())
+            self.post_message(self.SelectorDismissed("command"))
             return
         if self.reference_menu_active and event.key in {"up", "down"}:
             event.prevent_default()
             event.stop()
             offset = -1 if event.key == "up" else 1
             self.post_message(self.ReferenceMoved(offset))
+            self.post_message(self.SelectorMoved("reference", offset))
             return
         if (
             self.reference_menu_active
@@ -248,11 +260,13 @@ class Composer(TextArea):
             event.prevent_default()
             event.stop()
             self.post_message(self.ReferenceDismissed())
+            self.post_message(self.SelectorDismissed("reference"))
             return
         if self.reference_menu_active and event.key == "enter":
             event.prevent_default()
             event.stop()
             self.post_message(self.ReferenceSelected())
+            self.post_message(self.SelectorAccepted("reference"))
             return
         if (
             (self.command_selected or self.reference_selected)
@@ -267,10 +281,17 @@ class Composer(TextArea):
                 if self.command_selected
                 else self.ReferenceEscaped()
             )
+            self.post_message(
+                self.AccessoryEscaped(
+                    "command" if self.command_selected else "reference"
+                )
+            )
             return
         if event.key == "enter":
             event.prevent_default()
             event.stop()
+            if self.command_menu_active:
+                self.post_message(self.SelectorAccepted("command"))
             self.post_message(self.Submitted(self.text))
             return
         if event.key in {"shift+enter", "alt+enter"}:
@@ -281,27 +302,36 @@ class Composer(TextArea):
         await super()._on_key(event)
 
 
-class CommandMenu(Widget):
+class CommandMenu(VerticalMenu):
     """Show keyboard-controlled commands above the composer."""
+
+    def __init__(self, *, id: str | None = None) -> None:
+        """Create the declarative command menu."""
+        super().__init__("COMMAND", id=id)
 
     def compose(self) -> ComposeResult:
         """Create the command heading and actions."""
-        yield Static("COMMAND", markup=False, id="command-message")
-        with Vertical(id="command-actions"):
+        yield Static(
+            "COMMAND",
+            markup=False,
+            id="command-message",
+            classes="menu-heading",
+        )
+        with Vertical(id="command-actions", classes="menu-actions"):
             for command in COMMANDS:
                 with Horizontal(
                     id=f"command-{command[1:]}",
-                    classes="command-action",
+                    classes="command-action menu-action",
                 ):
                     yield Static(
                         command,
                         markup=False,
-                        classes="command-name",
+                        classes="command-name menu-name",
                     )
                     yield Static(
                         COMMAND_DESCRIPTIONS[command],
                         markup=False,
-                        classes="command-description",
+                        classes="command-description menu-description",
                     )
 
     def set_commands(
@@ -313,10 +343,21 @@ class CommandMenu(Widget):
         trace_enabled: bool,
     ) -> None:
         """Set visible commands and the highlighted command."""
+        items = tuple(
+            MenuItem(
+                command,
+                command,
+                COMMAND_DESCRIPTIONS[command],
+                disabled=(
+                    (command == "/disconnect" and not registry_enabled)
+                    or (command == "/trace" and not trace_enabled)
+                ),
+            )
+            for command in commands
+        )
+        cursor = MenuCursor(items, selected)
+        preview = tuple(item.identity for item in cursor.viewport())
         self.display = bool(commands)
-        selected_index = commands.index(selected) if selected in commands else 0
-        start = min(max(selected_index - 2, 0), max(len(commands) - 3, 0))
-        preview = commands[start : start + 3]
         for command in COMMANDS:
             action = self.query_one(f"#command-{command[1:]}", Horizontal)
             action.display = command in preview
@@ -326,35 +367,22 @@ class CommandMenu(Widget):
             )
             action.set_class(command == selected and not disabled, "-selected")
             action.set_class(disabled, "-disabled")
-            action.set_class(
-                command == "/trace" and not trace_enabled,
-                "-trace-disabled",
-            )
 
 
-class CommandBar(Static):
-    """Render one selected argument command above the composer."""
+class SelectionBar(Static):
+    """Own accent state and border rendering for a selection bar."""
 
     _accent = "green"
-    _command: tuple[str, str] | None = None
 
     def set_accent(self, color: str) -> None:
         """Set the accent used by the dimmed command border."""
         if color != self._accent:
             self._accent = color
-            if self._command is None:
-                self.refresh()
-            else:
-                self.set_command(*self._command)
+            self.refresh_content()
 
-    def set_command(self, name: str, description: str) -> None:
-        """Show one selected command and its description."""
-        self._command = (name, description)
-        value = Text.assemble(
-            (f"/ {name.upper()}", f"dim {self._accent}"),
-            (f" {description}", "bright_black"),
-        )
-        self.update(value)
+    def refresh_content(self) -> None:
+        """Refresh content after the accent changes."""
+        self.refresh()
 
     def render_lines(self, crop: Region) -> list[Strip]:
         """Dim the command border while keeping its roles explicit."""
@@ -389,20 +417,60 @@ class CommandBar(Static):
         return rendered
 
 
-class ReferenceMenu(Widget):
+class CommandBar(SelectionBar):
+    """Render one selected argument command above the composer."""
+
+    _command: tuple[str, str] | None = None
+
+    def refresh_content(self) -> None:
+        """Refresh the selected command with the current accent."""
+        if self._command is None:
+            self.refresh()
+        else:
+            self.set_command(*self._command)
+
+    def set_command(self, name: str, description: str) -> None:
+        """Show one selected command and its description."""
+        self._command = (name, description)
+        self.update(
+            Text.assemble(
+                (f"/ {name.upper()}", f"dim {self._accent}"),
+                (f" {description}", "bright_black"),
+            )
+        )
+
+
+class ReferenceMenu(VerticalMenu):
     """Show keyboard-controlled chat bubble references."""
+
+    def __init__(self, *, id: str | None = None) -> None:
+        """Create the declarative reference menu."""
+        super().__init__("REF", id=id)
 
     def compose(self) -> ComposeResult:
         """Create the reference heading and up to three rows."""
-        yield Static("REF", markup=False, id="reference-message")
-        with Vertical(id="reference-actions"):
+        yield Static(
+            "REF",
+            markup=False,
+            id="reference-message",
+            classes="menu-heading",
+        )
+        with Vertical(id="reference-actions", classes="menu-actions"):
             for index in range(3):
                 with Horizontal(
                     id=f"reference-{index}",
-                    classes="reference-action",
+                    classes="reference-action menu-action",
                 ):
-                    yield Static("", markup=False, classes="reference-name")
-                    yield Static("", markup=False, classes="reference-preview")
+                    yield Static(
+                        "",
+                        markup=False,
+                        classes="reference-name menu-name",
+                    )
+                    yield Static(
+                        "",
+                        markup=False,
+                        classes="reference-preview menu-description",
+                    )
 
     def set_references(
         self,
@@ -423,20 +491,17 @@ class ReferenceMenu(Widget):
             action.query_one(".reference-preview", Static).update(preview)
 
 
-class ReferenceBar(Static):
+class ReferenceBar(SelectionBar):
     """Render the selected bubble above the composer."""
 
-    _accent = "green"
     _reference: tuple[str, int, str] | None = None
 
-    def set_accent(self, color: str) -> None:
-        """Set the accent used by the dimmed reference border."""
-        if color != self._accent:
-            self._accent = color
-            if self._reference is None:
-                self.refresh()
-            else:
-                self.set_reference(*self._reference)
+    def refresh_content(self) -> None:
+        """Refresh the selected reference with the current accent."""
+        if self._reference is None:
+            self.refresh()
+        else:
+            self.set_reference(*self._reference)
 
     def set_reference(self, name: str, index: int, preview: str) -> None:
         """Show one selected reference with its fixed ANSI roles."""
@@ -448,39 +513,6 @@ class ReferenceBar(Static):
         )
         self.update(value)
 
-    def render_lines(self, crop: Region) -> list[Strip]:
-        """Dim the accent border while keeping the reference content bright."""
-        strips = super().render_lines(crop)
-        if not strips:
-            return strips
-        dim = Style(color=self._accent, dim=True)
-
-        def border_style(strip: Strip) -> Strip:
-            """Apply the border style over Textual's default foreground."""
-            return Strip(
-                [
-                    Segment(segment.text, dim, segment.control)
-                    for segment in strip
-                ],
-                strip.cell_length,
-            )
-
-        height = self.region.height
-        rendered: list[Strip] = []
-        for offset, strip in enumerate(strips):
-            row = crop.y + offset
-            if row in {0, height - 1} or strip.cell_length <= 2:
-                rendered.append(border_style(strip))
-                continue
-            left, middle, right = strip.divide(
-                [1, strip.cell_length - 1, strip.cell_length]
-            )
-            rendered.append(
-                Strip.join(
-                    (border_style(left), middle, border_style(right))
-                )
-            )
-        return rendered
 
 
 class Transcript(Static):
@@ -619,64 +651,25 @@ class LoadingStatus(Widget):
         return Text.assemble(frame, " ", self.state)
 
 
-class ConfirmModal(ModalScreen[str]):
+class ConfirmModal(HorizontalMenuModal):
     """Ask how to handle unsaved transcript changes."""
 
-    def compose(self) -> ComposeResult:
-        """Create the confirmation dialog."""
-        with Vertical(id="confirm-dialog"):
-            yield Static("LINK DIRTY", markup=False, id="confirm-message")
-            with Horizontal(id="confirm-actions"):
-                yield KeyboardButton("DISCONNECT", id="discard")
-                yield KeyboardButton("TRACE", id="save")
-                yield KeyboardButton("RESUME", id="cancel")
-
-    def on_mount(self) -> None:
-        """Focus the save action."""
-        self.query_one(KeyboardButton).focus()
-        self.call_after_refresh(self._place_dialog)
-
-    def on_resize(self) -> None:
-        """Place the dialog next to the composer."""
-        self.call_after_refresh(self._place_dialog)
-
-    def _place_dialog(self) -> None:
-        composer_bar = self.app.query_one("#composer-bar", Horizontal)
-        command_bar = self.app.query_one("#command-bar", CommandBar)
-        reference_bar = self.app.query_one("#reference-bar", ReferenceBar)
-        anchor = command_bar if command_bar.display else reference_bar
-        dialog = self.query_one("#confirm-dialog", Vertical)
-        dialog.styles.width = composer_bar.region.width
-        dialog.styles.offset = (
-            composer_bar.region.x,
-            (anchor.region.y if anchor.display else composer_bar.region.y)
-            - dialog.region.height,
+    def __init__(self) -> None:
+        """Declare dirty-link actions with the safe Escape result."""
+        super().__init__(
+            "LINK DIRTY",
+            (
+                MenuItem("discard", "DISCONNECT"),
+                MenuItem("save", "TRACE"),
+                MenuItem("cancel", "RESUME"),
+            ),
+            "discard",
+            "cancel",
+            anchor="chat",
+            dialog_id="confirm-dialog",
+            message_id="confirm-message",
+            actions_id="confirm-actions",
         )
-
-    def on_key(self, event: events.Key) -> None:
-        """Move focus between confirmation actions."""
-        if event.key == "escape":
-            self.dismiss("cancel")
-            event.prevent_default()
-            event.stop()
-            return
-        if event.key in {"up", "down"}:
-            event.prevent_default()
-            event.stop()
-            return
-        if event.key not in {"left", "right"}:
-            return
-        buttons = list(self.query(KeyboardButton))
-        focused = self.focused
-        index = buttons.index(focused) if isinstance(focused, KeyboardButton) else 0
-        step = -1 if event.key in {"left", "up"} else 1
-        buttons[(index + step) % len(buttons)].focus()
-        event.prevent_default()
-        event.stop()
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        """Return the selected confirmation action."""
-        self.dismiss(event.button.id or "cancel")
 
 
 class TraceNameModal(ModalScreen[str | None]):
@@ -737,63 +730,28 @@ class TraceNameModal(ModalScreen[str | None]):
             event.stop()
 
 
-class TraceMenuModal(ModalScreen[str]):
+class TraceMenuModal(HorizontalMenuModal):
     """Show actions for one saved trace."""
 
-    def compose(self) -> ComposeResult:
-        """Create the trace actions."""
-        with Vertical(id="trace-dialog"):
-            yield Static("TRACE MANAGE", markup=False, id="trace-message")
-            with Horizontal(id="trace-actions"):
-                yield KeyboardButton("ERASE", id="erase")
-                yield KeyboardButton("RENAME", id="rename")
-                yield KeyboardButton("RETAIN", id="retain")
-
-    def on_mount(self) -> None:
-        """Focus the safe action and place the dialog."""
-        self.query_one("#retain", KeyboardButton).focus()
-        self.call_after_refresh(self._place_dialog)
-
-    def on_resize(self) -> None:
-        """Place the dialog above the registry hints."""
-        self.call_after_refresh(self._place_dialog)
-
-    def _place_dialog(self) -> None:
-        hints = self.app.query_one("#catalog-hints", Static)
-        dialog = self.query_one("#trace-dialog", Vertical)
-        dialog.styles.width = hints.region.width - 2
-        dialog.styles.offset = (
-            hints.region.x + 1,
-            hints.region.y - dialog.region.height,
+    def __init__(self) -> None:
+        """Declare TRACE actions with RETAIN as the safe selection."""
+        super().__init__(
+            "TRACE MANAGE",
+            (
+                MenuItem("erase", "ERASE"),
+                MenuItem("rename", "RENAME"),
+                MenuItem("retain", "RETAIN"),
+            ),
+            "retain",
+            "retain",
+            anchor="registry",
+            dialog_id="trace-dialog",
+            message_id="trace-message",
+            actions_id="trace-actions",
         )
 
-    def on_key(self, event: events.Key) -> None:
-        """Move focus or keep the trace when Escape is pressed."""
-        if event.key == "escape":
-            self.dismiss("retain")
-            event.prevent_default()
-            event.stop()
-            return
-        if event.key in {"up", "down"}:
-            event.prevent_default()
-            event.stop()
-            return
-        if event.key not in {"left", "right"}:
-            return
-        buttons = list(self.query(KeyboardButton))
-        focused = self.focused
-        index = buttons.index(focused) if isinstance(focused, KeyboardButton) else 1
-        step = -1 if event.key in {"left", "up"} else 1
-        buttons[(index + step) % len(buttons)].focus()
-        event.prevent_default()
-        event.stop()
 
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        """Return the selected trace action."""
-        self.dismiss(event.button.id or "retain")
-
-
-class ChromaMenuModal(ModalScreen[str | None]):
+class ChromaMenuModal(HorizontalMenuModal):
     """Preview and select one interface accent theme."""
 
     def __init__(
@@ -803,84 +761,16 @@ class ChromaMenuModal(ModalScreen[str | None]):
         on_change: Callable[[str], None],
     ) -> None:
         """Set the theme names and the live preview callback."""
-        super().__init__()
-        self.themes = tuple(themes)
-        self.current = current
-        self.on_change = on_change
-
-    def compose(self) -> ComposeResult:
-        """Create the CHROMA heading and theme actions."""
-        with Vertical(id="chroma-dialog", classes="-unplaced"):
-            yield Static("CHROMA", markup=False, id="chroma-message")
-            with Horizontal(id="chroma-actions"):
-                for name, label in self.themes:
-                    yield KeyboardButton(
-                        label,
-                        id=f"chroma-{name}",
-                    )
-
-    def on_mount(self) -> None:
-        """Focus the current theme and reveal the positioned menu."""
-        self.call_after_refresh(self._show_dialog)
-
-    def _show_dialog(self) -> None:
-        """Place the menu before its first visible render."""
-        dialog = self.query_one("#chroma-dialog", Vertical)
-        self._place_dialog()
-        dialog.remove_class("-unplaced")
-        self.query_one(f"#chroma-{self.current}", KeyboardButton).focus()
-
-    def on_resize(self) -> None:
-        """Place the menu above the registry hints."""
-        self.call_after_refresh(self._place_dialog)
-
-    def _place_dialog(self) -> None:
-        """Place the menu above the active screen's bottom controls."""
-        dialog = self.query_one("#chroma-dialog", Vertical)
-        height = dialog.region.height or 2
-        if self.app.query_one("#landing").display:
-            hints = self.app.query_one("#catalog-hints", Static)
-            dialog.styles.width = hints.region.width - 2
-            dialog.styles.offset = (
-                hints.region.x + 1,
-                hints.region.y - height,
-            )
-            return
-        composer_bar = self.app.query_one("#composer-bar", Horizontal)
-        command_bar = self.app.query_one("#command-bar", CommandBar)
-        reference_bar = self.app.query_one("#reference-bar", ReferenceBar)
-        anchor = command_bar if command_bar.display else reference_bar
-        dialog.styles.width = composer_bar.region.width
-        dialog.styles.offset = (
-            composer_bar.region.x,
-            (anchor.region.y if anchor.display else composer_bar.region.y)
-            - height,
+        super().__init__(
+            "CHROMA",
+            tuple(MenuItem(name, label) for name, label in themes),
+            current,
+            None,
+            anchor="active",
+            on_highlight=on_change,
+            dialog_id="chroma-dialog",
+            message_id="chroma-message",
+            actions_id="chroma-actions",
+            button_prefix="chroma-",
+            hidden_until_placed=True,
         )
-
-    def on_key(self, event: events.Key) -> None:
-        """Preview the adjacent theme or cancel the menu."""
-        if event.key == "escape":
-            self.dismiss(None)
-            event.prevent_default()
-            event.stop()
-            return
-        if event.key in {"up", "down"}:
-            event.prevent_default()
-            event.stop()
-            return
-        if event.key not in {"left", "right"}:
-            return
-        buttons = list(self.query(KeyboardButton))
-        focused = self.focused
-        index = buttons.index(focused) if isinstance(focused, KeyboardButton) else 0
-        step = -1 if event.key in {"left", "up"} else 1
-        next_button = buttons[(index + step) % len(buttons)]
-        next_button.focus()
-        name = next_button.id.removeprefix("chroma-")
-        self.on_change(name)
-        event.prevent_default()
-        event.stop()
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        """Commit the focused theme."""
-        self.dismiss((event.button.id or "").removeprefix("chroma-"))

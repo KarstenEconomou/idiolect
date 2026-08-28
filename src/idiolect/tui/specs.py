@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
-from dataclasses import asdict
 from typing import Any
 
 from rich.color import Color
@@ -27,7 +26,6 @@ _ABBREVIATIONS = {
     "EVALUATION": "EVAL",
     "GENERATION": "GEN",
     "REPETITION": "REP",
-    "TOKENS": "TOK",
 }
 _PROMPT_BLOCK_FIELDS = frozenset(
     {
@@ -39,10 +37,19 @@ _PROMPT_BLOCK_FIELDS = frozenset(
     }
 )
 _PROBE_LABELS = {
+    "architecture": "architecture",
     "device_name": "name",
-    "max_recommended_working_set_size": "working_set_limit",
     "memory_size": "memory",
+    "max_recommended_working_set_size": "working_set_limit",
 }
+_PROBE_PROPERTY_ORDER = (
+    "device_name",
+    "architecture",
+    "memory_size",
+    "max_recommended_working_set_size",
+    "max_buffer_length",
+    "resource_limit",
+)
 _DEFAULT_SCROLL_BACK = Color.parse("#555555")
 _DEFAULT_SCROLL_BAR = Color.parse("bright_magenta")
 _FIELD_NAME = Style(bold=False)
@@ -50,8 +57,8 @@ _DESCRIPTION = Style(color="bright_black", bold=False)
 _MUTED_DESCRIPTION = Style(color="bright_black", dim=True, bold=False)
 
 
-class SpecsDocument:
-    """Render specification lines with independently padded value blocks."""
+class SheetDocument:
+    """Build sheet lines with independently padded value blocks."""
 
     def __init__(self) -> None:
         """Create an empty specification document."""
@@ -86,6 +93,31 @@ class SpecsDocument:
             self._text.append(" ")
             self._text.append_text(line)
             self._text.append("\n")
+
+    def section(self, name: str) -> None:
+        """Append one sheet section heading."""
+        _section(self, name)
+
+    def field(
+        self,
+        name: str,
+        value: object,
+        *,
+        value_style: str | Style = _DESCRIPTION,
+        abbreviate: bool = True,
+    ) -> None:
+        """Append one labeled sheet field."""
+        _field(
+            self,
+            name,
+            value,
+            value_style=value_style,
+            abbreviate=abbreviate,
+        )
+
+    def note(self, value: str) -> None:
+        """Append one metadata-colored sheet note."""
+        _note(self, value)
 
     def __rich_console__(
         self,
@@ -137,14 +169,17 @@ class HalfCellScrollBarRender(ScrollBarRender):
         return Segments(segments, new_lines=rendered.new_lines)
 
 
+SpecsDocument = SheetDocument
+
+
 def render_specs(
     assistant: Assistant,
     generation: GenerationConfig,
     kind: str,
     trace: SavedChat | None = None,
-) -> SpecsDocument:
+) -> SheetDocument:
     """Return one responsive model specification document."""
-    document = SpecsDocument()
+    document = SheetDocument()
     _section(document, "IDENTITY")
     _field(document, "TYPE", kind)
     _field(document, "CONSTRUCT", assistant.target_run)
@@ -156,7 +191,7 @@ def render_specs(
     _field(document, "SOURCE", assistant.model.source.upper())
     _field(document, "REVISION", assistant.model.revision)
     _field(document, "CACHE", assistant.model.cache)
-    _field(document, "MODEL DIGEST", _upper_hex(assistant.model_digest))
+    _field(document, "DIGEST", _upper_hex(assistant.model_digest))
     _field(
         document,
         "TRUST REMOTE CODE",
@@ -164,52 +199,141 @@ def render_specs(
     )
 
     if assistant.run is not None:
-        _section(document, "LINEAGE")
-        _field(document, "RUN ID", _upper_hex(assistant.run_id))
-        _field(document, "RUN PATH", assistant.run.ref.path)
-        _field(document, "DATASET ID", _upper_hex(assistant.dataset_id))
-        if assistant.dataset is not None:
-            _field(document, "DATASET PATH", assistant.dataset.dataset.path)
-        _field(document, "ADAPTER PATH", assistant.run.adapter_path)
-        _field(document, "ADAPTER DIGEST", _upper_hex(assistant.adapter_digest))
-        _field(document, "TRAINING SEED", assistant.training_seed)
-        _field(document, "MAX SEQUENCE", assistant.run.max_seq_length)
-        _field(document, "DATASET SPLITS", _split_counts(assistant))
+        _section(document, "RUN")
+        _field(document, "ID", _upper_hex(assistant.run_id))
+        _field(document, "PATH", assistant.run.ref.path)
+
+        _section(document, "DATASET")
+        _field(document, "ID", str(assistant.run.ref.dataset_id).upper())
+        _field(
+            document,
+            "PATH",
+            None if assistant.dataset is None else assistant.dataset.dataset.path,
+        )
+        _field(document, "SPLITS", _split_counts(assistant))
+
+        _section(document, "ADAPTER")
+        _field(document, "PATH", assistant.run.adapter_path)
+        _field(document, "DIGEST", _upper_hex(assistant.adapter_digest))
 
         _section(document, "TRAINING")
+        _field(document, "SEED", assistant.training_seed)
+        _field(document, "MAX SEQUENCE TOKENS", assistant.run.max_seq_length)
         for key, value in _flatten(assistant.run.policy):
             _field(document, key, value)
 
     if trace is not None:
         _section(document, "TRACE")
         _field(document, "NAME", trace.title)
-        _field(document, "TRACE ID", trace.id.upper())
-        _field(document, "TRACE PATH", trace.path)
+        _field(document, "ID", trace.id.upper())
+        _field(document, "PATH", trace.path)
         _field(document, "PARENT ID", _upper_hex(trace.parent_id))
         _field(document, "CREATED", trace.created_at.isoformat())
-        _field(document, "TURNS", len(trace.turns))
+        _field(
+            document,
+            "TURNS",
+            sum(turn.role != "env" for turn in trace.turns),
+        )
 
-    _section(document, "CONVERSATION POLICY")
-    _field(document, "CONTEXT MESSAGES", assistant.context_messages)
-    for key, value in asdict(assistant.data).items():
-        _field(document, key, value)
-
-    _section(document, "GENERATION")
-    for key, value in asdict(generation).items():
-        _field(document, key, value)
+    _render_conversation_policy(document, assistant, generation)
+    _render_sampling_policy(document, generation)
 
     _section(document, "FIDELITY")
     _field(document, "STATUS", "NOT EVALUATED")
-    _note(document, "No recorded evaluation was supplied to this registry.")
     return document
+
+
+def _render_conversation_policy(
+    document: SheetDocument,
+    assistant: Assistant,
+    generation: GenerationConfig,
+) -> None:
+    """Append conversation, prompt, and completion policy fields."""
+    data = assistant.data
+    chat_format = data.format != "completion"
+
+    _section(document, "CONVERSATION")
+    _field(document, "FORMAT", data.format)
+    _field(document, "TURN CAPACITY", assistant.context_messages)
+    if chat_format:
+        _prompt_block_field(
+            document,
+            "SYSTEM",
+            data.system_prompt,
+            _DESCRIPTION,
+            system_prompt=True,
+        )
+
+    _section(document, "PROMPT")
+    if chat_format:
+        _field(document, "ROLE", data.prompt_role)
+    _prompt_block_field(
+        document,
+        "PREFIX",
+        data.prompt_prefix,
+        _DESCRIPTION,
+        system_prompt=False,
+    )
+    _prompt_block_field(
+        document,
+        "SUFFIX",
+        data.prompt_suffix,
+        _DESCRIPTION,
+        system_prompt=False,
+    )
+    _field(document, "LIMIT", f"{generation.max_prompt_tokens:,} TOK")
+
+    _section(document, "COMPLETION")
+    if chat_format:
+        _field(document, "ROLE", data.completion_role)
+    _prompt_block_field(
+        document,
+        "PREFIX",
+        data.completion_prefix,
+        _DESCRIPTION,
+        system_prompt=False,
+    )
+    _prompt_block_field(
+        document,
+        "SUFFIX",
+        data.completion_suffix,
+        _DESCRIPTION,
+        system_prompt=False,
+    )
+    _field(document, "LIMIT", f"{generation.max_tokens:,} TOK")
+
+
+def _render_sampling_policy(
+    document: SheetDocument,
+    generation: GenerationConfig,
+) -> None:
+    """Append contextual sampling and repetition fields."""
+    _section(document, "SAMPLING")
+    _field(document, "TEMPERATURE", generation.temperature)
+    _field(document, "TOP-P", generation.top_p)
+    _field(document, "TOP-K", generation.top_k)
+    _field(document, "MIN-P", generation.min_p)
+    _field(
+        document,
+        "MIN-P FLOOR",
+        f"{generation.min_tokens_to_keep:,} TOK",
+    )
+
+    _section(document, "REPETITION")
+    _field(document, "PENALTY", generation.repetition_penalty)
+    _field(
+        document,
+        "WINDOW",
+        f"{generation.repetition_context_size:,} TOK",
+    )
 
 
 def render_probe(
     runtime: RuntimeProbe | None,
     load: LoadProbe | None,
-) -> SpecsDocument:
+) -> SheetDocument:
     """Return one hardware and model-load probe document."""
-    document = SpecsDocument()
+    document = SheetDocument()
     _section(document, "STACK")
     _field(document, "MLX VERSION", None if runtime is None else runtime.mlx_version)
     _field(
@@ -219,21 +343,19 @@ def render_probe(
     )
     _field(
         document,
-        "DEVICE",
+        "DEVICE TYPE",
         None if runtime is None else _device_type(runtime.device),
     )
     _field(
         document,
-        "MACHINE ARCHITECTURE",
+        "HOST ARCHITECTURE",
         None if runtime is None else runtime.architecture,
     )
 
-    _section(document, "DEVICE")
-    if runtime is None or not runtime.device_properties:
-        _note(document, "No Metal device properties were reported.")
-    else:
-        for name, value in runtime.device_properties:
-            displayed = _format_bytes(value) if _byte_property(name, value) else value
+    if runtime is not None and runtime.device_properties:
+        _section(document, "DEVICE")
+        for name, value in _ordered_device_properties(runtime.device_properties):
+            displayed = _format_device_property(name, value)
             _field(document, _PROBE_LABELS.get(name, name), displayed)
 
     _section(document, "PAYLOAD")
@@ -247,13 +369,12 @@ def render_probe(
         "MODEL SIZE",
         None if load is None else _format_bytes(load.model_size),
     )
-    _field(
-        document,
-        "ADAPTER SIZE",
-        None
-        if load is None or load.adapter_size is None
-        else _format_bytes(load.adapter_size),
-    )
+    if load is None or load.adapter_size is not None:
+        _field(
+            document,
+            "ADAPTER SIZE",
+            None if load is None else _format_bytes(load.adapter_size),
+        )
     _field(
         document,
         "LOAD TIME",
@@ -273,56 +394,64 @@ def _device_type(value: str) -> str:
 def render_buffer(
     session: ChatSession,
     prepared: PreparedPrompt | None,
-) -> SpecsDocument:
+) -> SheetDocument:
     """Return context use and resident reference details."""
-    document = SpecsDocument()
-    _section(document, "CONTEXT")
+    document = SheetDocument()
+    _section(document, "PROMPT")
     _field(
         document,
-        "TURNS",
-        f"— / {session.assistant.context_messages:,}"
-        if prepared is None
-        else f"{prepared.active_turns:,} / {session.assistant.context_messages:,}",
+        "DIGEST",
+        None if prepared is None else _upper_hex(prepared.prompt_digest),
+    )
+
+    _section(document, "TOKENS")
+    _field(
+        document,
+        "PROMPT",
+        None if prepared is None else f"{prepared.prompt_tokens:,} TOK",
     )
     _field(
         document,
-        "TOKENS",
-        f"— / {session.generation.max_prompt_tokens:,}"
+        "LIMIT",
+        f"{session.generation.max_prompt_tokens:,} TOK",
+    )
+    _field(
+        document,
+        "UTILIZATION",
+        None
         if prepared is None
         else (
-            f"{prepared.prompt_tokens:,} / {session.generation.max_prompt_tokens:,} "
-            f"({100 * prepared.prompt_tokens / session.generation.max_prompt_tokens:.1f}%)"
+            f"{100 * prepared.prompt_tokens / session.generation.max_prompt_tokens:.1f}%"
         ),
-        abbreviate=False,
     )
+
+    _section(document, "TURNS")
+    _field(
+        document,
+        "ACTIVE",
+        None if prepared is None else prepared.active_turns,
+    )
+    _field(document, "CAPACITY", session.assistant.context_messages)
     _field(
         document,
         "EVICTED",
         None if prepared is None else prepared.dropped_messages,
     )
-    _field(
-        document,
-        "STATE DIGEST",
-        None if prepared is None else _upper_hex(prepared.prompt_digest),
-    )
+
+    _section(document, "RESIDENT")
+    references = () if prepared is None else prepared.active_references
     _field(
         document,
         "HEAD",
-        None
-        if prepared is None or not prepared.active_references
-        else _buffer_reference_name(session, prepared.active_references[-1]),
+        None if not references else _buffer_reference_name(session, references[-1]),
     )
-
-    _section(document, "RESIDENT")
-    if prepared is None:
-        _note(document, "No prompt state is resident.")
-    elif not prepared.active_references:
-        _note(document, "No references are resident.")
-    else:
-        for reference in prepared.active_references:
-            document.append_line(
-                Text(_buffer_reference_name(session, reference), style=_FIELD_NAME)
-            )
+    _field(
+        document,
+        "REFS",
+        None
+        if not references
+        else "\n".join(_buffer_reference_name(session, ref) for ref in references),
+    )
     return document
 
 
@@ -336,9 +465,35 @@ def _byte_property(name: str, value: object) -> bool:
     """Return true when one integer device property reports bytes."""
     normalized = name.casefold()
     return isinstance(value, int) and not isinstance(value, bool) and (
-        normalized.endswith(("_size", "_memory"))
+        normalized.endswith(("_length", "_size", "_memory"))
         or "working_set_size" in normalized
     )
+
+
+def _ordered_device_properties(
+    properties: tuple[tuple[str, object], ...],
+) -> tuple[tuple[str, object], ...]:
+    """Return device properties in the stable sheet order."""
+    rank = {name: index for index, name in enumerate(_PROBE_PROPERTY_ORDER)}
+    return tuple(
+        sorted(
+            properties,
+            key=lambda item: (rank.get(item[0], len(rank)), item[0]),
+        )
+    )
+
+
+def _format_device_property(name: str, value: object) -> object:
+    """Return one device property with its applicable unit."""
+    if _byte_property(name, value):
+        return _format_bytes(value)
+    if (
+        name.casefold() == "resource_limit"
+        and isinstance(value, int)
+        and not isinstance(value, bool)
+    ):
+        return f"{value:,} BUFFERS"
+    return value
 
 
 def _format_bytes(value: object) -> str:
@@ -362,7 +517,7 @@ def _upper_hex(value: str | None) -> str | None:
     return None if value is None else value.upper()
 
 
-def _section(document: SpecsDocument, name: str) -> None:
+def _section(document: SheetDocument, name: str) -> None:
     """Append one specification section heading."""
     if document:
         document.append_line()
@@ -370,7 +525,7 @@ def _section(document: SpecsDocument, name: str) -> None:
 
 
 def _field(
-    document: SpecsDocument,
+    document: SheetDocument,
     name: str,
     value: object,
     *,
@@ -390,6 +545,11 @@ def _field(
         )
         return
     displayed = _display(value)
+    if (
+        "token" in field_name.split("_")
+        or "tokens" in field_name.split("_")
+    ) and isinstance(value, int) and not isinstance(value, bool):
+        displayed = f"{value:,} TOK"
     document.append_inset(
         Text(label, style=_FIELD_NAME),
         Text(displayed, style=value_style),
@@ -397,7 +557,7 @@ def _field(
 
 
 def _prompt_block_field(
-    document: SpecsDocument,
+    document: SheetDocument,
     label: str,
     value: str,
     value_style: str | Style,
@@ -424,7 +584,7 @@ def _label(value: str) -> str:
     return " ".join(_ABBREVIATIONS.get(word, word) for word in words)
 
 
-def _note(document: SpecsDocument, value: str) -> None:
+def _note(document: SheetDocument, value: str) -> None:
     """Append one metadata note."""
     document.append_line(Text(value, style=_DESCRIPTION))
 
@@ -435,6 +595,8 @@ def _display(value: object) -> str:
         return "—"
     if isinstance(value, bool):
         return "YES" if value else "NO"
+    if isinstance(value, int):
+        return f"{value:,}"
     if isinstance(value, float):
         return f"{value:g}"
     if isinstance(value, (tuple, list)):
@@ -460,8 +622,10 @@ def _flatten(
     return tuple(result)
 
 
-def _split_counts(assistant: Assistant) -> str:
+def _split_counts(assistant: Assistant) -> str | None:
     """Return verified dataset counts in pipeline order."""
+    if assistant.dataset is None:
+        return None
     return "    ".join(
         f"{split.value.upper()} {assistant.counts.get(split, 0):,}"
         for split in (Split.TRAIN, Split.VALID, Split.TEST)

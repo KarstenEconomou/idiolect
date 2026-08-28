@@ -17,8 +17,8 @@ TUI tests.
   blue, magenta, or cyan only for accents and active primary labels;
   bright black for metadata, help text, telemetry, inactive actions, dividers,
   and idle borders; a dimmed current accent prefix and bright-black message
-  text for transient alerts and errors; ANSI white for table and menu headings;
-  and ANSI red for unavailable actions. Use terminal `grey23` as the character-width
+  text for transient alerts and errors; and ANSI white for table and menu
+  headings. Use terminal `grey23` as the character-width
   background for transcript code. Do not add RGB colors, opaque modal backdrops,
   tints, or separate surface colors.
 - Bold product marks, primary page titles, canonical chat identities, table and
@@ -75,9 +75,8 @@ TUI tests.
   closes the menu without clearing the composer. Prefix alerts and errors with
   dimmed `ENV:`, then use `ACK` or `ERR` with footer-colored message text.
   Lowercase the first message word unless it is an uppercase interface word.
-  Show disabled commands red and dim, except for the
-  metadata-gray disabled `/trace`, and skip them when another enabled command
-  exists.
+  Show all disabled commands metadata gray and dim, and skip them when another
+  enabled command exists.
 - Let `/specs` open the active session's exact model sheet without changing the
   chat session, turns, dirty state, or transcript. Include saved TRACE lineage
   when available. In this temporary view, hide model-cycling hints, make
@@ -110,7 +109,10 @@ TUI tests.
   rows, skip FAULT rows, reset the details scroll position, and keep the cycled
   row selected when the user returns to REGISTRY.
 - In registry-launched SPECS, let Enter CONNECT the selected registry row.
-- In SPECS, treat field names like command names and values like command
+- In information sheets, use `TOKENS` in field names and `TOK` only as a value
+  unit. Omit sections and fields that do not structurally apply. Use `—` when an
+  applicable value is unavailable. Do not repeat a section noun in its field
+  names. Treat field names like command names and values like command
   descriptions: use terminal-default field names and metadata-gray values. Keep
   section headings white and bold. Put every field value, including evaluation
   bars, in a one-cell inset block beneath its label so wrapped continuation lines
@@ -131,8 +133,8 @@ TUI tests.
 - Show transient alerts as right-aligned lines above the applicable control bar.
   Use sentence case, preserve uppercase entity names, match loading-status
   spacing, and terminate each message with punctuation. Use metadata gray for
-  informational and success alerts, and reserve the failure color for errors.
-  Do not use toasts.
+  informational, success, and error alerts. Do not use red as a semantic state
+  color. Do not use toasts.
 - Show `BACKSPACE MANAGE` only for a highlighted TRACE. Confirm it with a `TRACE`
   heading followed directly by its metadata-colored name and horizontal
   `ERASE`, `RENAME`, `RETAIN` actions. Select `RETAIN` first, and make Escape

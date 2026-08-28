@@ -174,16 +174,18 @@ replaces any selected reference. `/specs` shows recorded model policy and
 lineage. `/probe` shows only live MLX, hardware, Metal/device, and current
 model-load measurements under `STACK`, `DEVICE`, and `PAYLOAD`. Sizes use one
 compact IEC unit, and load time uses seconds; the values are not saved in a
-TRACE. `/buffer` opens the active context sheet. It reports the
-fitted turn and token use, evicted-turn count, state identity, the newest
-resident reference as `HEAD`, and every `RESIDENT` reference without its message
-preview. Use `/chroma` in
+TRACE. `/buffer` opens the active context sheet. It separates prompt-token use,
+turn-window use, and the prompt digest, then reports the newest resident
+reference as `HEAD` and all resident identities under `REFS`. Use `/chroma` in
 chat or press `C` in `REGISTRY` to open `CHROMA` and
 preview the red LOOKOUT, yellow PICKPOCKET, green HACKER, blue LOCKSMITH,
 magenta MOLE, and cyan GENTLEMAN themes with the arrow keys; `ENTER EQUIP`
 commits one and reports a `SYS: ACK NAME equipped.` acknowledgement.
-Chat, `/specs`, `/probe`, and `/buffer` headers show `LINK#XXXXXX`, using a
-random six-digit hexadecimal link ID in uppercase. SPECS opened from REGISTRY has no link.
+Slash-command descriptions identify the current TRACE, active LINK, context
+BUFFER, and CONSTRUCT specifications directly.
+Chat, `/specs`, `/probe`, and `/buffer` headers show the active
+`IDIOLECT // TARGET::RUN [BASE]` identity and `LINK#XXXXXX`, using a random
+six-digit hexadecimal link ID in uppercase. SPECS opened from REGISTRY has no link.
 Hexadecimal IDs in SPECS are uppercase. Alerts and errors share a row with
 loading status, command and reference menus, or the selected command bar. They
 use a dimmed `SYS:` prefix, followed by `ACK` or `ERR` and the message in the

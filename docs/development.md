@@ -73,3 +73,16 @@ events, and Textual pilot sessions. They do not load a model or use Metal. On
 Apple silicon, manually check the landing probe, one assistant load, streaming,
 prefill progress, stop behavior, command navigation, footer action hints,
 confirmation saves, worker reload, and clean exit.
+
+## TUI extension primitives
+
+Build temporary detail views with `SheetDocument` and a `SheetPage` declaration.
+The page supplies its title, renderer, origin, LINK label, hints, and optional
+cycle or connect capabilities. Open it through `InfoSheet`; do not add a new
+screen-mode branch for each kind of content.
+
+Declare vertical and horizontal actions with `MenuItem`. Use `MenuCursor` for
+wrapping selection, disabled-item skipping, and the three-row viewport. Render
+composer selectors with `VerticalMenu`, and use `HorizontalMenuModal` for
+keyboard-only action rows. A feature wrapper supplies only its domain callback,
+safe initial action, Escape result, anchor, and optional live-preview callback.

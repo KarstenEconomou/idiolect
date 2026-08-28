@@ -14,14 +14,14 @@ COMMANDS = (
 )
 
 COMMAND_DESCRIPTIONS = {
-    "/terminate": "TERMINATE IDIOLECT.",
+    "/terminate": "Terminate IDIOLECT.",
     "/echo": "SYS echo.",
-    "/disconnect": "DISCONNECT LINK.",
-    "/trace": "Save TRACE.",
-    "/specs": "View SPECS.",
-    "/probe": "View LINK.",
-    "/buffer": "View CTX.",
-    "/chroma": "Select CHROMA.",
+    "/disconnect": "Disconnect the active LINK.",
+    "/trace": "Save the current TRACE.",
+    "/specs": "View CONSTRUCT specifications.",
+    "/probe": "View the active LINK.",
+    "/buffer": "View the context BUFFER.",
+    "/chroma": "Equip CHROMA.",
 }
 
 COMMAND_ARGUMENTS = frozenset({"/echo"})
