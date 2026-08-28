@@ -604,8 +604,8 @@ class _Dimmed:
             yield Segment(segment.text, style, segment.control)
 
 
-class LoadingStatus(Widget):
-    """Show a status with an optional activity spinner."""
+class StatusLine(Widget):
+    """Show activity or one static notice on a status line."""
 
     def __init__(self, *, id: str | None = None) -> None:
         """Create a hidden loading state."""

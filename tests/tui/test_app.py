@@ -29,10 +29,10 @@ from idiolect.tui.widgets import (
     CommandMenu,
     Composer,
     KeyboardButton,
-    LoadingStatus,
     ReferenceBar,
     ReferenceMenu,
     SpecsScroll,
+    StatusLine,
     Transcript,
 )
 
@@ -187,7 +187,7 @@ def test_registry_chroma_menu_previews_all_themes_and_persists(tmp_path) -> None
             assert hints == "←→ MOVE    ENTER EQUIP    ESC CANCEL"
             await pilot.press("enter")
             await pilot.pause()
-            assert app.query_one("#catalog-alert", LoadingStatus).state == (
+            assert app.query_one("#catalog-alert", StatusLine).state == (
                 "SYS: ACK HACKER equipped."
             )
             assert str(app.query_one("#catalog-hints", Static).content) == (
@@ -281,7 +281,7 @@ def test_chroma_command_opens_menu_in_chat(tmp_path) -> None:
             await pilot.press("enter", "right", "enter")
             await pilot.pause()
             assert app.has_class("-accent-blue")
-            assert app.query_one("#chat-alert", LoadingStatus).state == (
+            assert app.query_one("#chat-alert", StatusLine).state == (
                 "SYS: ACK LOCKSMITH equipped."
             )
             assert str(app.query_one("#footer", Static).content) == footer_before
@@ -947,7 +947,7 @@ def test_transcript_formats_markdown_and_remains_scrollable(tmp_path) -> None:
             assert footer.content_region.x == scroller.content_region.x
             assert footer.styles.padding.top == 0
             assert footer.styles.padding.bottom == 0
-            assert app.query_one("#status", LoadingStatus).display is False
+            assert app.query_one("#status", StatusLine).display is False
 
             bottom = scroller.scroll_y
             scroller.post_message(
@@ -1173,7 +1173,7 @@ def test_prefill_progress_appears_above_composer(tmp_path) -> None:
             assert await asyncio.to_thread(runtime.prefill_started.wait, 1)
             await pilot.pause()
 
-            status = app.query_one("#status", LoadingStatus)
+            status = app.query_one("#status", StatusLine)
             scroller = app.query_one("#transcript-scroll", VerticalScroll)
             rendered = status.render()
             assert status.state == "PREFILL 0/4 TOK"
@@ -1241,7 +1241,7 @@ def test_model_load_keeps_event_processing_active(tmp_path) -> None:
             assert await asyncio.to_thread(runtime.started.wait, 1)
             assert app.query_one("#chat").display
             assert app.query_one("#landing").display is False
-            status = app.query_one("#status", LoadingStatus)
+            status = app.query_one("#status", StatusLine)
             for _ in range(20):
                 await pilot.pause()
                 if status.state == "LINK LOADING":
@@ -1256,7 +1256,7 @@ def test_model_load_keeps_event_processing_active(tmp_path) -> None:
             assert app.query_one("#chooser", OptionList).disabled is True
             runtime.release.set()
             await _wait_for_chat(app, pilot)
-            assert app.query_one("#chat-alert", LoadingStatus).state == (
+            assert app.query_one("#chat-alert", StatusLine).state == (
                 "SYS: ACK LINK established."
             )
 
@@ -1441,9 +1441,9 @@ def test_command_menu_filters_navigates_and_returns_to_registry(tmp_path) -> Non
             assert str(app.query_one("#footer", Static).content) == (
                 "↑↓ MOVE    ENTER COMMAND    ESC CLOSE"
             )
-            app._show_alert("COMMAND aligned")
+            app._show_ack("COMMAND aligned")
             await pilot.pause()
-            alert = app.query_one("#chat-alert", LoadingStatus)
+            alert = app.query_one("#chat-alert", StatusLine)
             visible_actions = tuple(
                 action for action in menu.query(".command-action") if action.display
             )
@@ -1451,7 +1451,7 @@ def test_command_menu_filters_navigates_and_returns_to_registry(tmp_path) -> Non
             assert alert.region.right == app.query_one(
                 "#activity-row", Horizontal
             ).region.right
-            app._clear_alert()
+            app._clear_notice()
 
             await pilot.press("down")
             assert menu.query_one("#command-echo", Horizontal).has_class(
@@ -1629,11 +1629,11 @@ def test_command_argument_errors_use_generic_messages(tmp_path) -> None:
             composer.insert("/echo")
             await pilot.press("enter", "enter")
             await pilot.pause()
-            assert app.query_one("#chat-alert", LoadingStatus).state == (
+            assert app.query_one("#chat-alert", StatusLine).state == (
                 "SYS: ERR COMMAND argument missing."
             )
             command_bar = app.query_one("#command-bar", Static)
-            alert = app.query_one("#chat-alert", LoadingStatus)
+            alert = app.query_one("#chat-alert", StatusLine)
             activity = app.query_one("#activity-row", Horizontal)
             assert alert.region.y == command_bar.content_region.y
             assert command_bar.region.right <= alert.region.x
@@ -1646,7 +1646,7 @@ def test_command_argument_errors_use_generic_messages(tmp_path) -> None:
             await pilot.pause()
             await pilot.press("enter")
             await pilot.pause()
-            assert app.query_one("#chat-alert", LoadingStatus).state == (
+            assert app.query_one("#chat-alert", StatusLine).state == (
                 "SYS: ERR COMMAND argument unexpected."
             )
 
@@ -1757,9 +1757,9 @@ def test_reference_menu_selects_bubble_and_escape_clears_reference(tmp_path) -> 
             assert str(app.query_one("#footer", Static).content) == (
                 "↑↓ MOVE    ENTER REF    ESC CLOSE"
             )
-            app._show_alert("REF aligned")
+            app._show_ack("REF aligned")
             await pilot.pause()
-            alert = app.query_one("#chat-alert", LoadingStatus)
+            alert = app.query_one("#chat-alert", StatusLine)
             visible_actions = tuple(
                 action
                 for action in menu.query(".reference-action")
@@ -1769,7 +1769,7 @@ def test_reference_menu_selects_bubble_and_escape_clears_reference(tmp_path) -> 
             assert alert.region.right == app.query_one(
                 "#activity-row", Horizontal
             ).region.right
-            app._clear_alert()
+            app._clear_notice()
 
             composer_bar = app.query_one("#composer-bar", Horizontal)
             before_geometry = (
@@ -2146,7 +2146,7 @@ def test_save_command_checkpoints_only_new_trace_data(tmp_path) -> None:
             assert app.query_one("#chat").display
             assert runtime.closed is False
             assert runtime.session.dirty is False
-            alert = app.query_one("#chat-alert", LoadingStatus)
+            alert = app.query_one("#chat-alert", StatusLine)
             composer_bar = app.query_one("#composer-bar", Horizontal)
             assert alert.state == "SYS: ACK TRACE AAAAAA saved."
             assert re.fullmatch(
@@ -2168,17 +2168,15 @@ def test_save_command_checkpoints_only_new_trace_data(tmp_path) -> None:
             assert message_style.color is not None
             assert message_style.color.name == "bright_black"
             assert not message_style.dim
-            assert not alert.has_class("-error")
 
             composer.insert("/trace")
             await pilot.press("enter")
             await pilot.pause()
             assert len(app.screen.query("#trace-name")) == 0
             assert store.titles == [None]
-            assert app.query_one("#chat-alert", LoadingStatus).state == (
+            assert app.query_one("#chat-alert", StatusLine).state == (
                 "SYS: ACK TRACE AAAAAA exists."
             )
-            assert not alert.has_class("-error")
 
     asyncio.run(verify())
 
@@ -2204,8 +2202,8 @@ def test_chat_errors_align_right_above_composer(tmp_path) -> None:
             await pilot.press("enter")
             await pilot.pause()
 
-            failure = app.query_one("#chat-alert", LoadingStatus)
-            loading = app.query_one("#status", LoadingStatus)
+            failure = app.query_one("#chat-alert", StatusLine)
+            loading = app.query_one("#status", StatusLine)
             activity = app.query_one("#activity-row", Horizontal)
             assert failure.state == "SYS: ERR LINK not established."
             assert failure.display
@@ -2237,7 +2235,6 @@ def test_chat_errors_align_right_above_composer(tmp_path) -> None:
             assert message_style.color is not None
             assert message_style.color.name == "bright_black"
             assert not message_style.dim
-            assert failure.has_class("-error")
 
     asyncio.run(verify())
 
@@ -2316,7 +2313,7 @@ def test_commands_follow_generation_navigation_rules(tmp_path) -> None:
 
             app._command("disconnect")
             await pilot.pause()
-            assert app.query_one("#chat-alert", LoadingStatus).state == (
+            assert app.query_one("#chat-alert", StatusLine).state == (
                 "SYS: ERR CONSTRUCT is generating."
             )
 
@@ -2378,7 +2375,7 @@ def test_message_during_generation_reports_error_and_retains_text(tmp_path) -> N
             await pilot.press("enter")
             await pilot.pause()
 
-            assert app.query_one("#chat-alert", LoadingStatus).state == (
+            assert app.query_one("#chat-alert", StatusLine).state == (
                 "SYS: ERR CONSTRUCT is generating."
             )
             assert composer.text == "send later"

@@ -62,9 +62,9 @@ from idiolect.tui.widgets import (
     Composer,
     ConfirmModal,
     KeyboardOptionList,
-    LoadingStatus,
     ReferenceBar,
     ReferenceMenu,
+    StatusLine,
     TraceMenuModal,
     TraceNameModal,
     Transcript,
@@ -103,6 +103,13 @@ class SelectorKind(Enum):
 
     COMMAND = "command"
     REFERENCE = "reference"
+
+
+class NoticeKind(Enum):
+    """Identify one transient system notice."""
+
+    ACK = "ACK"
+    ERR = "ERR"
 
 
 @dataclass(frozen=True, slots=True)
@@ -431,7 +438,7 @@ class ChatApp(App[None]):
         self._footer_text: str | None = None
         self._catalog_width: int | None = None
         self._loading_timer: Timer | None = None
-        self._alert_timer: Timer | None = None
+        self._notice_timer: Timer | None = None
         self._selected_catalog_key: str | None = None
         self._specs_key: str | None = None
         self._active_sheet: SheetPage | None = None
@@ -457,9 +464,9 @@ class ChatApp(App[None]):
                 )
             yield Rule(line_style="solid", id="catalog-rule")
             yield Static("", markup=False, id="catalog-columns")
-            yield LoadingStatus(id="load-status")
+            yield StatusLine(id="load-status")
             yield KeyboardOptionList(id="chooser")
-            yield LoadingStatus(id="catalog-alert")
+            yield StatusLine(id="catalog-alert")
             yield Static(
                 "↑↓ MOVE    ENTER CONNECT    CTRL+C TERMINATE",
                 markup=False,
@@ -482,9 +489,9 @@ class ChatApp(App[None]):
                 with Container(id="activity-primary"):
                     yield CommandMenu(id="command-menu")
                     yield ReferenceMenu(id="reference-menu")
-                    yield LoadingStatus(id="status")
+                    yield StatusLine(id="status")
                     yield CommandBar(id="command-bar", classes="selection-bar")
-                yield LoadingStatus(id="chat-alert")
+                yield StatusLine(id="chat-alert")
             yield ReferenceBar(id="reference-bar", classes="selection-bar")
             with Horizontal(id="composer-bar"):
                 yield Static(">", markup=False, id="composer-prompt")
@@ -511,9 +518,9 @@ class ChatApp(App[None]):
         if self._loading_timer is not None:
             self._loading_timer.stop()
             self._loading_timer = None
-        if self._alert_timer is not None:
-            self._alert_timer.stop()
-            self._alert_timer = None
+        if self._notice_timer is not None:
+            self._notice_timer.stop()
+            self._notice_timer = None
         if self._trace_blink_timer is not None:
             self._trace_blink_timer.stop()
             self._trace_blink_timer = None
@@ -653,7 +660,7 @@ class ChatApp(App[None]):
             self._update_confirmation_spacing()
             self._update_footer()
         if equipped is not None:
-            self._show_alert(f"{equipped} equipped")
+            self._show_ack(f"{equipped} equipped")
 
     def _set_accent_theme(self, name: str) -> None:
         """Apply one configured ANSI accent theme across the interface."""
@@ -710,12 +717,12 @@ class ChatApp(App[None]):
         if choice != "erase":
             return
         if self.store is None:
-            self._show_error("LINK not configured")
+            self._show_err("LINK not configured")
             return
         try:
             self.store.erase(trace.id)
         except ChatStorageError as error:
-            self._show_error(str(error))
+            self._show_err(str(error))
             return
         self._fill_chooser()
 
@@ -724,7 +731,7 @@ class ChatApp(App[None]):
         if title is None:
             return
         if self.store is None:
-            self._show_error("LINK not configured")
+            self._show_err("LINK not configured")
             return
         try:
             self.store.rename(
@@ -732,7 +739,7 @@ class ChatApp(App[None]):
                 title if title.strip() else trace.title,
             )
         except ChatStorageError as error:
-            self._show_error(str(error))
+            self._show_err(str(error))
             return
         self._fill_chooser()
 
@@ -1048,7 +1055,7 @@ class ChatApp(App[None]):
         if not value.strip() and not self._command_selected:
             return
         if self._loading:
-            self._show_error("LINK not established")
+            self._show_err("LINK not established")
             return
         composer = self.query_one(Composer)
         try:
@@ -1076,7 +1083,7 @@ class ChatApp(App[None]):
                 self._command(command.name, command.arguments)
                 return
             if self._generating:
-                self._show_error("CONSTRUCT is generating")
+                self._show_err("CONSTRUCT is generating")
                 return
             session = self._session()
             reference = self._reference_index if self._reference_selected else None
@@ -1095,7 +1102,7 @@ class ChatApp(App[None]):
             ValueError,
             WorkerError,
         ) as error:
-            self._show_error(str(error))
+            self._show_err(str(error))
 
     def action_stop(self) -> None:
         """Stop active generation at a token boundary."""
@@ -1209,7 +1216,7 @@ class ChatApp(App[None]):
         self._generating = False
         self._set_status(None)
         self._update_command_menu()
-        self._show_error(message)
+        self._show_err(message)
 
     def _report_prefill(self, current: int, total: int) -> None:
         self.call_from_thread(self._set_status, f"prefill {current}/{total} TOK")
@@ -1489,13 +1496,13 @@ class ChatApp(App[None]):
         active = self._command_selected and self._command_name is not None
         if not active:
             bar.display = False
-            self._align_activity_alert()
+            self._align_activity_notice()
             return
         assert self._command_name is not None
         command = f"/{self._command_name}"
         bar.set_command(self._command_name, COMMAND_DESCRIPTIONS[command])
         bar.display = True
-        self._align_activity_alert()
+        self._align_activity_notice()
 
     def _render_reference(self) -> None:
         """Refresh the selected reference bar."""
@@ -1527,7 +1534,7 @@ class ChatApp(App[None]):
             composer.reference_selected = self._reference_selected
             self._sync_active_selector()
             self._update_footer()
-            self._align_activity_alert()
+            self._align_activity_notice()
             return
         token = self._reference_token_at_cursor(
             composer.text,
@@ -1582,7 +1589,7 @@ class ChatApp(App[None]):
         composer.reference_selected = self._reference_selected
         self._sync_active_selector()
         self._update_footer()
-        self._align_activity_alert()
+        self._align_activity_notice()
         if active:
             self.call_after_refresh(self._scroll_transcript_end)
 
@@ -1646,7 +1653,7 @@ class ChatApp(App[None]):
             else self._status_label(value)
         )
         if normalized != self._status_text:
-            self.query_one("#status", LoadingStatus).set_state(
+            self.query_one("#status", StatusLine).set_state(
                 normalized,
                 animated=normalized not in {"CANCELLED", "FAILED"},
             )
@@ -1666,7 +1673,7 @@ class ChatApp(App[None]):
             self.action_interrupt()
         elif name == "disconnect":
             if self._generating:
-                self._show_error("CONSTRUCT is generating")
+                self._show_err("CONSTRUCT is generating")
             else:
                 self._return_to_landing()
         elif name == "specs":
@@ -1686,11 +1693,11 @@ class ChatApp(App[None]):
                     if trace_id is None
                     else f"TRACE {trace_id[:6].upper()} exists"
                 )
-                self._show_alert(message)
+                self._show_ack(message)
             elif self.store is None:
-                self._show_error("LINK not configured")
+                self._show_err("LINK not configured")
             elif self._generating:
-                self._show_error("CONSTRUCT is generating")
+                self._show_err("CONSTRUCT is generating")
             else:
                 self._active_dialog = ActiveDialog(DialogKind.TRACE_NAME)
                 self._update_confirmation_spacing()
@@ -1773,7 +1780,7 @@ class ChatApp(App[None]):
         composer.reference_selected = self._reference_selected
         self._sync_active_selector()
         self._update_footer()
-        self._align_activity_alert()
+        self._align_activity_notice()
         if was_visible or visible_matches:
             self.call_after_refresh(self._scroll_transcript_end)
 
@@ -1883,7 +1890,7 @@ class ChatApp(App[None]):
 
     def _save_from_confirmation(self, title: str) -> bool:
         if self.store is None:
-            self._show_error("LINK not configured")
+            self._show_err("LINK not configured")
             return False
         try:
             saved = self.store.save(
@@ -1892,10 +1899,10 @@ class ChatApp(App[None]):
                 self.runtime.backend_versions,
             )
         except ChatStorageError as error:
-            self._show_error(str(error))
+            self._show_err(str(error))
             return False
         self._active_trace = saved
-        self._show_alert(f"TRACE {saved.id[:6].upper()} saved")
+        self._show_ack(f"TRACE {saved.id[:6].upper()} saved")
         return True
 
     def _begin_select(self, assistant: Assistant) -> None:
@@ -1962,22 +1969,26 @@ class ChatApp(App[None]):
     def _load_done(self) -> None:
         self._set_loading(False)
         self._show_chat()
-        self._show_alert("LINK established")
+        self._show_ack("LINK established")
 
     def _load_failed(self, message: str) -> None:
         self._set_loading(False)
         if self.runtime.session is not None:
             self._show_chat()
         self._set_status(None)
-        self._show_error(message)
+        self._show_err(message)
 
-    def _show_error(self, message: str) -> None:
-        """Show one right-aligned failure beside the active controls."""
-        self._show_alert(message, error=True)
+    def _show_ack(self, message: str) -> None:
+        """Show one transient acknowledgement."""
+        self._show_notice(NoticeKind.ACK, message)
+
+    def _show_err(self, message: str) -> None:
+        """Show one transient error notice."""
+        self._show_notice(NoticeKind.ERR, message)
 
     @staticmethod
-    def _alert_body(message: str) -> str:
-        """Normalize the first word in one alert or error message."""
+    def _notice_body(message: str) -> str:
+        """Normalize the first word in one notice message."""
         value = message.strip()
         start = next(
             (index for index, character in enumerate(value) if character.isalpha()),
@@ -1990,36 +2001,32 @@ class ChatApp(App[None]):
             return value
         return value[:start] + value[start].lower() + value[start + 1 :]
 
-    def _show_alert(self, message: str, *, error: bool = False) -> None:
-        """Show one transient message beside the active controls."""
-        if self._alert_timer is not None:
-            self._alert_timer.stop()
+    def _show_notice(self, kind: NoticeKind, message: str) -> None:
+        """Show one typed transient notice beside the active controls."""
+        if self._notice_timer is not None:
+            self._notice_timer.stop()
         identifier = (
             "#chat-alert" if self.query_one("#chat").display else "#catalog-alert"
         )
         other = "#catalog-alert" if identifier == "#chat-alert" else "#chat-alert"
-        other_alert = self.query_one(other, LoadingStatus)
-        other_alert.set_state("")
-        other_alert.remove_class("-error")
-        role = "ERR" if error else "ACK"
-        body = self._alert_body(message)
+        self.query_one(other, StatusLine).set_state("")
+        body = self._notice_body(message)
         if body and not body.endswith((".", "!", "?")):
             body += "."
-        value = f"SYS: {role} {body}"
+        value = f"SYS: {kind.value} {body}"
         _, accent, _ = _ACCENT_THEMES[self._accent_theme_index]
         content = Text.assemble(
             ("SYS:", Style(color=accent, dim=True)),
-            (f" {role} {body}", Style(color="bright_black")),
+            (f" {kind.value} {body}", Style(color="bright_black")),
         )
-        alert = self.query_one(identifier, LoadingStatus)
+        notice = self.query_one(identifier, StatusLine)
         if identifier == "#chat-alert":
-            self._align_activity_alert()
-        alert.set_class(error, "-error")
-        alert.set_content(content, value)
-        self._alert_timer = self.set_timer(5, self._clear_alert)
+            self._align_activity_notice()
+        notice.set_content(content, value)
+        self._notice_timer = self.set_timer(5, self._clear_notice)
 
-    def _align_activity_alert(self) -> None:
-        """Align the chat alert with the active content's last text line."""
+    def _align_activity_notice(self) -> None:
+        """Align the chat notice with the active content's last text line."""
         if not self.is_mounted or len(self.query("#activity-row")) == 0:
             return
         command_bar = self.query_one("#command-bar", CommandBar)
@@ -2039,20 +2046,18 @@ class ChatApp(App[None]):
             )
         else:
             offset = 0
-        self.query_one("#chat-alert", LoadingStatus).styles.margin = (
+        self.query_one("#chat-alert", StatusLine).styles.margin = (
             offset,
             0,
             0,
             0,
         )
 
-    def _clear_alert(self) -> None:
-        """Clear the transient message line."""
+    def _clear_notice(self) -> None:
+        """Clear the transient notice line."""
         for identifier in ("#chat-alert", "#catalog-alert"):
-            alert = self.query_one(identifier, LoadingStatus)
-            alert.set_state("")
-            alert.remove_class("-error")
-        self._alert_timer = None
+            self.query_one(identifier, StatusLine).set_state("")
+        self._notice_timer = None
 
     def _set_loading(self, value: bool) -> None:
         self._loading = value
@@ -2065,7 +2070,7 @@ class ChatApp(App[None]):
         state = self.runtime.state.value
         status = self._link_status_label(state) if self._loading else ""
         if status != self._load_status_text:
-            self.query_one("#load-status", LoadingStatus).set_state(status)
+            self.query_one("#load-status", StatusLine).set_state(status)
             self._load_status_text = status
         if self._loading and self.query_one("#chat").display:
             self._update_status()
