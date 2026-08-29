@@ -64,6 +64,11 @@ base. It reports likelihood, voice, validity, and memorization evidence, and
 collects private blind familiar-panel recognition judgments with
 example-and-rater uncertainty.
 
+The shared prompt contract defines conversation meaning. A separate model
+renderer applies each tokenizer's chat template and defines the exact token
+stream and completion boundary. Training, inference, chat, and evaluation use
+that boundary; MLX modules only execute or score the verified tokens.
+
 ## Requirements
 
 - Python 3.14

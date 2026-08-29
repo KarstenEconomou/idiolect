@@ -20,6 +20,10 @@ The canonical Qwen policy uses non-thinking generation. The training format adds
 
 `max_prompt_tokens` is a strict input limit after the tokenizer applies the chat template. The operation stops if an input exceeds the limit. It does not remove context or reduce the output limit.
 
+The shared model renderer selects generation-prompt or assistant-prefill chat
+template behavior and returns the exact token identifiers. Inference counts
+those identifiers and passes them unchanged to MLX-LM generation.
+
 The generation-only part of `[inference]` is also the chat generation policy. It
 contains the backend, prompt and output limits, temperature, probability
 filters, and repetition settings. Batch-only output, seed lists, and example

@@ -17,6 +17,7 @@ from idiolect.eval.panel import collect_judgments, create_panel
 from idiolect.eval.text import TrainingMatchIndex
 from idiolect.inference.base import ModelTarget, Prediction, TargetMode
 from idiolect.model import ModelSpec
+from idiolect.prompt import ModelExample
 from idiolect.train.base import LoadedRun
 from idiolect.types import (
     DatasetId,
@@ -62,9 +63,9 @@ class FakeScoreSession:
         self.cost = cost
         self.closed = False
 
-    def score(self, prompt: object, completion: str) -> CompletionScore:
+    def score(self, example: ModelExample) -> CompletionScore:
         """Return one deterministic completion cost."""
-        assert completion
+        assert example.completion
         return CompletionScore(8, 2, self.cost * 2)
 
     def close(self) -> None:
@@ -99,9 +100,9 @@ class VariableScoreSession:
         """Set whether this session scores an adapter."""
         self.adapter = adapter
 
-    def score(self, prompt: object, completion: str) -> CompletionScore:
+    def score(self, example: ModelExample) -> CompletionScore:
         """Return one score that separates macro and corpus means."""
-        tokens = 1 if completion.endswith("0") else 9
+        tokens = 1 if example.completion.endswith("0") else 9
         cost = 2.0 if self.adapter else 1.0 if tokens == 1 else 3.0
         return CompletionScore(8, tokens, cost * tokens)
 
@@ -147,8 +148,7 @@ class FakeInferencer:
         """Write fixed predictions for every selected row and seed."""
         rows = _dataset_rows(dataset)
         examples = [
-            (index, _example_id(dataset, index, prompt))
-            for index, prompt, _ in rows
+            (index, _example_id(dataset, index, prompt)) for index, prompt, _ in rows
         ]
         recipe = {
             "target": target.id,
@@ -195,9 +195,7 @@ class FakeInferencer:
             json.dumps(asdict(value)) + "\n" for value in values
         )
         counts = {"examples": len(rows), "predictions": len(values)}
-        files = {
-            "pred.jsonl": hashlib.sha256(prediction_content.encode()).hexdigest()
-        }
+        files = {"pred.jsonl": hashlib.sha256(prediction_content.encode()).hexdigest()}
         content = {"recipe": recipe, "counts": counts, "files": files}
         identity = hashlib.sha256(_json_bytes(content)).hexdigest()
         path = self.root / identity
@@ -230,8 +228,12 @@ def test_policy_evaluation_is_paired_private_and_content_addressed(
         clock=lambda: _NOW,
     )
 
-    first = evaluator.evaluate(runs, dataset, _eval_config(tmp_path), _inference_config(tmp_path))
-    second = evaluator.evaluate(runs, dataset, _eval_config(tmp_path), _inference_config(tmp_path))
+    first = evaluator.evaluate(
+        runs, dataset, _eval_config(tmp_path), _inference_config(tmp_path)
+    )
+    second = evaluator.evaluate(
+        runs, dataset, _eval_config(tmp_path), _inference_config(tmp_path)
+    )
 
     assert first == second
     assert first.eligible is True
@@ -241,10 +243,7 @@ def test_policy_evaluation_is_paired_private_and_content_addressed(
     manifest = json.loads((first.path / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["recipe"]["version"] == 1
     assert manifest["recipe"]["inference_config"]["backend"] == "mlx-lm"
-    assert (
-        report["likelihood"]["policy"]["delta_macro_mean_nll"]["value"]
-        == -1.0
-    )
+    assert report["likelihood"]["policy"]["delta_macro_mean_nll"]["value"] == -1.0
     assert report["validity"]["policy"]["empty_rate"] == 0.0
     assert set(report) >= {
         "likelihood",
@@ -297,7 +296,11 @@ def test_evaluation_measures_multi_bubble_episodes_as_episodes(tmp_path: Path) -
         .read_text(encoding="utf-8")
         .splitlines()
     ]
-    assert all(output["bubbles"] == 1 for row in examples for output in row["run_outputs"]["run-17"])
+    assert all(
+        output["bubbles"] == 1
+        for row in examples
+        for output in row["run_outputs"]["run-17"]
+    )
     # Boundary markers never leak into the memorization comparison text.
     assert report["memorization"]["reference"] == 0.0
 
@@ -427,9 +430,7 @@ def test_familiar_panel_keeps_separate_immutable_rater_artifacts(
     summary = json.loads((panel.path / "panel.json").read_text(encoding="utf-8"))
     assert summary["raters"] == 2
     assert summary["primary_comparisons"] == 2
-    interval = summary["preferences"]["target_likeness"][
-        "policy_decisive_rate"
-    ]
+    interval = summary["preferences"]["target_likeness"]["policy_decisive_rate"]
     assert interval["method"] == "two-way-cluster-bootstrap"
     assert interval["example_clusters"] == 1
     assert interval["rater_clusters"] == 2
@@ -683,18 +684,14 @@ def _forge_judgment(tmp_path: Path, source: Path) -> Path:
         for line in judgment_path.read_text(encoding="utf-8").splitlines()
     ]
     rows[0]["example_id"] = "0" * 64
-    content = "".join(
-        f"{json.dumps(row, separators=(',', ':'))}\n" for row in rows
-    )
+    content = "".join(f"{json.dumps(row, separators=(',', ':'))}\n" for row in rows)
     judgment_path.write_text(content, encoding="utf-8")
     manifest_path = staging / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     manifest["recipe"]["judgments"] = rows
     identity = hashlib.sha256(_json_bytes(manifest["recipe"])).hexdigest()
     manifest["judgment_id"] = identity
-    manifest["files"]["judgments.jsonl"] = hashlib.sha256(
-        content.encode()
-    ).hexdigest()
+    manifest["files"]["judgments.jsonl"] = hashlib.sha256(content.encode()).hexdigest()
     manifest_path.write_text(
         json.dumps(manifest, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",

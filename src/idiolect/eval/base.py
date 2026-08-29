@@ -6,7 +6,7 @@ from typing import Protocol
 
 from idiolect.config import EvalConfig, InferenceConfig
 from idiolect.inference.base import ModelTarget
-from idiolect.prompt import ModelInput
+from idiolect.prompt import ModelExample
 from idiolect.train.base import LoadedRun
 from idiolect.types import DatasetRef, EvaluationRef
 
@@ -23,7 +23,7 @@ class CompletionScore:
 class ScoreSession(Protocol):
     """Score completions with one loaded model."""
 
-    def score(self, prompt: ModelInput, completion: str) -> CompletionScore:
+    def score(self, example: ModelExample) -> CompletionScore:
         """Return the likelihood cost for one completion."""
         ...
 

@@ -1,4 +1,4 @@
-"""Generate local text with MLX-LM."""
+"""Execute renderer-produced prompt tokens with MLX-LM."""
 
 import contextlib
 import sys
@@ -17,6 +17,7 @@ from idiolect.inference.base import (
 from idiolect.inference.local import InferenceError
 from idiolect.model import mlx_runtime_fingerprint
 from idiolect.prompt import ModelInput
+from idiolect.render import ChatTemplateRenderer, ModelRenderer, RenderError
 
 
 class MlxBackend:
@@ -59,17 +60,26 @@ class MlxBackend:
             ) from error
         if not tokenizer.has_chat_template:
             raise InferenceError("Inference tokenizer does not have a chat template")
-        return _MlxSession(model, tokenizer)
+        return _MlxSession(model, tokenizer, ChatTemplateRenderer(tokenizer))
 
 
 class _MlxSession:
-    def __init__(self, model: Any, tokenizer: Any) -> None:
+    def __init__(
+        self,
+        model: Any,
+        tokenizer: Any,
+        renderer: ModelRenderer,
+    ) -> None:
         self._model = model
         self._tokenizer = tokenizer
+        self._renderer = renderer
 
     def count_tokens(self, value: ModelInput) -> int:
         """Return the formatted prompt token count."""
-        return len(self._tokens(value))
+        try:
+            return len(self._renderer.render_prompt(value).token_ids)
+        except RenderError as error:
+            raise InferenceError(str(error)) from error
 
     def generate(
         self,
@@ -110,7 +120,7 @@ class _MlxSession:
             from mlx_lm import stream_generate
             from mlx_lm.sample_utils import make_logits_processors, make_sampler
 
-            tokens = self._tokens(value)
+            tokens = list(self._renderer.render_prompt(value).token_ids)
             mx.random.seed(seed)
             sampler = make_sampler(
                 config.temperature,
@@ -160,7 +170,9 @@ class _MlxSession:
                 _metric(final, "peak_memory"),
             )
             yield GenerationEvent(result=result)
-        except InferenceError:
+        except (InferenceError, RenderError) as error:
+            if isinstance(error, RenderError):
+                raise InferenceError(str(error)) from error
             raise
         except Exception as error:
             raise InferenceError("MLX-LM generation failed") from error
@@ -173,22 +185,8 @@ class _MlxSession:
             del self._model
             del self._tokenizer
             mx.clear_cache()
-        except AttributeError, ImportError:
+        except (AttributeError, ImportError):
             return
-
-    def _tokens(self, value: ModelInput) -> list[int]:
-        turns = [{"role": turn.role, "content": turn.content} for turn in value.turns]
-        options = {"tokenize": True, "return_dict": False}
-        if value.has_prefill:
-            options["continue_final_message"] = True
-        else:
-            options["add_generation_prompt"] = True
-        tokens = self._tokenizer.apply_chat_template(turns, **options)
-        if not isinstance(tokens, list) or not all(
-            isinstance(token, int) for token in tokens
-        ):
-            raise InferenceError("Inference tokenizer returned invalid prompt tokens")
-        return tokens
 
 
 def _metric(value: Any, *names: str) -> float | None:

@@ -35,7 +35,7 @@ from idiolect.model import directory_digest
 from idiolect.prompt import (
     CONVERSATION_HEADER,
     NEXT_RESPONSE_MARKER,
-    format_prompt,
+    format_example,
     split_bubbles,
 )
 from idiolect.train.base import LoadedRun
@@ -172,9 +172,7 @@ class LocalEvaluator:
         if target_loader is None:
             target_loader = RecordedTargetResolver().target
         base_target = target_loader(ordered[0], False)
-        adapter_targets = tuple(
-            target_loader(run, True) for run in ordered
-        )
+        adapter_targets = tuple(target_loader(run, True) for run in ordered)
         base_inference = self._inferencer.dataset(
             base_target, verified, Split.VALID, effective_inference
         )
@@ -209,7 +207,9 @@ class LocalEvaluator:
             "eval_config": _config_value(config),
             "inference_config": _inference_value(effective_inference),
         }
-        evaluation_id = EvaluationId(hashlib.sha256(canonical_json_bytes(recipe)).hexdigest())
+        evaluation_id = EvaluationId(
+            hashlib.sha256(canonical_json_bytes(recipe)).hexdigest()
+        )
         output = _required_output(config)
         destination = output / str(evaluation_id)
         if destination.exists():
@@ -278,8 +278,7 @@ class LocalEvaluator:
         try:
             for row in rows:
                 value = session.score(
-                    format_prompt(row.prompt, target.data),
-                    f"{row.completion}{target.data.completion_suffix}",
+                    format_example(row.prompt, row.completion, target.data)
                 )
                 total = value.prompt_tokens + value.tokens
                 if total > max_seq_length:
@@ -287,9 +286,7 @@ class LocalEvaluator:
                         "Evaluation row exceeds the recorded max_seq_length at "
                         f"example {row.index}: {total} > {max_seq_length}"
                     )
-                if value.tokens < 1 or not math.isfinite(
-                    value.negative_log_likelihood
-                ):
+                if value.tokens < 1 or not math.isfinite(value.negative_log_likelihood):
                     raise EvaluationError(
                         f"Evaluation backend returned an invalid score at example {row.index}"
                     )
@@ -312,7 +309,9 @@ def load_evaluation(path: Path) -> EvaluationRef:
         _valid_digest(path.name, "Evaluation")
         value = json.loads((path / "manifest.json").read_text(encoding="utf-8"))
         if value["evaluation_id"] != str(evaluation_id):
-            raise EvaluationError(f"Evaluation manifest does not match its path: {path}")
+            raise EvaluationError(
+                f"Evaluation manifest does not match its path: {path}"
+            )
         if hashlib.sha256(canonical_json_bytes(value["recipe"])).hexdigest() != str(
             evaluation_id
         ):
@@ -368,7 +367,9 @@ def _validate_config(
     if config.bootstrap_samples < 1:
         raise EvaluationError("Evaluation bootstrap_samples must be greater than zero")
     if not 0.0 < config.confidence_level < 1.0:
-        raise EvaluationError("Evaluation confidence_level must be between zero and one")
+        raise EvaluationError(
+            "Evaluation confidence_level must be between zero and one"
+        )
     if config.long_match_chars < 8:
         raise EvaluationError("Evaluation long_match_chars must be at least eight")
     if config.ballots_per_rater < 1:
@@ -396,14 +397,18 @@ def _validate_policy(
         raise EvaluationError("Run policy does not contain valid training seeds")
     actual_seeds = [run.seed for run in ordered]
     if actual_seeds != sorted(expected_seeds):
-        raise EvaluationError("Evaluation runs must contain every configured training seed")
+        raise EvaluationError(
+            "Evaluation runs must contain every configured training seed"
+        )
     if len(actual_seeds) != len(set(actual_seeds)):
         raise EvaluationError("Evaluation runs contain duplicate training seeds")
     for run in ordered:
         if run.ref.dataset_id != dataset.id:
             raise EvaluationError("Evaluation run does not match the dataset")
         if run.model_digest != first.model_digest or run.data != first.data:
-            raise EvaluationError("Evaluation runs do not use the same model and text format")
+            raise EvaluationError(
+                "Evaluation runs do not use the same model and text format"
+            )
         if run.policy != first.policy:
             raise EvaluationError("Evaluation runs do not use the same training policy")
         if run.max_seq_length != first.max_seq_length:
@@ -422,7 +427,9 @@ def _load_rows(dataset: DatasetRef, split: Split) -> tuple[EvalRow, ...]:
             prompt = value["prompt"]
             completion = value["completion"]
         except (KeyError, TypeError, json.JSONDecodeError) as error:
-            raise EvaluationError(f"Dataset row is not valid: {path}:{index + 1}") from error
+            raise EvaluationError(
+                f"Dataset row is not valid: {path}:{index + 1}"
+            ) from error
         if not isinstance(prompt, str) or not isinstance(completion, str):
             raise EvaluationError(f"Dataset row text is not valid: {path}:{index + 1}")
         identity = {
@@ -464,10 +471,13 @@ def _check_alignment(
     seeds: Sequence[int],
 ) -> None:
     expected = [(row.example_id, seed) for row in rows for seed in seeds]
-    for name, values in (("base", base), *(
-        (f"run {index}", predictions)
-        for index, predictions in enumerate(runs, start=1)
-    )):
+    for name, values in (
+        ("base", base),
+        *(
+            (f"run {index}", predictions)
+            for index, predictions in enumerate(runs, start=1)
+        ),
+    ):
         actual = [(value.example_id, value.seed) for value in values]
         if actual != expected:
             raise EvaluationError(f"Evaluation {name} predictions are not aligned")
@@ -486,9 +496,7 @@ def _report(
     reference = [_canonical(row.completion) for row in rows]
     match_index = TrainingMatchIndex.build(train, config.long_match_chars)
 
-    likelihood = _likelihood_report(
-        rows, runs, base_scores, run_scores, config
-    )
+    likelihood = _likelihood_report(rows, runs, base_scores, run_scores, config)
     reference_profile = _profile([row.completion for row in rows])
     voice: dict[str, Any] = {
         "reference": reference_profile,
@@ -553,8 +561,7 @@ def _report(
         "base": _pillar(base_rates, _MEMORIZATION_RATES),
         "policy": _pillar(policy_rates, _MEMORIZATION_RATES),
         "runs": {
-            key: _pillar(value, _MEMORIZATION_RATES)
-            for key, value in run_rates.items()
+            key: _pillar(value, _MEMORIZATION_RATES) for key, value in run_rates.items()
         },
     }
 
@@ -600,16 +607,12 @@ def _report(
                     for run, scores in zip(runs, run_scores, strict=True)
                 },
                 "base_outputs": [
-                    _example_diagnostic(
-                        value, row, match_index, config
-                    )
+                    _example_diagnostic(value, row, match_index, config)
                     for value in by_base[row.example_id]
                 ],
                 "run_outputs": {
                     str(run.ref.id): [
-                        _example_diagnostic(
-                            value, row, match_index, config
-                        )
+                        _example_diagnostic(value, row, match_index, config)
                         for value in values[row.example_id]
                     ]
                     for run, values in zip(runs, by_runs, strict=True)
@@ -638,7 +641,10 @@ def _likelihood_report(
     result_runs = {}
     run_delta_means = []
     for run, scores, values in zip(runs, run_scores, run_values, strict=True):
-        deltas = [value - baseline for value, baseline in zip(values, base_values, strict=True)]
+        deltas = [
+            value - baseline
+            for value, baseline in zip(values, base_values, strict=True)
+        ]
         corpus_mean_nll = _corpus_mean_nll(scores)
         result_runs[str(run.ref.id)] = {
             "seed": run.seed,
@@ -671,9 +677,7 @@ def _likelihood_report(
 
 def _profile(texts: Sequence[str]) -> Mapping[str, float]:
     values = [_text_features(text, _canonical(text)) for text in texts]
-    return {
-        name: _mean([value[name] for value in values]) for name in _FEATURES
-    }
+    return {name: _mean([value[name] for value in values]) for name in _FEATURES}
 
 
 def _profile_comparison(
@@ -705,7 +709,9 @@ def _text_features(raw_text: str, text: str) -> Mapping[str, float]:
     stripped = text.strip()
     letters = [character for character in stripped if character.isalpha()]
     punctuation = [
-        character for character in stripped if unicodedata.category(character).startswith("P")
+        character
+        for character in stripped
+        if unicodedata.category(character).startswith("P")
     ]
     emoji = [character for character in stripped if _is_emoji(character)]
     return {
@@ -721,9 +727,7 @@ def _text_features(raw_text: str, text: str) -> Mapping[str, float]:
         "url_rate": float(bool(_URL.search(stripped))),
         "question_rate": float("?" in stripped),
         "exclamation_rate": float("!" in stripped),
-        "terminal_punctuation_rate": float(
-            bool(stripped) and stripped[-1] in ".!?…"
-        ),
+        "terminal_punctuation_rate": float(bool(stripped) and stripped[-1] in ".!?…"),
         "starts_lowercase_rate": float(bool(stripped) and stripped[0].islower()),
         "repeated_character_rate": float(
             bool(re.search(r"(.)\1{2,}", stripped, re.DOTALL))
@@ -801,10 +805,7 @@ def _memorization_rate(
     texts: Sequence[str],
     index: TrainingMatchIndex,
 ) -> float:
-    return sum(
-        index.longest(text) >= index.threshold
-        for text in texts
-    ) / len(texts)
+    return sum(index.longest(text) >= index.threshold for text in texts) / len(texts)
 
 
 def _ngrams(texts: Sequence[str], size: int) -> Counter[str]:
@@ -849,7 +850,9 @@ def _interval_value(values: Sequence[float], config: EvalConfig) -> Mapping[str,
     return asdict(Interval(_mean(values), lower, upper))
 
 
-def _by_example(predictions: Sequence[Prediction]) -> Mapping[str, tuple[Prediction, ...]]:
+def _by_example(
+    predictions: Sequence[Prediction],
+) -> Mapping[str, tuple[Prediction, ...]]:
     values: dict[str, list[Prediction]] = {}
     for prediction in predictions:
         values.setdefault(prediction.example_id, []).append(prediction)
@@ -904,9 +907,7 @@ def _is_emoji(character: str) -> bool:
     return 0x1F000 <= code <= 0x1FAFF or 0x2600 <= code <= 0x27BF
 
 
-def _markdown_report(
-    report: Mapping[str, Any], runs: Sequence[LoadedRun]
-) -> str:
+def _markdown_report(report: Mapping[str, Any], runs: Sequence[LoadedRun]) -> str:
     policy = report["likelihood"]["policy"]
     delta = policy["delta_macro_mean_nll"]
     voice = report["voice"]
@@ -920,10 +921,7 @@ def _markdown_report(
         "",
         "## Likelihood",
         "",
-        (
-            "Base macro mean NLL: "
-            f"{report['likelihood']['base']['macro_mean_nll']:.6f}"
-        ),
+        (f"Base macro mean NLL: {report['likelihood']['base']['macro_mean_nll']:.6f}"),
         (
             "Base corpus perplexity: "
             f"{report['likelihood']['base']['corpus_perplexity']:.6f}"
@@ -952,26 +950,18 @@ def _markdown_report(
     for name in ("empty_output", "format_violation", "truncation"):
         gate = report["gates"][name]
         state = "pass" if gate["passed"] else "fail"
-        lines.append(
-            f"- {name}: {state} ({gate['value']:.6f} <= {gate['limit']:.6f})"
-        )
+        lines.append(f"- {name}: {state} ({gate['value']:.6f} <= {gate['limit']:.6f})")
     lines.extend(
         (
             "",
             "## Memorization",
             "",
-            (
-                "Reference long training-match rate: "
-                f"{memorization['reference']:.6f}"
-            ),
+            (f"Reference long training-match rate: {memorization['reference']:.6f}"),
             (
                 "Policy long training-match rate: "
                 f"{memorization['policy']['long_training_match_rate']:.6f}"
             ),
-            (
-                "Incremental memorization: "
-                f"{memorization['incremental']:.6f}"
-            ),
+            (f"Incremental memorization: {memorization['incremental']:.6f}"),
         )
     )
     gate = report["gates"]["incremental_memorization"]
@@ -1021,7 +1011,9 @@ def _artifact_file(root: Path, name: object) -> Path:
     root_path = root.resolve()
     path = (root / name).resolve()
     if not path.is_relative_to(root_path) or not path.is_file():
-        raise EvaluationError(f"Evaluation manifest contains an invalid file path: {name}")
+        raise EvaluationError(
+            f"Evaluation manifest contains an invalid file path: {name}"
+        )
     return path
 
 

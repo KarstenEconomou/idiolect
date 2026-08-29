@@ -1,4 +1,4 @@
-"""Score fixed completions with MLX-LM."""
+"""Score renderer-verified completion tokens with MLX-LM."""
 
 import contextlib
 import sys
@@ -8,7 +8,8 @@ from typing import Any
 from idiolect.eval.base import CompletionScore, ScoreSession
 from idiolect.inference.base import ModelTarget
 from idiolect.model import mlx_runtime_fingerprint
-from idiolect.prompt import ModelInput, Turn
+from idiolect.prompt import ModelExample
+from idiolect.render import ChatTemplateRenderer, ModelRenderer, RenderError
 
 
 class EvalBackendError(RuntimeError):
@@ -55,41 +56,42 @@ class MlxScoreBackend:
             ) from error
         if not tokenizer.has_chat_template:
             raise EvalBackendError("Evaluation tokenizer does not have a chat template")
-        return _MlxScoreSession(model, tokenizer)
+        return _MlxScoreSession(model, tokenizer, ChatTemplateRenderer(tokenizer))
 
 
 class _MlxScoreSession:
-    def __init__(self, model: Any, tokenizer: Any) -> None:
+    def __init__(
+        self,
+        model: Any,
+        tokenizer: Any,
+        renderer: ModelRenderer,
+    ) -> None:
         self._model = model
         self._tokenizer = tokenizer
+        self._renderer = renderer
 
-    def score(self, prompt: ModelInput, completion: str) -> CompletionScore:
+    def score(self, example: ModelExample) -> CompletionScore:
         """Return the completion token likelihood cost."""
         try:
             import mlx.core as mx
             from mlx import nn
 
-            prompt_tokens = self._prompt_tokens(prompt)
-            full_tokens = self._full_tokens(prompt, completion)
-            if full_tokens[: len(prompt_tokens)] != prompt_tokens:
-                raise EvalBackendError(
-                    "Evaluation tokenizer changed tokens at the completion boundary"
-                )
-            if len(full_tokens) <= len(prompt_tokens):
-                raise EvalBackendError("Evaluation completion does not contain tokens")
-            tokens = mx.array(full_tokens)
+            rendered = self._renderer.render_example(example)
+            tokens = mx.array(rendered.token_ids)
             logits = self._model(tokens[:-1][None]).astype(mx.float32)
             losses = nn.losses.cross_entropy(
                 logits,
                 tokens[1:][None],
                 reduction="none",
-            )[0, len(prompt_tokens) - 1 :]
+            )[0, rendered.prompt_tokens - 1 :]
             mx.eval(losses)
             return CompletionScore(
-                len(prompt_tokens),
+                rendered.prompt_tokens,
                 int(losses.size),
                 float(losses.sum().item().real),
             )
+        except RenderError as error:
+            raise EvalBackendError(str(error)) from error
         except EvalBackendError:
             raise
         except Exception as error:
@@ -105,40 +107,3 @@ class _MlxScoreSession:
             mx.clear_cache()
         except (AttributeError, ImportError):
             return
-
-    def _prompt_tokens(self, value: ModelInput) -> list[int]:
-        turns = [_turn_value(turn) for turn in value.turns]
-        options: dict[str, Any] = {"tokenize": True, "return_dict": False}
-        if value.has_prefill:
-            options["continue_final_message"] = True
-        elif value.completion_role != "assistant":
-            turns.append({"role": value.completion_role, "content": ""})
-            options["continue_final_message"] = True
-        else:
-            options["add_generation_prompt"] = True
-        return self._tokens(turns, options)
-
-    def _full_tokens(self, value: ModelInput, completion: str) -> list[int]:
-        turns = list(value.turns)
-        if value.has_prefill:
-            final = turns[-1]
-            turns[-1] = Turn(final.role, f"{final.content}{completion}")
-        else:
-            turns.append(Turn(value.completion_role, completion))
-        return self._tokens([_turn_value(turn) for turn in turns], {})
-
-    def _tokens(
-        self,
-        turns: list[dict[str, str]],
-        options: dict[str, Any],
-    ) -> list[int]:
-        value = self._tokenizer.apply_chat_template(turns, **options)
-        if not isinstance(value, list) or not all(
-            isinstance(token, int) for token in value
-        ):
-            raise EvalBackendError("Evaluation tokenizer returned invalid tokens")
-        return value
-
-
-def _turn_value(turn: Turn) -> dict[str, str]:
-    return {"role": turn.role, "content": turn.content}

@@ -1,10 +1,9 @@
-"""Apply the fixed model conversation and text formats."""
+"""Define model conversation meaning without model token rules."""
 
 import json
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any
 
 from idiolect.config import TrainDataConfig
 
@@ -17,9 +16,7 @@ CONVERSATION_HEADER = "Conversation:"
 NEXT_RESPONSE_MARKER = "next response"
 MESSAGE_BOUNDARY = "[new message]"
 BUBBLE_DELIMITER = f"\n{MESSAGE_BOUNDARY}\n"
-_BOUNDARY_LINE = re.compile(
-    rf"^\s*{re.escape(MESSAGE_BOUNDARY)}\s*$", re.MULTILINE
-)
+_BOUNDARY_LINE = re.compile(rf"^\s*{re.escape(MESSAGE_BOUNDARY)}\s*$", re.MULTILINE)
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,6 +34,14 @@ class ModelInput:
     turns: tuple[Turn, ...]
     has_prefill: bool
     completion_role: str = "assistant"
+
+
+@dataclass(frozen=True, slots=True)
+class ModelExample:
+    """Keep one formatted prompt and its target completion."""
+
+    prompt: ModelInput
+    completion: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,9 +72,7 @@ def validate_bubbles(texts: Sequence[str]) -> None:
     """Verify that one episode serialization splits without ambiguity."""
     for text in texts:
         if _BOUNDARY_LINE.search(text):
-            raise PromptError(
-                f"Message text contains the reserved boundary: {text!r}"
-            )
+            raise PromptError(f"Message text contains the reserved boundary: {text!r}")
 
 
 def render_conversation(
@@ -112,27 +115,27 @@ def format_prompt(prompt: str, config: TrainDataConfig) -> ModelInput:
     return ModelInput(tuple(turns), has_prefill, completion_role)
 
 
-def format_row(
+def format_example(
     prompt: str,
     completion: str,
     config: TrainDataConfig,
-) -> dict[str, Any]:
-    """Format one complete training row."""
-    validate_prompt_config(config)
-    prompt = f"{config.prompt_prefix}{prompt}{config.prompt_suffix}"
-    completion = f"{config.completion_prefix}{completion}{config.completion_suffix}"
-    if config.format == "completion":
-        return {"prompt": prompt, "completion": completion}
-    messages = []
-    if config.system_prompt:
-        messages.append({"role": "system", "content": config.system_prompt})
-    messages.extend(
-        (
-            {"role": config.prompt_role, "content": prompt},
-            {"role": config.completion_role, "content": completion},
-        )
+) -> ModelExample:
+    """Format one prompt and target with the model text policy."""
+    return ModelExample(
+        format_prompt(prompt, config),
+        f"{completion}{config.completion_suffix}",
     )
-    return {"messages": messages}
+
+
+def completed_turns(example: ModelExample) -> tuple[Turn, ...]:
+    """Return the conversation turns for one completed example."""
+    turns = list(example.prompt.turns)
+    if example.prompt.has_prefill:
+        final = turns[-1]
+        turns[-1] = Turn(final.role, f"{final.content}{example.completion}")
+    else:
+        turns.append(Turn(example.prompt.completion_role, example.completion))
+    return tuple(turns)
 
 
 def validate_prompt_config(config: TrainDataConfig) -> None:

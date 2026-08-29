@@ -9,7 +9,7 @@ import pytest
 from idiolect.config import TrainDataConfig
 from idiolect.eval.mlx import EvalBackendError, MlxScoreBackend
 from idiolect.inference.base import ModelTarget, TargetMode
-from idiolect.prompt import ModelInput, Turn
+from idiolect.prompt import ModelExample, ModelInput, Turn
 
 
 class FakeArray:
@@ -62,7 +62,9 @@ class FakeTokenizer:
         self, turns: list[dict[str, str]], **options: object
     ) -> list[int]:
         """Return tokens for the prompt or completed conversation."""
-        if options.get("tokenize"):
+        if options.get("add_generation_prompt") or options.get(
+            "continue_final_message"
+        ):
             return [10, 11, 12]
         prefix = [10, 99, 12] if self.changed_boundary else [10, 11, 12]
         return [*prefix, 20, 21]
@@ -75,8 +77,7 @@ def test_mlx_score_counts_only_completion_tokens(
     session = _session(tmp_path, monkeypatch, FakeTokenizer())
 
     score = session.score(
-        ModelInput((Turn("user", "prompt"),), False),
-        "reply",
+        ModelExample(ModelInput((Turn("user", "prompt"),), False), "reply")
     )
 
     assert score.prompt_tokens == 3
@@ -91,7 +92,30 @@ def test_mlx_score_rejects_a_changed_token_boundary(
     session = _session(tmp_path, monkeypatch, FakeTokenizer(changed_boundary=True))
 
     with pytest.raises(EvalBackendError, match="completion boundary"):
-        session.score(ModelInput((Turn("user", "prompt"),), False), "reply")
+        session.score(
+            ModelExample(ModelInput((Turn("user", "prompt"),), False), "reply")
+        )
+
+
+def test_mlx_score_excludes_prefill_tokens_from_completion_loss(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Check that static assistant prefill stays inside the prompt mask."""
+    session = _session(tmp_path, monkeypatch, FakeTokenizer())
+
+    score = session.score(
+        ModelExample(
+            ModelInput(
+                (Turn("user", "prompt"), Turn("assistant", "prefill")),
+                True,
+            ),
+            "reply",
+        )
+    )
+
+    assert score.prompt_tokens == 3
+    assert score.tokens == 2
+    assert score.negative_log_likelihood == 4.0
 
 
 def _session(

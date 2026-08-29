@@ -6,6 +6,8 @@ from idiolect.config import TrainDataConfig
 from idiolect.prompt import (
     MESSAGE_BOUNDARY,
     PromptError,
+    completed_turns,
+    format_example,
     format_prompt,
     join_bubbles,
     split_bubbles,
@@ -53,3 +55,27 @@ def test_bubble_serialization_rejects_ambiguous_boundary_lines() -> None:
 
     assert join_bubbles(("one two",)) == "one two"
     assert split_bubbles("one two") == ("one two",)
+
+
+def test_example_keeps_prefill_in_prompt_and_suffix_in_target() -> None:
+    """Check that the generation boundary excludes only the target text."""
+    example = format_example(
+        "context",
+        "reply",
+        TrainDataConfig(
+            format="chat",
+            prompt_role="user",
+            completion_role="assistant",
+            prompt_prefix="before ",
+            prompt_suffix=" after",
+            completion_prefix="prefill ",
+            completion_suffix=" end",
+        ),
+    )
+
+    assert example.prompt.turns[-1].content == "prefill "
+    assert example.completion == "reply end"
+    assert [turn.content for turn in completed_turns(example)] == [
+        "before context after",
+        "prefill reply end",
+    ]

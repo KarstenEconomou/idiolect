@@ -47,6 +47,18 @@ class FakeTokenizer:
         return list(range(size))
 
 
+class UnstableTokenizer(FakeTokenizer):
+    """Change one prompt token when the completion is present."""
+
+    def apply_chat_template(self, messages, **options):
+        tokens = super().apply_chat_template(messages, **options)
+        if len(messages) > 2 or (
+            len(messages) == 2 and not options.get("continue_final_message")
+        ):
+            tokens[0] = 99
+        return tokens
+
+
 class FakeDatasetLoader:
     """Return one verified synthetic dataset reference."""
 
@@ -100,9 +112,7 @@ def test_trainer_builds_fixed_qwen_runs_without_changing_source_data(
             },
         ]
     }
-    request = json.loads(
-        (first_run.path / "request.json").read_text(encoding="utf-8")
-    )
+    request = json.loads((first_run.path / "request.json").read_text(encoding="utf-8"))
     assert request["model"] == str(model)
     assert request["iters"] == 2
     assert request["mask_prompt"] is True
@@ -174,6 +184,56 @@ def test_trainer_rejects_rows_that_mlx_lm_would_truncate(tmp_path: Path) -> None
         ).train(dataset, config)
 
     assert runner.commands == []
+
+
+def test_trainer_rejects_unstable_completion_boundary_before_backend(
+    tmp_path: Path,
+) -> None:
+    """Check that prompt masking cannot use a changed token prefix."""
+    dataset = _dataset(tmp_path)
+    model = tmp_path / "model"
+    model.mkdir()
+    runner = FakeRunner()
+
+    with pytest.raises(TrainError, match="completion boundary"):
+        MlxTrainer(
+            runner=runner,
+            resolver=lambda _config: model,
+            tokenizer_loader=lambda _path, _trust: UnstableTokenizer(),
+            loader=FakeDatasetLoader(dataset),
+        ).train(dataset, _config(tmp_path))
+
+    assert runner.commands == []
+
+
+def test_trainer_preserves_completion_format_export(tmp_path: Path) -> None:
+    """Check that the private adapter keeps the MLX-LM completion row shape."""
+    dataset = _dataset(tmp_path)
+    model = tmp_path / "model"
+    model.mkdir()
+    config = replace(
+        _config(tmp_path),
+        seeds=(17,),
+        data=TrainDataConfig(
+            format="completion",
+            prompt_prefix="<p>",
+            prompt_suffix="</p>",
+            completion_prefix="<c>",
+            completion_suffix="</c>",
+        ),
+    )
+
+    result = MlxTrainer(
+        runner=FakeRunner(),
+        resolver=lambda _config: model,
+        tokenizer_loader=lambda _path, _trust: FakeTokenizer(),
+        loader=FakeDatasetLoader(dataset),
+    ).train(dataset, config)
+
+    exported = result.runs[0].path / "data" / "train.jsonl"
+    assert exported.read_bytes() == (
+        b'{"prompt":"<p>Context</p>","completion":"<c>Reply</c>"}\n'
+    )
 
 
 def test_trainer_verifies_the_dataset_before_use(tmp_path: Path) -> None:

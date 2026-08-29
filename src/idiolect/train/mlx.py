@@ -1,4 +1,4 @@
-"""Train local adapters with MLX-LM."""
+"""Validate model tokens and train local adapters with MLX-LM."""
 
 import hashlib
 import json
@@ -29,7 +29,14 @@ from idiolect.model import (
     resolve_model,
     verify_model,
 )
-from idiolect.prompt import PromptError, format_row, validate_prompt_config
+from idiolect.prompt import (
+    ModelExample,
+    PromptError,
+    completed_turns,
+    format_example,
+    validate_prompt_config,
+)
+from idiolect.render import ChatTemplateRenderer, ModelRenderer, RenderError, Tokenizer
 from idiolect.train.base import LoadedRun
 from idiolect.types import DatasetId, DatasetRef, RunId, RunRef, Split, TrainResult
 
@@ -114,16 +121,6 @@ class DatasetLoader(Protocol):
         ...
 
 
-class Tokenizer(Protocol):
-    """Format model messages as token identifiers."""
-
-    has_chat_template: bool
-
-    def apply_chat_template(self, messages: Any, **options: Any) -> Any:
-        """Return tokens for one sequence of chat messages."""
-        ...
-
-
 class TokenizerLoader(Protocol):
     """Load one tokenizer without loading model weights."""
 
@@ -178,11 +175,14 @@ class MlxTrainer:
             raise TrainError(str(error)) from error
         if verified.dataset.id != dataset.id:
             raise TrainError(
-                "Dataset identity does not match the requested dataset: "
-                f"{dataset.path}"
+                f"Dataset identity does not match the requested dataset: {dataset.path}"
             )
         dataset_digest = directory_digest(dataset.path)
-        prepared = _prepare_data(dataset.path, config, tokenizer)
+        prepared = _prepare_data(
+            dataset.path,
+            config,
+            ChatTemplateRenderer(tokenizer),
+        )
         runs = tuple(
             self._train_one(
                 dataset,
@@ -222,7 +222,9 @@ class MlxTrainer:
             counts = _export_data(data_path, prepared)
             adapter_path = temporary / "adapter"
             adapter_path.mkdir(mode=0o700)
-            request = _request(config, model_path, data_path, adapter_path, seed, counts)
+            request = _request(
+                config, model_path, data_path, adapter_path, seed, counts
+            )
             request_path = temporary / "request.json"
             write_json(request_path, request)
             log_path = temporary / "train.log"
@@ -370,7 +372,7 @@ def _run_command(command: Sequence[str], log_path: Path) -> int:
 def _prepare_data(
     source: Path,
     config: TrainConfig,
-    tokenizer: Tokenizer,
+    renderer: ModelRenderer,
 ) -> Mapping[Split, tuple[Mapping[str, Any], ...]]:
     prepared: dict[Split, tuple[Mapping[str, Any], ...]] = {}
     for split in Split:
@@ -393,14 +395,18 @@ def _prepare_data(
                 raise TrainError(
                     f"Dataset row text is not valid: {source_path}:{line_number}"
                 )
-            row = format_row(prompt, completion, config.data)
-            _validate_row_tokens(
-                row,
-                tokenizer,
-                config.max_seq_length,
-                source_path,
-                line_number,
-            )
+            example = format_example(prompt, completion, config.data)
+            try:
+                rendered = renderer.render_example(example)
+            except RenderError as error:
+                raise TrainError(f"{error}: {source_path}:{line_number}") from error
+            if len(rendered.token_ids) > config.max_seq_length:
+                raise TrainError(
+                    "Dataset row exceeds max_seq_length at "
+                    f"{source_path}:{line_number}: {len(rendered.token_ids)} > "
+                    f"{config.max_seq_length}"
+                )
+            row = _mlx_lm_row(example, config.data)
             rows.append(row)
         prepared[split] = tuple(rows)
     if len(prepared.get(Split.TRAIN, ())) == 0:
@@ -429,52 +435,20 @@ def _export_data(
     return counts
 
 
-def _validate_row_tokens(
-    row: Mapping[str, Any],
-    tokenizer: Tokenizer,
-    max_seq_length: int,
-    path: Path,
-    line_number: int,
-) -> None:
-    messages = row.get("messages")
-    if messages is None:
-        messages = [
-            {"role": "user", "content": row["prompt"]},
-            {"role": "assistant", "content": row["completion"]},
-        ]
-    try:
-        tokens = tokenizer.apply_chat_template(messages, return_dict=False)
-        add_generation_prompt = messages[-1].get("role") == "assistant"
-        prompt_tokens = tokenizer.apply_chat_template(
-            messages[:-1],
-            add_generation_prompt=add_generation_prompt,
-            return_dict=False,
-        )
-    except Exception as error:
-        raise TrainError(
-            f"Cannot tokenize dataset row: {path}:{line_number}"
-        ) from error
-    if not _tokens(tokens) or not _tokens(prompt_tokens):
-        raise TrainError(f"Tokenizer returned invalid tokens: {path}:{line_number}")
-    if len(tokens) <= len(prompt_tokens):
-        raise TrainError(
-            f"Dataset completion does not contain supervised tokens: {path}:{line_number}"
-        )
-    if tokens[: len(prompt_tokens)] != prompt_tokens:
-        raise TrainError(
-            f"Tokenizer changed tokens at the completion boundary: {path}:{line_number}"
-        )
-    if len(tokens) > max_seq_length:
-        raise TrainError(
-            "Dataset row exceeds max_seq_length at "
-            f"{path}:{line_number}: {len(tokens)} > {max_seq_length}"
-        )
-
-
-def _tokens(value: Any) -> bool:
-    return isinstance(value, list) and bool(value) and all(
-        isinstance(token, int) and not isinstance(token, bool) for token in value
-    )
+def _mlx_lm_row(
+    example: ModelExample,
+    config: TrainDataConfig,
+) -> Mapping[str, Any]:
+    """Return one private MLX-LM training row."""
+    turns = completed_turns(example)
+    if config.format == "completion":
+        return {
+            "prompt": turns[0].content,
+            "completion": turns[-1].content,
+        }
+    return {
+        "messages": [{"role": turn.role, "content": turn.content} for turn in turns]
+    }
 
 
 def _request(

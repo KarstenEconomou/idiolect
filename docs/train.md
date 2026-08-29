@@ -80,6 +80,11 @@ formats every train, validation, and test row exactly as MLX-LM will. It rejects
 a row when the full token sequence exceeds `max_seq_length` or the completion
 does not contain supervised tokens. This check is strict because MLX-LM
 truncates long sequences from the right, where the target completion occurs.
+The shared model renderer also requires the complete token stream to start with
+the exact rendered prompt. The exported JSONL keeps MLX-LM's chat or completion
+row shape. Idiolect validates its expected token stream before launch, but
+MLX-LM remains responsible for training tokenization and prompt masking inside
+the training command.
 The trainer also requires at least `batch_size` training rows, a validation
 split, and a test split when `test = true`.
 
