@@ -5,11 +5,10 @@ root.
 
 ## First setup
 
-1. Read [security](security.md) before you create private state.
+1. Read [security](security.md) before creating private state.
 2. Use [Signal collection](signal.md) to link the local device and configure the
    whitelist.
-3. Use the [macOS LaunchAgent](launchd.md) only when you need continuous
-   collection.
+3. Use the [macOS LaunchAgent](launchd.md) only for continuous collection.
 
 ## Data and model pipeline
 

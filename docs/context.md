@@ -1,7 +1,7 @@
 # Conversation Context
 
-This document defines the meaning of model conversation text. Use it when you
-audit a dataset or compare training, inference, and chat behavior.
+This document defines the meaning of model conversation text for dataset audits
+and comparisons of training, inference, and chat behavior.
 
 ## Identity
 

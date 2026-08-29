@@ -63,7 +63,7 @@ Review these policy groups:
 | Reporting | Local project name and approved external service. |
 
 Set exactly one of `epochs` or `iterations`. Keep `mask_prompt = true`. Keep
-`trust_remote_code = false` unless you audit the model code. An empty
+`trust_remote_code = false` unless the model code has been audited. An empty
 `report_to` value disables external reporting.
 
 ## Preflight validation

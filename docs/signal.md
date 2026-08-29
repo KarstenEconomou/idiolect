@@ -96,7 +96,7 @@ Run one bounded receive operation:
 just idiolect signal collect
 ```
 
-Run until you stop the process:
+Run continuously until the process receives a stop signal:
 
 ```console
 just idiolect signal collect --follow

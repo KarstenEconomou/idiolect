@@ -84,7 +84,7 @@ just setup
 See [docs/signal.md](docs/signal.md) before collection.
 That procedure creates the private Signal state and `.env` file.
 
-Install the optional local-model packages when you need training, inference, or
+Install the optional local-model packages for training, inference, or
 evaluation:
 
 ```console
@@ -143,7 +143,7 @@ conditions, artifact descriptions, and interpretation rules.
 
 `conf/idiolect.toml` is the canonical policy. `conf/exp/` contains complete
 experiment policies. The configuration system does not merge files. Create a
-new policy before you change an experiment:
+new policy before changing an experiment:
 
 ```console
 just config list
@@ -159,8 +159,8 @@ do not remove data from Git history.
 
 ## Develop
 
-Read [AGENTS.md](AGENTS.md) and every applicable nested `AGENTS.md` before you
-change code. Run the required checks before handoff:
+[AGENTS.md](AGENTS.md) and the applicable nested `AGENTS.md` files define the
+rules for code changes. Run the required checks before handoff:
 
 ```console
 just check

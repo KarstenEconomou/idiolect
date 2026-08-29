@@ -24,7 +24,7 @@ Keep secrets and Signal identifiers in `.env` or a system secret store. The
 supported Signal environment values are documented in
 [Signal collection](signal.md).
 
-Set the file mode before you add values:
+Set the file mode before adding values:
 
 ```console
 touch .env
@@ -32,7 +32,7 @@ chmod 600 .env
 ```
 
 Just recipes that launch Idiolect load `.env`. Direct `uv run idiolect`
-commands do not load it unless you add `--env-file .env`.
+commands require `--env-file .env` to load it.
 
 Use `IDIOLECT_CONFIG` only to select a public configuration file. Do not use it
 to hide private policy values in another TOML file.

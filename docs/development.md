@@ -19,8 +19,8 @@ Shared contracts are in `artifact.py`, `config.py`, `model.py`, `prompt.py`,
 `render.py`, and `types.py`. Keep optional MLX, Textual, DuckDB, and Signal
 dependencies out of unrelated contract modules.
 
-Read the root `AGENTS.md` before a change. Read each applicable nested
-`AGENTS.md` before you change stage code or tests.
+The root `AGENTS.md` applies to all changes. Each applicable nested `AGENTS.md`
+adds rules for changes to stage code or tests.
 
 ## Environment
 
@@ -42,7 +42,7 @@ hand.
 
 ## Required checks
 
-Run focused tests while you work. Run the complete checks before handoff:
+Run focused tests during development. Run the complete checks before handoff:
 
 ```console
 just check
@@ -73,8 +73,8 @@ and clocks.
 
 ## Operational checks
 
-Operational checks use private state. Run them only when the user requests an
-operational task:
+Operational checks use private state and are outside standard repository
+verification:
 
 ```console
 just idiolect signal groups
