@@ -8,82 +8,70 @@
      ╰─╯
 ```
 
-Idiolect is a local-first ML pipeline for fine-tuning models to reproduce
-individual writing styles, linguistic patterns, and conversational behavior.
-It collects whitelisted Signal group messages, preserves native mention, reply,
-attachment, and reaction context, groups consecutive messages into response
-episodes, builds causally filtered and source-audited immutable target-specific
-datasets, uses MLX-LM QLoRA to train adapters, and generates reproducible local
-predictions.
+Idiolect is a local-first system that adapts a language model to one person's
+conversation style. It converts approved Signal group messages into causal
+training examples. Each prompt contains conversation context that existed
+before the target response. Each completion contains the full target response
+episode; an episode can contain multiple Signal bubbles.
 
-It also provides a private multi-turn terminal chat for the configured DIXIE
-base persona and verified adapters. The chat uses the same conversation grammar
-as training, streams local replies as response episodes with their message
-boundaries intact, and saves only explicit immutable snapshots.
+Idiolect uses MLX-LM to train a low-rank adapter on a fixed, quantized base
+model. The base weights stay frozen. The experiment policy selects the model,
+adapter targets, optimization settings, and sequence limits. Training minimizes
+completion negative log-likelihood. Prompt and assistant-prefill tokens do not
+contribute to the loss. A shared renderer applies the model chat template and
+verifies the exact prompt-to-completion token boundary before training,
+inference, or evaluation starts.
+
+The result is a small adapter, not a new full model. Idiolect loads this adapter
+with its recorded base model for local generation and private terminal chat. It
+compares each adapter policy with that same base model on held-out responses:
+the fidelity eval suite pillars are Likelihood, Voice, Validity, Memorization,
+and Recognition. Source data, datasets, model files, adapters, predictions, chats,
+and evaluation results stay on the local computer unless an operator enables
+an external reporting service.
+
+## Repository structure
 
 ```text
-                                  Signal
-                                     │
-                                     ▼
-                           signal-cli collector
-                                     │
-                                     ▼
-                               normalization
-                                     │
-                                     ▼
-                                  DuckDB
-                                     │
-                                     ▼
-                          target-relative context
-                                     │
-                                     ▼
-                          immutable JSONL dataset
-                                     │
-                  ╭──────────────────┴──────────────────╮
-                  ▼                                     ▼
-       recorded base inference                MLX-LM QLoRA training
-                  │                                     │
-                  │                       ╭─────────────┴─────────────╮
-                  │                       ▼                           ▼
-                  │               adapter inference         supervised MLX worker
-                  │                       │                           │
-                  ╰───────────────────────┤                           │
-                                          ▼                           ▼
-                            content-addressed predictions   private terminal chat
-                                          │                           │
-                                          ▼                           ▼
-                                        evals           explicit immutable snapshots
+.
+├── src/idiolect/            Python package and command-line application
+│   ├── ingest/              Signal input and collection
+│   ├── store/               Persistence contracts and DuckDB storage
+│   ├── data/                Dataset selection and text construction
+│   ├── train/               Training contracts and MLX-LM training
+│   ├── inference/           Generation contracts and local inference
+│   ├── chat/                Sessions, model workers, and snapshots
+│   ├── tui/                 Textual terminal interface
+│   ├── eval/                Policy evaluation and familiar-rater panels
+│   ├── artifact.py          Artifact identity and file rules
+│   ├── config.py            Strict TOML and environment configuration
+│   ├── model.py             Model identity and verification
+│   ├── prompt.py            Stage-neutral conversation meaning
+│   ├── render.py            Model-token rendering contract
+│   └── types.py             Shared immutable records
+├── conf/                    Public and reproducible TOML policies
+│   └── exp/                 Complete experiment policies
+├── docs/                    Procedures and data-contract explanations
+├── just/                    Task-specific Just recipes
+├── tests/                   Synthetic tests that mirror the package
+├── justfile                 Repository command interface
+└── var/                     Ignored private state and artifacts
 ```
 
-The canonical configuration keeps Signal data, datasets, model files, adapters,
-predictions, chat snapshots, evaluations, judgments, and panel reports under
-the ignored `var/` directory. The repository tracks public settings in
-`conf/idiolect.toml` and complete experiment settings in `conf/exp/`.
-The evaluation runner compares a complete adapter policy with its exact recorded
-base. It reports likelihood, voice, validity, and memorization evidence, and
-collects private blind familiar-panel recognition judgments with
-example-and-rater uncertainty.
-
-The shared prompt contract defines conversation meaning. A separate model
-renderer applies each tokenizer's chat template and defines the exact token
-stream and completion boundary. Training, inference, chat, and evaluation use
-that boundary; MLX modules only execute or score the verified tokens.
+Shared contracts are in `artifact.py`, `config.py`, `model.py`, `prompt.py`,
+`render.py`, and `types.py`. Stage-specific behavior stays in the stage
+directories.
 
 ## Requirements
 
 - Python 3.14
 - [`uv`](https://docs.astral.sh/uv/)
 - [`just`](https://just.systems/) 1.46.0 or later
-- A current `signal-cli` release and a local QR code tool for collection
-- An Apple silicon Mac for MLX-LM training, inference, chat, and automatic
-  evaluation
+- A current `signal-cli` release for collection
+- Apple silicon for local MLX-LM operations
 
-Run commands from the repository root. Use only messages from people who consent
-to the collection and model experiment.
-
-Use the root `justfile` as the project command interface. Its recipes manage the
-Python environment with `uv`. Use `uv` directly only when you change project
-dependencies.
+Run commands from the repository root. Use the root `justfile` as the command
+interface. Use `uv` directly only for dependency maintenance.
 
 ## Set up
 
@@ -93,154 +81,93 @@ Install the core environment:
 just setup
 ```
 
-Link `signal-cli` as a secondary Signal device. See
-[docs/signal.md](docs/signal.md). Then create the private environment file:
+See [docs/signal.md](docs/signal.md) before collection.
+That procedure creates the private Signal state and `.env` file.
+
+Install the optional local-model packages when you need training, inference, or
+evaluation:
 
 ```console
-touch .env
-chmod 600 .env
+just setup-train
 ```
 
-Add the account first:
+## Use the pipeline
 
-```sh
-IDIOLECT_SIGNAL_ACCOUNT="+14165550123"
-```
-
-The values above are placeholders. Do not commit a real account, group ID,
-message, token, or model artifact. Just recipes that launch Idiolect pass `.env`
-to `uv`, so you do not need to load it in the current shell.
-
-List groups, then add the selected IDs to `.env`:
-
-```console
-just idiolect signal groups
-```
-
-```sh
-IDIOLECT_SIGNAL_CHATS='["GROUP_ID_ONE=", "GROUP_ID_TWO="]'
-```
-
-## Run the pipeline
-
-Collect queued messages once, or use the documented macOS LaunchAgent for
-continuous collection:
+**Ingest.** Collect Signal events:
 
 ```console
 just idiolect signal collect
-just collect status
 ```
 
-Build an immutable dataset for the linked Signal user:
+**Data.** List stored people and build a dataset for the linked Signal account:
 
 ```console
 just idiolect data people
 just data build TARGET_NAME
 ```
 
-Install MLX-LM and run a short tracked experiment:
+**Train.** Train the canonical policy or a named experiment policy:
 
 ```console
-just setup-train
+just train var/data/DATASET_ID
 just config train qwen3-8b-smoke var/data/DATASET_ID
 ```
 
-Generate paired predictions from the exact base model and adapter recorded by
-the run:
+**Inference.** Generate predictions from the base model recorded by a run and
+from its adapter:
 
 ```console
 just inference base-of var/runs/RUN_ID var/data/DATASET_ID test qwen3-8b-smoke
 just inference run var/runs/RUN_ID var/data/DATASET_ID test qwen3-8b-smoke
 ```
 
-Evaluate every configured training seed together on the fixed validation split:
+**Evaluation.** Evaluate all runs from one policy:
 
 ```console
-just eval policy var/data/DATASET_ID var/runs/RUN_ID_ONE var/runs/RUN_ID_TWO
+just eval policy var/data/DATASET_ID \
+  var/runs/RUN_ID_ONE \
+  var/runs/RUN_ID_TWO \
+  var/runs/RUN_ID_THREE
 ```
 
-Install the chat environment and open the registry:
+**Chat.** Open the private terminal chat:
 
 ```console
-just setup-chat
 just chat
-
-just chat run RUN_ID DATASET_ID
-just chat resume CHAT_ID
 ```
 
-In chat, the active model is styled as `IDIOLECT // TARGET::RUN [BASE]`. Type `/` for control commands or a leading `@` to reference one of
-the numbered stored message bubbles. Continue typing the reference identity
-after `@` to filter the list; `/ ` and `@ ` also open their menus before existing
-prompt text. Enter activates a selected slash command; Tab does not autocomplete.
-`/echo <text>` shows a dimmed SYS turn without adding it to model context.
-Commands with arguments use a command bar above the composer, and a command
-replaces any selected reference. `/specs` shows recorded model policy and
-lineage. `/probe` shows only live MLX, hardware, Metal/device, and current
-model-load measurements under `STACK`, `DEVICE`, and `PAYLOAD`. Sizes use one
-compact IEC unit, and load time uses seconds; the values are not saved in a
-TRACE. `/buffer` opens the active context sheet. It separates prompt-token use,
-turn-window use, and the prompt digest, then reports the newest resident
-reference as `HEAD` and all resident identities under `REFS`. Use `/chroma` in
-chat or press `C` in `REGISTRY` to open `CHROMA` and
-preview the blue LOCKSMITH, red LOOKOUT, yellow PICKPOCKET, pink CLEANER,
-violet MOLE, teal GENTLEMAN, green HACKER, and orange REDHEAD themes with the
-arrow keys; `ENTER EQUIP`
-commits one and reports a `SYS: ACK NAME equipped.` acknowledgement.
-Slash-command descriptions identify the current TRACE, active LINK, context
-BUFFER, and CONSTRUCT specifications directly.
-Chat, `/specs`, `/probe`, and `/buffer` headers show the active
-`IDIOLECT // TARGET::RUN [BASE]` identity and `LINK#XXXXXX`, using a random
-six-digit hexadecimal link ID in uppercase. SPECS opened from REGISTRY has no link.
-Hexadecimal IDs in SPECS are uppercase. Alerts and errors share a row with
-loading status, command and reference menus, or the selected command bar. They
-use a dimmed `SYS:` prefix, followed by `ACK` or `ERR` and the message in the
-footer text color. Fixed alerts use `SYS: <ACK|ERR> <OBJECT> <STATE>.`; an
-object identity, such as a TRACE ID, can appear before the state.
-A selected reference is shown above the composer and is encoded as Signal-style
-reply metadata for adapter-backed assistants. See
-[docs/chat.md](docs/chat.md) for the keyboard controls.
-From `REGISTRY`, SPECS uses Left and Right to cycle CONSTRUCT entries and Enter
-to CONNECT the highlighted entry.
+See [docs/index.md](docs/index.md) for the complete procedures, required stop
+conditions, artifact descriptions, and interpretation rules.
 
-Then collect private familiar-rater judgments and build a panel report. See
-[docs/eval.md](docs/eval.md) for the consent, interpretation, and command rules.
+## Configuration and private state
 
-Use `just config new NAME` to copy the complete canonical configuration before
-you define another experiment. Do not change a configuration after you use it
-for a recorded run.
+`conf/idiolect.toml` is the canonical policy. `conf/exp/` contains complete
+experiment policies. The configuration system does not merge files. Create a
+new policy before you change an experiment:
 
-## Documentation
+```console
+just config list
+just config new EXPERIMENT_NAME
+```
 
-See [docs/index.md](docs/index.md) for the replication entry point. It links the
-procedures for Signal setup, security, collection, `launchd`, conversation
-context, dataset construction, training, inference, chat, evaluation, and
-development.
+Commit a policy before its first run. Do not change a policy after a recorded
+run uses it.
 
-Important constraints:
-
-- The collector receives new queued events. It does not import existing phone
-  history.
-- Stop the continuous collector during `reindex` and dataset construction.
-- Collection can continue during training, inference, and evaluation because those operations
-  use immutable files.
-- Keep the Mac on, awake, and logged in for the LaunchAgent. Training, inference,
-  and automatic evaluation recipes use `caffeinate`.
-- Chat never reads Signal or DuckDB, and it never autosaves. TRACE in the
-  unsaved-change confirmation and the explicit `/trace` checkpoint command write
-  private snapshots.
-- Treat raw events, hashed records, chat transcripts, and saved snapshots as
-  private data.
+Keep credentials and Signal identifiers in `.env` or a system secret store.
+Keep generated data under `var/`. Git ignores both locations, but ignore rules
+do not remove data from Git history.
 
 ## Develop
 
-Source code uses the `src` layout. Tests use synthetic fixtures, temporary
-storage, and fake external boundaries.
+Read [AGENTS.md](AGENTS.md) and every applicable nested `AGENTS.md` before you
+change code. Run the required checks before handoff:
 
 ```console
 just check
 just build
 ```
 
-See [docs/development.md](docs/development.md) and
-[AGENTS.md](AGENTS.md) for repository rules.
+Tests use synthetic data and fake external boundaries. They must not read
+`.env`, `var/`, live Signal state, model weights, or private artifacts. See
+[docs/development.md](docs/development.md) for the package boundaries and
+verification rules.

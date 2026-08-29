@@ -1,70 +1,71 @@
-# Security
+# Security and Privacy
 
-## Public files
+## Data classification
 
-Tracked files can contain these values:
+Tracked files can contain public software settings, model names, fixed model
+revisions, relative example paths, and synthetic examples.
 
-- Program names
-- Relative example paths
-- Timeouts and limits
-- Model names and training settings
-- Empty or false example values
+Do not put these values in a tracked file:
 
-Do not put a real account, group ID, absolute private path, token, or message in a tracked file.
+- credentials or access tokens
+- a real Signal account or group ID
+- a phone number or Signal UUID
+- private message text or chat text
+- an absolute private path
+- a database, dataset, model, adapter, checkpoint, or log
+- a prediction, snapshot, evaluation, judgment, or panel artifact
 
-## Private configuration
+`conf/idiolect.toml` and `conf/exp/` are public policy files. Signal group IDs
+are not valid public TOML settings.
 
-Use `conf/idiolect.toml` for public and reproducible settings. Git tracks this file. Signal chat IDs are not valid TOML settings.
+## Secrets and local settings
 
-Saved chat snapshots are private local artifacts under `var/chat/`. A snapshot
-can contain every user message and generated reply in its transcript. The chat
-does not autosave and does not create a temporary transcript. Only RECORD in a
-confirmation writes a snapshot. Snapshot directories use mode `0700`, and files
-use mode `0600`. Do not publish a chat manifest or `turns.jsonl` file.
+Keep secrets and Signal identifiers in `.env` or a system secret store. The
+supported Signal environment values are documented in
+[Signal collection](signal.md).
 
-Use `.env` or a system secret store for these values:
-
-- `IDIOLECT_SIGNAL_ACCOUNT`
-- `IDIOLECT_SIGNAL_CHATS`
-- `IDIOLECT_SIGNAL_DATA_DIR`
-- Model hub tokens
-- Experiment service tokens
-- Future cloud credentials
-
-Set `.env` mode to `0600`:
+Set the file mode before you add values:
 
 ```console
+touch .env
 chmod 600 .env
 ```
 
-`IDIOLECT_SIGNAL_CHATS` is a JSON list of group IDs. The account number and group IDs are private metadata. They are not enough to authenticate a Signal device, but they must not be public.
+Just recipes that launch Idiolect load `.env`. Direct `uv run idiolect`
+commands do not load it unless you add `--env-file .env`.
 
-Keep machine-local and private values in `.env` or a system secret store. Use
-`IDIOLECT_CONFIG` only to select a public configuration such as a tracked
-experiment policy under `conf/exp/`.
+Use `IDIOLECT_CONFIG` only to select a public configuration file. Do not use it
+to hide private policy values in another TOML file.
 
-## Key material and data
+## Signal credentials
 
-The `signal-cli` data directory contains cryptographic keys and account state. Do not put this data in `.env`. Do not commit, copy, or publish this directory.
+The `signal-cli` data directory contains device keys and account state. Keep it
+under `var/signal/`. Do not copy it into `.env` or a tracked path.
 
-The device link URI is a temporary credential. Render it locally, scan it, and discard it. Do not put it in a command history, issue, log, or online QR service.
+The device-link URI is a temporary credential. Convert it to a QR code on the
+local computer. Do not use an online QR service. Do not put the URI in a shell
+history, issue, or log.
 
-The DuckDB file contains raw messages and original Signal identifiers. Hashed normalized IDs do not make the raw event table anonymous.
+The DuckDB `events` table contains raw Signal JSON. Hashed normalized IDs do not
+make the raw data anonymous.
 
-The log files can contain command errors and local paths. Keep `var/log/` private.
+## Model and evaluation artifacts
 
-Model snapshots, model-specific datasets, adapters, run logs, run manifests,
-prompts, predictions, inference manifests, evaluation reports, judgments, and
-panel artifacts are private. An adapter or generated result can retain source
-text. Keep external experiment reporting disabled unless you approve the
-service and its data flow.
+A dataset, adapter, generated reply, or evaluation can retain private source
+text. Keep external experiment reporting disabled unless the data owner approves
+the service and its data flow.
 
-Familiar-panel raters must consent and must have permission to view every
-conversation context shown to them. A rater's familiarity with the target does
-not grant access to another group's messages. Run ratings on the data owner's
-Mac and use pseudonyms that do not contain Signal identifiers or contact data.
+Familiar raters must consent. Each rater must already have permission to view
+every sampled conversation. Run the rating on the data owner's computer. Use a
+pseudonym that contains no contact data.
 
-Use disk encryption. Limit local file access. Do not include `var/` or `.env` in
-a public archive.
+## Local protection
 
-Git ignore rules reduce accidental commits. They do not remove an item from Git history. If a credential enters Git history, revoke or replace the credential.
+- Use disk encryption.
+- Restrict access to the local user.
+- Keep `var/`, `.env`, and installed LaunchAgent files out of public archives.
+- Treat logs and manifests as private. They can contain paths and provenance.
+- Back up private state only to an approved encrypted location.
+
+Git ignore rules reduce accidental commits. They do not remove data from Git
+history. Revoke or replace a credential if it enters Git history.

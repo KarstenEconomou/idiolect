@@ -1,40 +1,50 @@
-# Idiolect Operations
+# Idiolect Procedures
 
-This directory contains the replication record for the current system.
+Use this page to select the correct procedure. Run commands from the repository
+root.
 
-- [Signal collection](signal.md): Install, link, configure, and run `signal-cli`.
-- [Data store](data.md): Follow the record flow and inspect DuckDB.
-- [Conversation context](context.md): Preserve names, mentions, and replies for training.
-- [Dataset build](dataset.md): Build immutable target-specific MLX-LM files.
-- [Adapter training](train.md): Configure and run local QLoRA adapters.
-- [Local inference](inference.md): Generate fixed base and adapter predictions.
-- [Local chat](chat.md): Stream multi-turn replies and save private snapshots.
-- [Model evaluation](eval.md): Compare policy fidelity and run private blind ratings.
-- [Security](security.md): Separate public settings from private data.
-- [macOS service](launchd.md): Run collection with `launchd`.
-- [Development](development.md): Verify changes without live data or model calls.
+## First setup
 
-## Current state
+1. Read [security](security.md) before you create private state.
+2. Use [Signal collection](signal.md) to link the local device and configure the
+   whitelist.
+3. Use the [macOS LaunchAgent](launchd.md) only when you need continuous
+   collection.
 
-The package implements the Signal collector, DuckDB store, context renderer,
-dataset builder, MLX-LM trainer, local inference runner, supervised chat TUI,
-automatic policy evaluation, and private familiar-panel workflow.
+## Data and model pipeline
 
-The collector uses this flow:
+Follow these procedures in order:
 
-```text
-signal-cli JSON line
-        │
-        v
-validate and apply group whitelist
-        │
-        v
-create raw event and identity-linked record
-        │
-        v
-write one DuckDB transaction
-```
+1. [Data store](data.md) explains private paths, stored records, and writer
+   restrictions.
+2. [Conversation context](context.md) defines identity, mention, reply, and
+   response-episode meaning.
+3. [Dataset build](dataset.md) defines causal selection, split isolation, and
+   artifact contents.
+4. [Adapter training](train.md) defines complete experiment policies and local
+   MLX-LM runs.
+5. [Local inference](inference.md) defines target selection and immutable
+   prediction artifacts.
+6. [Model evaluation](eval.md) defines the evidence, gates, and familiar-rater
+   procedure.
 
-Dataset construction then groups messages into response episodes, splits the
-episodes chronologically, and renders causal context. See
-[dataset build](dataset.md) for the unit definitions and rules. The local `launchd` agent runs `idiolect signal collect --follow`. The agent starts at user login. The agent runs only while the Mac is on, awake, and logged in.
+## Local chat
+
+Use [local chat](chat.md) to open the configured base model, a verified adapter,
+or a saved snapshot. Chat does not read Signal or DuckDB.
+
+## Development
+
+Use [development and verification](development.md) for package boundaries,
+test isolation, and required checks.
+
+## Process restrictions
+
+- Use only one process that writes the Signal data directory.
+- Use only one process that writes DuckDB.
+- Stop continuous collection before `reindex` or dataset construction.
+- Collection can run during training, inference, chat, and evaluation. These
+  stages use immutable files.
+- Keep the Mac awake for long MLX-LM operations. The training, inference, and
+  automatic evaluation recipes use `caffeinate`.
+- Keep all files under `var/` private.

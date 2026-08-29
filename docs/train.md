@@ -2,121 +2,112 @@
 
 ## Purpose
 
-Training is a local batch operation. It reads one immutable dataset and writes one adapter for each configured seed. It does not read Signal or DuckDB.
+Training reads one verified dataset and creates one adapter for each configured
+seed. It does not read Signal or DuckDB.
 
-LoRA receives loss only on the formatted target completion. `mask_prompt` must
-be `true`. This prevents the adapter from learning to reproduce the dataset
-instruction, other participants, and context scaffolding as output behavior.
-One training row is one target response episode, so the completion teaches both
-what the target says and how the target fragments an utterance into multiple
-Signal messages.
+The objective is completion negative log-likelihood. Prompt masking limits loss
+to the target response. One completion is one response episode, including its
+internal `[new message]` boundaries.
 
-The training objective is completion negative log-likelihood. This is the same
-quantity that the Likelihood pillar measures at evaluation time: training
-minimizes completion NLL on the training split, and evaluation scores held-out
-completion NLL on the validation split. Lower held-out NLL than the recorded
-base is the first convergence signal. Read it with the other pillars, because a
-model can lower NLL by copying the one observed reply. See the
-[evaluation procedure](eval.md).
-
-Each tracked TOML configuration contains one complete experiment policy. Python code does not select a model, seed, data format, optimizer value, adapter target, path, or external report service.
+Use a complete TOML policy for every experiment. Python code does not supply a
+missing model, seed, optimizer, format, path, or reporting choice.
 
 ## Install
 
-Install the optional local training packages:
+Install the optional MLX-LM packages:
 
 ```console
 just setup-train
 ```
 
-The canonical configuration uses `mlx-community/Qwen3-14B-4bit` at a fixed repository revision. The smoke configuration uses `mlx-community/Qwen3-8B-4bit`. The first run for each model downloads it to `train.model_cache`.
+A hub model can download during the first run. Keep a required `HF_TOKEN` in
+`.env`. Do not put it in TOML.
 
-Do not put a model hub token in TOML. Put `HF_TOKEN` in `.env` only if the model requires authentication.
+## Create an experiment policy
 
-## Configure
-
-`conf/idiolect.toml` is the canonical configuration. Complete experiment configurations are in `conf/exp/`. Git tracks both locations.
-
-List the available configurations:
+List available policies:
 
 ```console
 just config list
 ```
 
-Create a configuration from the canonical file:
+Copy the canonical policy:
 
 ```console
-just config new qwen3-14b-r16
+just config new EXPERIMENT_NAME
 ```
 
-Create a configuration from another experiment:
+Copy another experiment policy:
 
 ```console
-just config new qwen3-8b-r16 qwen3-8b-smoke
+just config new NEW_NAME SOURCE_NAME
 ```
 
-The command creates `conf/exp/<name>.toml` and stops if the target exists. Names use lowercase letters, numbers, and hyphens. Edit the new file directly. Each file is complete. The configuration system does not merge files or apply experiment overrides.
+The command creates `conf/exp/NEW_NAME.toml`. Each file is complete. The
+configuration system does not merge files.
 
-Use a name that identifies the model and the main changed dimensions. Do not use a sequence number as the only name. Commit a configuration before its training run. Keep a used configuration unchanged. Create another file for another policy.
+Use a name that identifies the model and main policy change. Commit the policy
+before its first run. Do not change it after a run uses it. Create a new policy
+for the next change.
 
-The file name is a human label. The content-addressed run ID is the technical identity. It includes the complete resolved training policy, dataset digest, model digest, and one seed. The recorded policy lists only the seed of that run, so adding another seed does not change the ID of an existing run.
+Review these policy groups:
 
-The principal values are:
+| Group | Decision |
+|---|---|
+| Model | Name, source, revision, cache, and remote-code policy. |
+| Run | Seeds and either epochs or iterations. |
+| Optimization | Optimizer, learning rate, batch behavior, and schedule. |
+| Sequence | Maximum length and prompt masking. |
+| Format | Roles, system text, prefixes, suffixes, and assistant prefill. |
+| LoRA | Target keys, rank, scale, and dropout. |
+| Reporting | Local project name and approved external service. |
 
-- `base_model`, `model_source`, and `model_revision`: Select one fixed model snapshot.
-- `model_cache` and `output`: Select private model and run paths.
-- `command`: Select the installed MLX-LM command.
-- `seeds`: Select each independent run. The canonical configuration runs three adapters in sequence.
-- `epochs` or `iterations`: Select one run limit. Do not set both values.
-- `batch_size` and `grad_accumulation_steps`: Set the physical and effective batch operation.
-- `train.data`: Set the private model-specific copy format.
-- `train.lora`: Set the adapter layer keys, rank, scale, and dropout.
-- `report_to`: Select an external report service. An empty value disables all report services.
+Set exactly one of `epochs` or `iterations`. Keep `mask_prompt = true`. Keep
+`trust_remote_code = false` unless you audit the model code. An empty
+`report_to` value disables external reporting.
 
-The canonical configuration uses Qwen non-thinking text. It adds `/no_think` to each prompt and an empty thinking block before each completion. This change occurs only in the private run copy. The immutable canonical dataset does not change.
+## Preflight validation
 
-Before model work, the trainer verifies the dataset manifest, split files, and digests with the same loader that evaluation and inference use. It then loads only the recorded model tokenizer and
-formats every train, validation, and test row exactly as MLX-LM will. It rejects
-a row when the full token sequence exceeds `max_seq_length` or the completion
-does not contain supervised tokens. This check is strict because MLX-LM
-truncates long sequences from the right, where the target completion occurs.
-The shared model renderer also requires the complete token stream to start with
-the exact rendered prompt. The exported JSONL keeps MLX-LM's chat or completion
-row shape. Idiolect validates its expected token stream before launch, but
-MLX-LM remains responsible for training tokenization and prompt masking inside
-the training command.
-The trainer also requires at least `batch_size` training rows, a validation
-split, and a test split when `test = true`.
+Before training, Idiolect performs these checks:
 
-`trust_remote_code = false` rejects a model configuration that declares an `auto_map` code loader. Keep this value false unless you audit and accept the model code.
+1. Verify the complete training policy.
+2. Resolve the fixed model revision and verify its digest.
+3. Load only the tokenizer.
+4. Verify the dataset identity and files.
+5. Apply the model format to every available split.
+6. Verify a stable prompt-to-completion token boundary.
+7. Reject an example that has no supervised token or exceeds
+   `max_seq_length`.
+8. Verify the required split and batch counts.
+
+Idiolect validates the expected token stream. MLX-LM remains the authority for
+training tokenization and prompt masking inside the training command.
+
+The model-specific prefixes and suffixes change only the private run copy. They
+do not change the canonical dataset.
 
 ## Run
 
-Build and note one dataset path:
+Build a verified dataset first. Stop collection only during the dataset build.
 
-```console
-just data build DIXIE
-```
-
-Stop collection only during this dataset build. Start collection after the dataset is complete. Training reads only fixed files, so collection can run during training.
-
-Run the canonical configuration:
+Run the canonical policy:
 
 ```console
 just train var/data/DATASET_ID
 ```
 
-Run a named experiment configuration:
+Run a named experiment policy:
 
 ```console
 just config train qwen3-8b-smoke var/data/DATASET_ID
 ```
 
-Connect the Mac to power. The recipe uses `caffeinate -i` to prevent idle sleep for the full operation. Training does not use `launchd`.
+The recipes use `caffeinate -i`. Connect the Mac to power. Collection can run
+during training because training reads immutable files.
 
-## Output
+## Artifact
 
-Each seed has one content-addressed path:
+Each seed creates one content-addressed run:
 
 ```text
 var/runs/<run-id>/
@@ -132,23 +123,20 @@ var/runs/<run-id>/
 └── train.log
 ```
 
-The run ID includes the dataset ID, dataset digest, model digest, model revision, one seed, and the training policy of that run. A repeated equal run returns the existing adapter. The loader checks every run file against the manifest and rejects a changed file.
+The run ID commits to the dataset, model digest, one seed, and complete policy.
+An equal request returns the existing verified run. The loader verifies every
+recorded file before inference, chat, or evaluation uses the run.
 
-All output is private. Git ignores `var/`, model files, adapters, checkpoints, and report directories.
+Do not edit a run. Do not publish the adapter, model-specific data, request,
+manifest, or log.
 
 ## Experiment sequence
 
-Use a small dataset only to verify the operation. Do not interpret style quality from a few messages.
+1. Use a small smoke policy to verify the operation.
+2. Keep the validation set and inference policy fixed.
+3. Train all configured seeds for a candidate policy.
+4. Compare the complete seed set with its recorded base.
+5. Use all evaluation pillars before model selection.
 
-1. Keep the validation examples and inference sampling policy fixed.
-2. Run a short 8B smoke experiment with a separate TOML policy.
-3. Run the configured 14B experiment when the corpus is sufficient.
-4. Evaluate the complete training-seed set against its exact base on validation data.
-5. Compare the five evaluation pillars: likelihood, voice, validity,
-   memorization, and recognition, with run-to-run seed stability.
-
-Do not publish a dataset, adapter, generated message, run log, or manifest. An adapter can retain private training information.
-
-Use the [evaluation procedure](eval.md) for policy selection. Use the
-[local inference procedure](inference.md) for manual prompts and fixed split
-generation.
+A small successful run verifies the system. It does not establish model
+quality. Use the [evaluation procedure](eval.md) for selection.

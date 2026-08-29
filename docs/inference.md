@@ -2,48 +2,48 @@
 
 ## Purpose
 
-Inference generates text from one fixed model target. It reads explicit prompt text or one verified dataset split. It does not read Signal or DuckDB.
+Inference generates local text from one verified model target. It accepts one
+private prompt or one split from a verified dataset. It does not read Signal or
+DuckDB.
 
-The implementation uses MLX-LM. Install the local model packages:
+Install the optional model packages:
 
 ```console
 just setup-train
 ```
 
-## Configuration
+## Policy
 
-Each complete TOML configuration contains one `[inference]` table. The table selects the output path, backend, seeds, example limit, token limits, and sampling values.
+The `[inference]` table defines output, seeds, example selection, prompt and
+generation limits, sampling, and repetition behavior.
 
-The canonical Qwen policy uses non-thinking generation. The training format adds `/no_think` to the prompt and uses an empty thinking block as the assistant prefill. Inference uses the same format.
+`max_examples = 0` selects all examples. A positive value selects examples by
+stable hash. It does not select the first rows.
 
-`max_examples = 0` selects all examples. A positive value selects examples by their stable hash. It does not select the first messages in the split. One dataset row is one target response episode, so one prediction reproduces one complete episode, including the `[new message]` boundaries between generated Signal bubbles.
+`max_prompt_tokens` applies after the model chat template renders the prompt.
+Inference rejects an overlong prompt. It does not remove dataset context or
+reduce `max_tokens`.
 
-`max_prompt_tokens` is a strict input limit after the tokenizer applies the chat template. The operation stops if an input exceeds the limit. It does not remove context or reduce the output limit.
-
-The shared model renderer selects generation-prompt or assistant-prefill chat
-template behavior and returns the exact token identifiers. Inference counts
-those identifiers and passes them unchanged to MLX-LM generation.
-
-The generation-only part of `[inference]` is also the chat generation policy. It
-contains the backend, prompt and output limits, temperature, probability
-filters, and repetition settings. Batch-only output, seed lists, and example
-selection stay specific to inference artifacts. Interactive chat applies its
-recorded message window and then removes oldest whole messages until the
-templated prompt fits `max_prompt_tokens`.
+The text format comes from `[train.data]` for a configured base. A run target
+uses the format recorded by that run. This rule keeps training, inference,
+evaluation, and adapter chat consistent.
 
 ## Targets
 
-Use one of these targets:
+Select exactly one target:
 
-- `--base`: Use the model and text format in the selected TOML file.
-- `--base-of RUN`: Use the exact base model and text format in a verified training run.
-- `--run RUN`: Use the same frozen base with the verified run adapter.
+| Option | Target |
+|---|---|
+| `--base` | Base model and text policy from the selected TOML file. |
+| `--base-of RUN` | Exact base model recorded by a verified run. |
+| `--run RUN` | Base model and adapter recorded by a verified run. |
 
-The run reader verifies the run manifest, every run file, the adapter, and the resolved model digest. The selected TOML file supplies only the inference policy for run targets.
+For run targets, the selected TOML file supplies only the inference policy. The
+run supplies the model revision, model digest, text format, and adapter digest.
 
-## One Prompt
+## One private prompt
 
-Put private prompt text in an ignored file:
+Put prompt text in an ignored file:
 
 ```console
 mkdir -p var/prompts
@@ -51,13 +51,11 @@ $EDITOR var/prompts/check.txt
 just idiolect inference text --base var/prompts/check.txt
 ```
 
-Use standard input for text that must not enter a process argument:
+Use standard input when prompt text must not enter a process argument:
 
 ```console
 just idiolect inference text --base
 ```
-
-Enter the prompt and send end-of-file. The command writes one JSON Lines record for each configured seed. It does not store the prompt or result.
 
 Use a run target:
 
@@ -66,32 +64,36 @@ just idiolect inference text --base-of var/runs/RUN_ID var/prompts/check.txt
 just idiolect inference text --run var/runs/RUN_ID var/prompts/check.txt
 ```
 
-## Dataset Batch
+The command writes one JSON Lines result for each configured seed to standard
+output. It does not create an inference artifact for a single prompt.
 
-Generate the same verified split with the canonical base and one adapter:
+## Dataset inference
+
+Generate a split with the configured base:
 
 ```console
 just inference base var/data/DATASET_ID test
-just inference run var/runs/RUN_ID var/data/DATASET_ID test
 ```
 
-Generate the exact base recorded by the run:
+Generate the same split with a run's recorded base and adapter:
 
 ```console
 just inference base-of var/runs/RUN_ID var/data/DATASET_ID test
+just inference run var/runs/RUN_ID var/data/DATASET_ID test
 ```
 
-Add an experiment configuration name as the final argument:
+Add an experiment-policy name as the final argument when its inference policy
+must apply:
 
 ```console
 just inference run var/runs/RUN_ID var/data/DATASET_ID test qwen3-8b-smoke
 ```
 
-The recipes use `caffeinate -i`. Connect the Mac to power. Inference does not use `launchd`.
+The recipes use `caffeinate -i`. Collection can run during inference.
 
-## Output
+## Prediction artifact
 
-Each batch has this private structure:
+Dataset inference creates:
 
 ```text
 var/inference/<inference-id>/
@@ -99,17 +101,17 @@ var/inference/<inference-id>/
 └── pred.jsonl
 ```
 
-The inference ID commits to the prediction-file digest and its counts. The recorded recipe includes the dataset digest, split, selected example IDs and source indexes, target digests, frozen text format, inference policy, and complete MLX text runtime fingerprint. The fingerprint covers MLX-LM, MLX, Transformers, tokenizers, Jinja, Python, and the operating-system platform.
+The recipe records the dataset digest, split, selected examples, target digests,
+text format, inference policy, and MLX text-runtime fingerprint. Equal prompts
+use equal derived random seeds across base and adapter targets.
 
-Before generation, inference searches for a verified artifact with an equal recipe. It returns that artifact when exactly one match exists. Concurrent equal operations that produce equal content return the same artifact. More than one verified result for one recipe is an error because it indicates nondeterministic generation or an incomplete runtime fingerprint.
+Each prediction records the source index and digest, configured seed, derived
+seed, generated text, finish reason, and token counts. It does not copy the
+source prompt or expected completion.
 
-Each prediction contains the source index and digest, configured seed, derived MLX seed, generated text, finish reason, and token counts. The artifact reader verifies the complete prediction schema, order, seeds, finish reasons, token limits, counts, and recipe alignment. It does not contain the source prompt or expected completion. The manifest refers to the immutable dataset for these values.
+Before reuse, the loader verifies the artifact identity, file digest, row order,
+seeds, finish reasons, token limits, and recipe alignment. More than one valid
+artifact for one recipe is an error because it indicates nondeterministic output
+or an incomplete runtime fingerprint.
 
-The MLX boundary uses the same stream for batch and interactive generation.
-Batch inference collects the text deltas and keeps its existing prediction
-schema. The stream additionally exposes measured prompt throughput, generation
-throughput, and peak memory for chat telemetry.
-
-The derived seed is a hash of the configured seed and example ID. Equal examples use equal random streams across base and adapter targets. Input order does not change the seed.
-
-The directory mode is `0700`. The file mode is `0600`. Do not publish a prompt, prediction, manifest, model, or adapter.
+Do not publish prompts, predictions, manifests, models, or adapters.

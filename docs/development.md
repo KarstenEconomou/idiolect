@@ -1,95 +1,87 @@
 # Development and Verification
 
-## Package boundaries
+## Repository boundaries
 
-- `ingest` reads source events, parses Signal JSON, and runs the harvest operation.
-- `store` defines storage ports and implements DuckDB storage.
-- `types.py` defines immutable shared records.
-- `config.py` loads strict TOML settings and environment overrides.
-- `data` builds fixed training examples.
-- `train` defines the training port and implements the MLX-LM backend.
-- `inference` defines generation ports and implements verified local MLX-LM inference.
-- `eval` defines scoring ports and implements immutable policy and panel evaluation.
+The package uses stage boundaries:
 
-Keep external behavior behind typed ports. Keep adapter code out of contract modules.
+| Path | Responsibility |
+|---|---|
+| `ingest/` | Read source events and normalize Signal input. |
+| `store/` | Define persistence ports and store local records. |
+| `data/` | Select causal context and build immutable datasets. |
+| `train/` | Define training contracts and run MLX-LM training. |
+| `inference/` | Define generation contracts and create predictions. |
+| `chat/` | Own assistant discovery, sessions, workers, and snapshots. |
+| `tui/` | Present terminal state and collect user input. |
+| `eval/` | Score policies and build judgment and panel artifacts. |
 
-## Required checks
+Shared contracts are in `artifact.py`, `config.py`, `model.py`, `prompt.py`,
+`render.py`, and `types.py`. Keep optional MLX, Textual, DuckDB, and Signal
+dependencies out of unrelated contract modules.
 
-Install `just` 1.46.0 or later. On macOS, use the Homebrew package. Do not install the unrelated Python package with the same name.
+Read the root `AGENTS.md` before a change. Read each applicable nested
+`AGENTS.md` before you change stage code or tests.
+
+## Environment
+
+Install `just` 1.46.0 or later. On macOS, install the command-line tool:
 
 ```console
 brew install just
 just --version
 ```
 
-Use the root `justfile` as the project command interface. Its recipes use `uv`
-for Python environment and package operations. Use `uv` directly only for
-dependency maintenance.
-
-Run:
+Install the core Python environment:
 
 ```console
 just setup
+```
+
+Use `uv add` or `uv add --dev` for dependency changes. Do not edit `uv.lock` by
+hand.
+
+## Required checks
+
+Run focused tests while you work. Run the complete checks before handoff:
+
+```console
 just check
 just build
 ```
 
-The checks verify Just formatting and run Ruff, ty, and pytest. The build creates a source archive and a wheel.
+`just check` verifies Just files, runs Ruff, runs `ty`, and runs pytest. The
+`just build` command creates the source distribution and wheel.
 
-## Test rules
+Setup, lint, type-check, test, and build commands do not load `.env`. Commands
+that launch Idiolect use `uv run --env-file .env` through a Just recipe.
 
-Use only synthetic Signal JSON fixtures. Use a fake command runner for `signal-cli`. Use `tmp_path` for DuckDB and configuration files.
+## Test isolation
 
-Do not read `.env`, `conf/idiolect.toml`, `var/`, or the installed launch agent
-in a test. Use fixture configuration files. Do not call Signal, a model hub, or
-another network service. Do not run a real model, model download, training
-operation, inference operation, evaluation operation, or GPU operation. Use
-fake model resolvers, training commands, inference sessions, and scoring
-sessions.
+Tests use synthetic messages, temporary files, and fake external boundaries.
+They must not read these resources:
 
-Each test must detect a possible implementation defect. Test the group whitelist, command safety options, message normalization, edit order, delete tombstones, reaction links, transaction behavior, duplicate events, strict configuration, and CLI results.
+- `.env` or live configuration
+- `var/` or user files
+- the installed LaunchAgent
+- live Signal state
+- model hubs, model weights, or adapters
+- private chats, datasets, predictions, or evaluations
+
+Do not run collection, model downloads, training, inference, chat models, or GPU
+work in pytest. Use fake model resolvers, tokenizers, sessions, command runners,
+and clocks.
 
 ## Operational checks
 
-Run these checks manually. Do not put them in pytest.
+Operational checks use private state. Run them only when the user requests an
+operational task:
 
 ```console
 just idiolect signal groups
 just idiolect signal stats
 just collect status
-tail -f var/log/collect.err.log
 ```
 
-These commands use private local state. An agent must not run them unless the user asks for a live operational check.
-
-Install Textual and the local MLX packages before manual chat checks:
-
-```console
-just setup-chat
-```
-
-Automated chat tests use synthetic assistants, fake token counters, fake worker
-events, and Textual pilot sessions. They do not load a model or use Metal. On
-Apple silicon, manually check the landing probe, one assistant load, streaming,
-prefill progress, stop behavior, command navigation, footer action hints,
-confirmation saves, worker reload, and clean exit.
-
-## TUI extension primitives
-
-Build temporary detail views with `SheetDocument` and a `SheetPage` declaration.
-The page supplies its title, renderer, origin, LINK label, hints, and optional
-cycle or connect capabilities. Open it through `InfoSheet`; do not add a new
-screen-mode branch for each kind of content.
-
-Declare vertical and horizontal actions with `MenuItem`. Use `MenuCursor` for
-wrapping selection, disabled-item skipping, and the three-row viewport. Render
-composer selectors with `VerticalMenu`, and use `HorizontalMenuModal` for
-keyboard-only action rows. A feature wrapper supplies only its domain callback,
-safe initial action, Escape result, anchor, and optional live-preview callback.
-
-Declare each selectable accent with `ChromaTheme(color, accent, name)` in
-`_CHROMA_THEMES`. `color` is the stable lowercase selector identity, `accent`
-accepts either the current ANSI color name or a `#RRGGBB` value, and `name` is
-the uppercase interface name. Keep `_DEFAULT_CHROMA` equal to one declared
-`color`. Replacing the declarations does not require changes to the menu,
-preview, Rich text, or generated Textual CSS paths.
+Use `just setup-chat` before a manual chat check. On Apple silicon, check one
+model load, one streamed reply, cancellation, context limits, an explicit save,
+and a clean exit. Do not make manual model work part of automated verification.

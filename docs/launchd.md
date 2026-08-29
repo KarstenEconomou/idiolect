@@ -1,37 +1,17 @@
-# macOS Launch Agent
+# macOS LaunchAgent
 
 ## Purpose
 
-`launchd` is the macOS service manager. A user LaunchAgent starts after user login. It can restart a process after a failure.
+The optional user LaunchAgent runs continuous collection after login. It uses
+the label `com.idiolect.collect`. It runs only while the Mac is on, awake, and
+logged in.
 
-The Idiolect agent has the label `com.idiolect.collect`. It runs this operation:
+The tracked plist is a template. The installed plist is private because it
+contains absolute local paths.
 
-```console
-uv run idiolect --config /absolute/repository/path/conf/idiolect.toml signal collect --follow
-```
+## Prepare the plist
 
-This is the agent process command. Interactive repository commands use `just`.
-The agent sources `.env`, selects the canonical configuration, sets the
-repository as its working directory, and uses explicit command paths. It writes
-logs to `var/log/`.
-
-## Agent fields
-
-| Field | Function |
-|---|---|
-| `ProgramArguments` | Source `.env` and replace the shell with Idiolect. |
-| `WorkingDirectory` | Make relative configuration and data paths stable. |
-| `EnvironmentVariables` | Add the package manager path to `PATH`. |
-| `RunAtLoad` | Start the collector after the agent loads. |
-| `KeepAlive.SuccessfulExit=false` | Restart the collector after a nonzero exit. |
-| `ThrottleInterval=30` | Wait before a restart loop. |
-| `Umask=63` | Create private files with mode `0600` or `0700`. |
-| `StandardOutPath` | Store normal output in `var/log/collect.out.log`. |
-| `StandardErrorPath` | Store errors in `var/log/collect.err.log`. |
-
-## Create the agent
-
-Find the command paths:
+Find the required paths:
 
 ```console
 command -v uv
@@ -39,14 +19,18 @@ command -v signal-cli
 pwd
 ```
 
-Copy [com.idiolect.collect.plist.example](com.idiolect.collect.plist.example) to the ignored runtime directory:
+Copy the template to the ignored runtime directory:
 
 ```console
 mkdir -p var/launchd var/log
 cp docs/com.idiolect.collect.plist.example var/launchd/com.idiolect.collect.plist
 ```
 
-Replace each `REPO_PATH` and `UV_PATH` value with an absolute path. Add the directory that contains `signal-cli` to `PATH`. Do not add a credential to the plist.
+Edit the copy. Replace each `REPO_PATH` and `UV_PATH`. Add the directory that
+contains `signal-cli` to `PATH`. Do not put a credential in the plist.
+
+The agent uses the repository as its working directory. It loads `.env`, uses
+`conf/idiolect.toml`, and writes output under `var/log/`.
 
 Validate the file:
 
@@ -54,7 +38,9 @@ Validate the file:
 plutil -lint var/launchd/com.idiolect.collect.plist
 ```
 
-Install and load it:
+## Install and start
+
+Install the private file and load the agent:
 
 ```console
 mkdir -p ~/Library/LaunchAgents
@@ -64,57 +50,60 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.idiolect.collect.pli
 
 Do not run a manual `collect --follow` process at the same time.
 
-## Operate the agent
+## Operate
 
-Show the state:
+Show the current state:
 
 ```console
 just collect status
 ```
 
-The expected state is `running`. `runs=1` and `last exit code = (never exited)` show that the first process still runs.
-
-Restart the agent:
+Restart the process without unloading the agent:
 
 ```console
 launchctl kickstart -k gui/$(id -u)/com.idiolect.collect
 ```
 
-Stop and remove the agent from the current login session:
+Stop and unload the agent:
 
 ```console
 just collect stop
 ```
 
-Load it again:
+Load the installed agent again:
 
 ```console
 just collect start
 ```
 
-These recipes use `launchctl` with the current user ID and the documented agent label. Remove the installed plist only after `just collect stop`.
-
-Watch the logs:
+Watch the private logs:
 
 ```console
 tail -f var/log/collect.err.log
 tail -f var/log/collect.out.log
 ```
 
-The normal output log can remain empty while `--follow` runs. The command writes its count summary when it exits.
+Normal output can stay empty while continuous collection runs. The collector
+writes its summary when it exits.
 
-## Power state
+## Agent policy
 
-The agent runs only while the Mac is on, awake, and logged in. Use this command in a separate terminal to prevent idle system sleep:
+The template applies these controls:
 
-```console
-caffeinate -i
-```
+| Control | Effect |
+|---|---|
+| `RunAtLoad` | Start after the user agent loads. |
+| `KeepAlive.SuccessfulExit=false` | Restart after a failure. |
+| `ThrottleInterval=30` | Limit restart loops. |
+| `Umask=63` | Create private files and directories. |
+| `StandardOutPath` | Write normal output to `var/log/collect.out.log`. |
+| `StandardErrorPath` | Write errors to `var/log/collect.err.log`. |
 
-The `caffeinate` command must continue to run. A closed MacBook lid can still cause sleep unless macOS supports the current closed-display setup.
+Use `caffeinate -i` in another terminal when the Mac must not enter idle sleep.
+A closed laptop lid can still cause sleep.
 
 ## Path changes
 
-The plist contains absolute paths. If the repository, canonical configuration, `uv`, or `signal-cli` moves, update the private plist. Run `bootout`, install the new file, and run `bootstrap` again.
-
-The tracked example is not the installed agent. The installed file is `~/Library/LaunchAgents/com.idiolect.collect.plist`.
+The installed plist contains absolute paths. Update it when the repository,
+`uv`, or `signal-cli` moves. Stop the agent. Install the updated file. Then
+start the agent again.

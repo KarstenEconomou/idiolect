@@ -2,59 +2,51 @@
 
 ## Purpose
 
-Evaluation tests whether one complete training policy improves the probability
-and observable behavior of replies that the target person could plausibly send.
-It compares every configured training seed with the exact base model recorded by
-the runs.
+Evaluation compares one complete adapter policy with the exact base model
+recorded by its runs. It uses the validation split. It does not read Signal or
+DuckDB.
 
-The `fidelity` suite uses the validation split only. It does not read Signal or
-DuckDB. It reads a verified dataset, verified training runs, and immutable
-inference artifacts.
+Open conversation has many valid replies. One recorded reply is not a complete
+reference distribution. Do not reduce the report to one score.
 
-Evaluation does not produce one fidelity score. Open conversation has many valid
-replies, and one recorded reply is not a complete reference distribution. Read
-the five pillars together:
+## Evidence pillars
 
-1. Likelihood: completion probability against the held-out human reply episode.
-2. Voice: observable style, surface-distribution, and message-fragmentation fidelity.
-3. Validity: malformed, degenerate, or unstable generation diagnostics.
-4. Memorization: training-text reproduction and leakage regression.
-5. Recognition: familiar-rater preference for target likeness.
+Use five separate evidence pillars:
 
-Likelihood, voice, validity, and memorization come from one automatic report.
-Recognition comes from the separate familiar panel. No value is combined into
-one score.
+1. **Likelihood** measures the probability of the held-out human response.
+2. **Voice** compares observable text and response-fragmentation features.
+3. **Validity** detects empty, malformed, repeated, or truncated output.
+4. **Memorization** detects training-text reproduction above the baseline.
+5. **Recognition** measures blind preference from familiar raters.
 
-## Configuration
+The automatic report contains the first four pillars. The familiar-rater panel
+provides recognition evidence.
 
-Each complete TOML file contains a required `[eval]` table. It selects:
+## Policy requirements
 
-- the private output directory, MLX-LM backend, and metric suite;
-- `split = "valid"` and the stable example limit;
-- the bootstrap seed, replication count, and confidence level;
-- the minimum long training-text match;
-- eligibility limits for empty output, format violations, truncation, and new
-  training-text matches;
-- the blind-ballot seed, ballot count, control fraction, and panel minimums.
+The `[eval]` table fixes the validation split, example selection, bootstrap,
+confidence level, overlap threshold, automatic gates, ballot schedule, and
+panel minimums. `[inference]` supplies generation seeds and sampling behavior.
 
 `max_examples = 0` selects all validation examples. A positive value selects
-examples by stable hash. The existing `[inference]` table supplies generation seeds,
-token limits, and sampling behavior. Evaluation records the effective values in
-its recipe.
+examples by stable hash.
 
-Do not change a used experiment configuration. Create a complete new
-configuration when the policy changes.
+Supply every seed from the training policy. Evaluation rejects a partial seed
+set or a set with different datasets, models, formats, policies, or sequence
+limits.
 
-## Automatic policy evaluation
+Do not change a used policy. Create a complete new TOML file when an evaluation
+or inference choice changes.
 
-Install the optional local model packages:
+## Run the automatic evaluation
+
+Install the local model packages:
 
 ```console
 just setup-train
 ```
 
-Supply every run produced by the configuration. For the canonical three-seed
-policy:
+Run the complete canonical seed set:
 
 ```console
 just eval policy var/data/DATASET_ID \
@@ -63,86 +55,62 @@ just eval policy var/data/DATASET_ID \
   var/runs/RUN_ID_THREE
 ```
 
-Select the complete experiment configuration that created the runs:
+Select a named experiment policy through `IDIOLECT_CONFIG`:
 
 ```console
 IDIOLECT_CONFIG=conf/exp/qwen3-8b-smoke.toml \
   just eval policy var/data/DATASET_ID var/runs/RUN_ID_ONE
 ```
 
-The command rejects a selected configuration whose training policy does not
-match the recorded runs. Use the same configuration for rating and panel
-commands because it also contains the fixed ballot policy.
+Use the same policy for rating and panel commands. It contains the fixed ballot
+rules.
 
-The runner rejects a partial seed set. It also rejects runs with different
-datasets, models, text formats, training policies, or sequence limits.
+The recipe uses `caffeinate -i`. Collection can run during evaluation.
 
-The report contains four pillar sections. Each section compares the base model,
-each adapter run, and the pooled policy with the held-out evidence.
+## Read the automatic report
 
 ### Likelihood
 
-1. Score the real held-out reply with the base and every adapter. Only reply and
-   reply-termination tokens contribute to negative log-likelihood. Static model
-   prefill text does not contribute.
-2. Report macro mean NLL across examples and token-weighted corpus perplexity
-   as separate values.
-3. Report paired macro-NLL policy deltas with bootstrap confidence intervals
-   and the rate of examples that improve.
+Idiolect scores the held-out completion with the base and every adapter. Prompt
+and static assistant-prefill tokens do not contribute to loss.
+
+Read macro mean negative log-likelihood and token-weighted corpus perplexity as
+different summaries. Use paired confidence intervals and the example
+improvement rate. Inspect run spread; one good seed is not a stable policy.
 
 ### Voice
 
-1. Generate the same examples with identical derived random streams.
-2. Compare message length, line structure, punctuation, capitalization, emoji,
-   mentions, URLs, repeated characters, and character three-grams with the
-   held-out human replies.
-3. Report absolute feature differences and character three-gram JS divergence.
+Idiolect generates the same examples with equal derived random streams. It
+compares length, lines, punctuation, capitalization, emoji, mentions, URLs,
+repeated characters, character three-grams, and message-bubble counts.
 
-One held-out example is one response episode. Evaluation normalizes episodes
-before comparison: it splits completions on the `[new message]` serialization
-boundary and joins the bubbles as lines. This keeps line and length features
-comparable while adding a `bubbles` feature that measures how many Signal
-messages each side fragments its response into. The bubble counts are
-fragmentation evidence for future message-pacing metrics; no gate uses them
-today.
-
-Character n-grams can measure topic as well as style. Read voice results with
-the other pillars.
+These features measure surface similarity. Character n-grams can also measure
+topic. Use them with likelihood, validity, and recognition.
 
 ### Validity
 
-1. Detect empty text, unknown mentions, template leakage, multi-role output,
-   truncation, cross-prompt duplicates, and within-prompt duplicates.
-2. Apply the configured empty-output, format-violation, and truncation gates.
-
-Duplicates measure diversity. A policy that repeats one reply is not valid open
-conversation, even when each copy is well formed.
+Validity checks empty output, unknown mentions, template leakage, multi-role
+text, truncation, and duplicate generations. Each configured gate uses the
+worst run. The report also shows pooled-policy diagnostics.
 
 ### Memorization
 
-1. Compare normalized generated text with training completions. Report exact
-   duplicates and long contiguous matches. A sparse rolling-hash index finds
-   candidates, and exact string matching verifies each reported match.
-2. Measure the incremental memorization rate above the larger of the base rate
-   and the held-out reference rate. Apply the configured delta gate.
+Memorization compares normalized output with training completions. It reports
+exact duplicates and verified long contiguous matches. The gate measures the
+increase above the larger of the base rate and held-out reference rate.
 
 ## Eligibility
 
-A policy is `eligible` only when all automatic gates pass. The bootstrap
-resamples conversation examples. Tokens, generated samples, and training seeds
-are not independent observations. Reports show each run, an equally weighted
-policy estimate, paired macro-NLL confidence intervals, token-weighted corpus
-perplexity, and run spread.
+A policy is `eligible` only when every automatic gate passes. Eligibility is
+not proof of target voice. It is not a complete privacy audit. Recognition is
+separate evidence.
 
-Each validity and memorization gate applies to every training run on its own,
-not only to the pooled policy, so one degenerate seed cannot hide behind the
-other runs. Eligibility is not a claim that the model has the target's voice
-and is not a complete privacy audit. Use the recognition result as separate
-evidence.
+The bootstrap resamples conversation examples. Tokens, generations, and seeds
+are not independent observations.
 
-## Output
+## Automatic artifact
 
-Automatic evaluation writes:
+Automatic evaluation creates:
 
 ```text
 var/eval/<evaluation-id>/
@@ -152,47 +120,36 @@ var/eval/<evaluation-id>/
 └── report.md
 ```
 
-The evaluation ID includes the dataset and run digests, selected examples,
-inference policy, evaluation policy, metric suite, and backend versions. An equal
-request returns the existing verified directory.
+`report.md` is the concise human report. `metrics.json` contains complete pillar
+values. `examples.jsonl` contains identifiers, scores, numeric diagnostics, and
+failure flags. It does not copy prompts, human replies, or generated replies.
 
-`report.md` has one section per automatic pillar. `metrics.json` keeps the full
-pillar values for the base, each run, and the pooled policy. `examples.jsonl`
-contains identifiers, scores, numeric diagnostics, and failure flags. It does
-not copy prompts, human replies, or generated replies. The manifest points to
-the private source artifacts used by the blind workflow.
+The evaluation ID commits to all source digests, selected examples, policies,
+metrics, and backend versions. An equal request returns the existing verified
+artifact.
 
-## Recognition: familiar-panel evaluation
+## Familiar-rater sessions
 
-Use raters who know the target's writing. Every rater must consent and must
-already have permission to view the sampled conversation contexts. Do not show a
-group conversation to a rater merely because that person knows the target.
+Use raters who know the target's writing. Each rater must consent and must have
+permission to view every sampled conversation.
 
-Run one terminal session on the data owner's Mac:
+Run one private session on the data owner's computer:
 
 ```console
 just idiolect eval rate var/eval/EVALUATION_ID --rater rater-01
 ```
 
-The terminal shows randomized A/B replies and asks which reply:
+The session presents blind A/B comparisons. Most ballots compare policy output
+with base output. Control ballots compare the real human response with a model
+response. Controls calibrate interpretation; they are not attention tests.
 
-- the target would be more likely to send in this context;
-- sounds more like the target;
-- fits the conversation better.
+The command writes an immutable artifact under `var/eval/judgments/`. Use a
+stable pseudonym that contains no name, phone number, or Signal identifier. The
+artifact stores choices and provenance, not prompt or reply text.
 
-Most ballots compare the policy with the base. The configured control fraction
-compares the real human reply with either the policy or base. Human controls
-calibrate interpretation. They are not attention tests, because more than one
-reply can be valid.
+## Panel report
 
-The command writes a pseudonymous immutable artifact under
-`var/eval/judgments/`. It does not store prompts or reply text. Use a stable
-pseudonym that does not contain a name, phone number, or Signal identifier.
-Panel construction reconstructs the fixed ballot schedule from the verified
-evaluation sources. It rejects missing, duplicate, changed, or unknown ballot
-answers even when an artifact is internally content-addressed.
-
-After the configured panel completes its sessions, create a report:
+After the configured sessions finish, create the panel:
 
 ```console
 just idiolect eval panel var/eval/EVALUATION_ID \
@@ -201,33 +158,20 @@ just idiolect eval panel var/eval/EVALUATION_ID \
   var/eval/judgments/JUDGMENT_ID_THREE
 ```
 
-The panel report contains policy/base wins, ties, neither choices, two-way
-example-and-rater bootstrap confidence intervals, human-control recovery, A/B
-position preference, and finite-sample nominal Krippendorff agreement for each
-rating dimension. It remains `incomplete` until both configured panel minimums
-are met.
+The panel artifact is under `var/eval/panels/`. It reports policy and base wins,
+ties, neither choices, human-control recovery, position preference, agreement,
+and example-and-rater confidence intervals. It remains incomplete until both
+configured panel minimums are met.
 
-Ballot construction draws the compared run from a rater-specific random stream,
-so run identity is not paired with one generation seed across primary
-comparisons. Judgment and panel artifacts record the ballot scheme version. The
-loader rejects artifacts whose recorded version is not the current one.
+## Model selection
 
-## Interpretation
+Prefer evidence that agrees across pillars:
 
-Prefer evidence that converges across the five pillars:
+- lower held-out completion loss than the base across seeds;
+- familiar-rater preference for target likeness without a context-fit loss;
+- voice features closer to held-out human responses;
+- no validity or memorization gate failure;
+- limited variation across training seeds.
 
-- Likelihood: lower adapter completion NLL than the base across training seeds.
-- Recognition: panel preference for the policy on target likelihood and voice
-  without a contextual-fit regression.
-- Voice: features closer to held-out human messages.
-- Validity and memorization: no format, truncation, repetition, or memorization
-  gate failure.
-- Limited run-to-run variation.
-
-Do not select a model from one metric. Character n-grams can measure topic as
-well as style. Low likelihood can reward the one observed reply even when other
-replies are valid. Familiar raters can prefer polished text that does not match
-the target. The separate pillars expose these failure modes.
-
-All evaluation, judgment, and panel files are private. Do not publish a report,
-manifest, prompt, completion, prediction, or rater artifact.
+Do not select a model from one metric. Do not publish an evaluation, judgment,
+panel, manifest, prompt, completion, or prediction.

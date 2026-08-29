@@ -2,92 +2,93 @@
 
 ## Requirements
 
-Install these components:
-
-- Python 3.14
-- `uv`
-- `just` 1.46.0 or later
-- A current `signal-cli` release
-- A local QR code tool, such as `qrencode`
-
-Run all commands from the repository root.
+Install the core repository environment, a current `signal-cli` release, and a
+local QR-code tool. Run commands from the repository root.
 
 ```console
 just setup
 mkdir -m 700 -p var/signal
 ```
 
-Keep `signal-cli` current. Signal service changes can stop an old release.
+Keep `signal-cli` current. A Signal service change can stop an old client.
 
-## Link the device
+## Link the local device
 
-Link `signal-cli` as a secondary device. Do not register the phone number as a new primary device.
+Link `signal-cli` as a secondary device. Do not register the account as a new
+primary device.
 
 ```console
 signal-cli --data-dir var/signal link -n Idiolect
 ```
 
-The command shows a `sgnl://` device link URI. Convert this URI to a QR code on the local computer. Do not send the URI to a website. In the Signal mobile app, select **Settings → Linked devices → Link new device**. Scan the QR code.
+The command returns a `sgnl://` device-link URI. Convert it to a QR code on the
+local computer. In the Signal mobile application, open **Settings → Linked
+devices → Link new device** and scan the code.
 
-The `var/signal` directory contains the linked-device keys and account state. Do not delete it while the device is active.
+The link URI is a temporary credential. Do not use an online QR service. The
+`var/signal` directory contains persistent device credentials. Do not delete it
+while the device is active.
 
-## Configure Idiolect
+## Configure private values
 
-The repository contains `conf/idiolect.toml`. This file contains public settings. Create the private environment file:
+Create the private environment file:
 
 ```console
 touch .env
 chmod 600 .env
 ```
 
-Add the Signal account to `.env`. Use the international number format.
+Add the linked account in international number format:
 
 ```sh
 IDIOLECT_SIGNAL_ACCOUNT="+14165550123"
 ```
 
-Just recipes that launch Idiolect pass `.env` to `uv`. You do not need to load
-it in the current shell. The local `launchd` agent also loads it before it
-starts Idiolect. A direct `uv run idiolect` command does not load it unless you
-include `--env-file .env`.
+The number is a placeholder. Do not commit a real account.
 
-These environment values are available:
+Just recipes that launch Idiolect load `.env`. A direct `uv run idiolect`
+command must include `--env-file .env` when it needs these values.
 
-| Value | Function |
+Supported launch environment values are:
+
+| Value | Purpose |
 |---|---|
-| `IDIOLECT_CONFIG` | Select an optional alternate TOML configuration path. |
-| `IDIOLECT_SIGNAL_ACCOUNT` | Set the Signal account identifier. |
-| `IDIOLECT_SIGNAL_CHATS` | Replace the Signal chat whitelist with a JSON list. |
-| `IDIOLECT_SIGNAL_BIN` | Set the absolute `signal-cli` path. |
-| `IDIOLECT_SIGNAL_DATA_DIR` | Set the private Signal data directory. |
+| `IDIOLECT_SIGNAL_ACCOUNT` | Select the linked Signal account. |
+| `IDIOLECT_SIGNAL_CHATS` | Set the group whitelist as a JSON list. |
+| `IDIOLECT_SIGNAL_BIN` | Set the `signal-cli` executable path. |
+| `IDIOLECT_SIGNAL_DATA_DIR` | Set the private Signal state directory. |
+| `IDIOLECT_CONFIG` | Select a public TOML policy. |
 
-The default configuration path is `conf/idiolect.toml`. You do not need to set `IDIOLECT_CONFIG` for normal operation. Set it only when you must select a different configuration file.
+Signal environment values replace the corresponding TOML values. Group IDs are
+valid only in `IDIOLECT_SIGNAL_CHATS`.
 
-Signal environment values take priority over the same TOML values. The loader rejects an unknown TOML key. Signal chat IDs are valid only in `IDIOLECT_SIGNAL_CHATS`. The loader rejects invalid or duplicate chat IDs. `timeout` must be `-1` or greater. `max_messages` must be greater than zero.
+## Set the group whitelist
 
-List the Signal groups:
+List groups that the linked device can see:
 
 ```console
 just idiolect signal groups
 ```
 
-The output format is:
+The output has this form:
 
 ```text
 GROUP_ID=    active    Group name
 ```
 
-Add the required IDs to `.env` as one JSON list. Use single shell quotes around the JSON text.
+Add approved group IDs to `.env`:
 
 ```sh
 IDIOLECT_SIGNAL_CHATS='["GROUP_ID_ONE=", "GROUP_ID_TWO="]'
 ```
 
-The next Just command reads the updated `.env`. The chat list is private
-metadata. Do not put a real group ID in `conf/idiolect.toml`.
-Keep the outer single quotes. Use double quotes around each ID. Do not use a trailing comma.
+Keep the outer single quotes and inner double quotes. Do not add a trailing
+comma. The loader rejects an empty, invalid, or duplicate ID.
 
-## Run collection
+An event from a group outside the whitelist is consumed and discarded. Adding
+the group later does not restore that event.
+
+## Collect events
 
 Run one bounded receive operation:
 
@@ -95,33 +96,26 @@ Run one bounded receive operation:
 just idiolect signal collect
 ```
 
-Run continuous collection:
+Run until you stop the process:
 
 ```console
 just idiolect signal collect --follow
 ```
 
-Set explicit bounds when necessary:
+Set explicit bounds when required:
 
 ```console
 just idiolect signal collect --timeout 30 --max-messages 100
 ```
 
-Show the stored counts:
+`--follow` and `--timeout` are mutually exclusive. `max_messages` must be
+greater than zero. A timeout must be `-1` or greater.
+
+Show stored counts:
 
 ```console
 just idiolect signal stats
 ```
-
-Refresh normalized records from the raw events in DuckDB:
-
-```console
-just idiolect signal reindex
-```
-
-Stop continuous collection before you run `reindex`. Start collection again after the command finishes. This rule prevents two processes from writing the same DuckDB file.
-
-Run `reindex` after an update changes Signal normalization. The command does not contact Signal. It keeps the source events and refreshes their normalized messages and reactions.
 
 Import saved `signal-cli` JSON lines:
 
@@ -129,30 +123,23 @@ Import saved `signal-cli` JSON lines:
 just idiolect signal import path/to/events.jsonl
 ```
 
-## Collector behavior
+## Collection guarantees and limits
 
-- The source runs `signal-cli --output json receive`.
-- The source skips one malformed output line and keeps the events after it. The harvest result counts such an event as `skipped`.
-- The source does not download attachments, stories, avatars, or stickers.
-- The parser accepts only group IDs in the configured chat whitelist.
-- The parser discards direct messages and messages from other groups.
-- The parser reads incoming messages and sent-message sync events.
-- The parser records text, identity-linked mentions, reply snapshots, edits, remote deletes, reactions, and attachment metadata.
-- The parser keeps original message text and native mention metadata.
-- One event that fails normalization is skipped and counted. It does not stop the harvest or discard later drained events.
-- Mention ranges stay in the UTF-16 units that Signal supplies.
-- The parser does not store attachment bytes.
-- The store writes one source event and its normalized records in one transaction.
-- The event ID is a SHA-256 hash of the source JSON. A second copy of the same event does not create another record.
-- The normalized chat, person, message, and attachment IDs use SHA-256 values. Raw events still contain the original Signal data.
-- A newer edit or delete replaces an older message revision. An older revision cannot replace a newer revision.
+- The collector accepts incoming group messages and sent-message sync events.
+- The whitelist rejects direct messages and unapproved groups.
+- The collector records text, mentions, replies, edits, deletions, reactions,
+  and attachment metadata.
+- The collector does not download attachment bytes, stories, avatars, or
+  stickers.
+- One malformed or unprocessable event does not stop later events.
+- One accepted event is stored in one DuckDB transaction.
+- Duplicate source JSON does not create a duplicate event.
+- A newer message revision wins over an older revision.
 
-## Limits
+The collector receives queued events after setup. It does not import existing
+phone history. Signal does not guarantee an unlimited queue period.
 
-The collector does not import the history that is already on the phone. It stores events that `signal-cli receive` emits after setup.
+Use only one process with a `signal-cli` data directory. Use only one DuckDB
+writer. Stop continuous collection before `reindex` or dataset construction.
 
-Signal can queue events while collection is off. Do not depend on an unlimited queue period. Long downtime can cause gaps.
-
-An event from a group that is not on the whitelist is consumed and discarded. If you add that group later, Idiolect cannot restore the discarded event.
-
-Only one collector must use a `signal-cli` data directory at one time.
+For continuous collection, use the [macOS LaunchAgent procedure](launchd.md).

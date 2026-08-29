@@ -1,59 +1,71 @@
-# Data Store
+# Private Data Store
 
-## Paths
+## Runtime paths
 
-The default local paths are:
+The canonical policy keeps private state under `var/`:
 
 ```text
 var/
-├── signal/                 linked-device keys and Signal state
+├── signal/                 signal-cli keys and account state
 ├── idiolect.duckdb         raw events and normalized records
-├── log/                    launchd output
-├── data/<dataset-id>/      immutable MLX-LM datasets
+├── log/                    LaunchAgent output
+├── data/<dataset-id>/      immutable datasets
 ├── models/                 fixed model snapshots
-└── runs/<run-id>/          immutable adapter runs
+├── runs/<run-id>/          immutable adapter runs
+├── inference/<id>/         immutable predictions
+├── chat/<chat-id>/         immutable chat snapshots
+└── eval/                   evaluations, judgments, and panels
 ```
 
-Git ignores `var/`. The collector creates the DuckDB file with mode `0600`. Create `var/` with mode `0700` on a multi-user computer.
+Git ignores `var/`. Create it with mode `0700` on a shared computer. Idiolect
+creates private artifact directories with mode `0700` and files with mode
+`0600`.
 
-## Tables
+## DuckDB records
 
-`events` is the source record. It contains the event ID, source name, source ID, receive time, raw JSON bytes, and store time.
+`events` is the source record. It contains the received raw JSON and source
+identity. Reindexing reads this table.
 
-`messages` is the current message revision. It contains the source event ID, hashed chat ID, hashed author ID, send time, text, reply ID, quote snapshot, edit time, delete time, and revision time.
+`messages` contains the current normalized message revision. It records reply,
+edit, deletion, and revision times. Dataset construction uses those times to
+reconstruct what was available before a target response.
 
-`mentions` contains native Signal mention ranges. Each row contains the message ID, body or quote scope, order, hashed mentioned-person ID, original UTF-16 range, and source display name.
+`mentions` keeps native Signal identity and UTF-16 ranges for message and quote
+text. `attachments` keeps metadata only. `reactions` keeps reaction and removal
+events.
 
-`attachments` contains metadata only. It contains the message ID, hashed attachment ID, media type, file name, and byte count.
+Normalized identifiers are SHA-256 values. Raw events still contain the
+original Signal identifiers and text.
 
-`reactions` contains each reaction event. It contains the source event ID, target message ID, hashed chat ID, hashed author ID, value, time, and remove state.
+## Writer rules
 
-The message table represents the current stored revision. Dataset construction
-uses the revision timestamps to prevent a later edit or deletion from appearing
-in an earlier prompt. Raw events remain the source for reindexing.
+The collector stores each accepted source event in one transaction. A duplicate
+event does not create another record. A failed transaction does not keep a
+partial event.
 
-## Write rules
+Edits and deletions use revision time. An older revision cannot replace a newer
+revision. A deletion leaves a tombstone without message text.
 
-The store starts one transaction for each accepted source event.
+Use only one DuckDB writer. Stop continuous collection before `reindex` or
+dataset construction. Do not open the database with a write tool while Idiolect
+uses it.
 
-1. Check the event ID.
-2. Stop if the event exists.
-3. Insert the raw event.
-4. Insert or update each normalized record.
-5. Commit the transaction.
+## Inspection and repair
 
-If DuckDB reports an error, the transaction does not commit. The collector reports the event ID that failed.
-
-Edits and deletes use a revision time. The store keeps the record with the newest revision time. A delete creates a message tombstone with no text.
-
-The store verifies its required columns and tables when it opens the database. Run `just idiolect signal reindex` to rebuild normalized records from stored raw events.
-
-## Inspection
-
-Use the application for the standard count check:
+Show stored record counts:
 
 ```console
 just idiolect signal stats
 ```
 
-Do not open the DuckDB file with a write tool while collection runs. Use a read-only connection for manual inspection.
+Rebuild normalized records from stored raw events:
+
+```console
+just idiolect signal reindex
+```
+
+`reindex` does not contact Signal. Stop continuous collection before the
+command. Start collection again after the command finishes.
+
+Use a read-only DuckDB connection for manual inspection. Do not change raw or
+normalized records by hand.
