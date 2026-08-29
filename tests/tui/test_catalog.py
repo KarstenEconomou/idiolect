@@ -45,23 +45,6 @@ def test_catalog_status_labels_fill_the_right_edge() -> None:
     assert all(row.rstrip().endswith(status) for status, row in rows.items())
     assert all(cell_len(row) == 76 for row in rows.values())
     assert len({row.index(status) for status, row in rows.items()}) == 1
-    assert layout.status == 6
-
-
-def test_catalog_metadata_columns_leave_room_for_values() -> None:
-    """Check registry metadata columns have deliberate breathing room."""
-    layout = CatalogLayout.for_terminal(80)
-
-    assert (layout.target_run, layout.base, layout.kind, layout.status) == (
-        39,
-        18,
-        10,
-        6,
-    )
-
-    line = layout.line("TARGET::RUN", "QWEN", "CONSTRUCT", "STATUS")
-    base_gap = line.index("CONSTRUCT") - (line.index("QWEN") + len("QWEN"))
-    assert base_gap == 15
 
 
 def test_catalog_type_labels_identify_entry_lineage() -> None:

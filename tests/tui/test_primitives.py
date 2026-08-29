@@ -190,17 +190,8 @@ def test_horizontal_menu_reveals_selection_at_narrow_widths() -> None:
     asyncio.run(verify())
 
 
-def test_trace_name_field_is_hidden_until_anchored() -> None:
-    """Check the TRACE NAME field cannot render at its initial screen origin."""
-
-    class ObservedTraceNameModal(TraceNameModal):
-        hidden_before_show = False
-
-        def _show_dialog(self) -> None:
-            self.hidden_before_show = self.query_one("#trace-name-dialog").has_class(
-                "-unplaced"
-            )
-            super()._show_dialog()
+def test_trace_name_field_anchors_to_registry_hints() -> None:
+    """Check the TRACE NAME field aligns with the registry controls."""
 
     async def verify() -> None:
         app = _ModalApp()
@@ -208,12 +199,11 @@ def test_trace_name_field_is_hidden_until_anchored() -> None:
             app.query_one("#landing").display = False
             app.query_one("#command-bar").display = False
             app.query_one("#reference-bar").display = False
-            modal = ObservedTraceNameModal("Synthetic trace", registry=True)
+            modal = TraceNameModal("Synthetic trace", registry=True)
             app.push_screen(modal)
             await pilot.pause()
 
             dialog = modal.query_one("#trace-name-dialog")
-            assert modal.hidden_before_show
             assert not dialog.has_class("-unplaced")
             assert dialog.region.bottom == app.query_one("#catalog-hints").region.y
 

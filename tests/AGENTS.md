@@ -1,85 +1,180 @@
 # Test Guide
 
-These instructions apply to `tests/` and all test subdirectories. Before changing
-a mirrored suite, read the matching guide under `src/idiolect/`. For root suites
-such as `test_config.py` or `test_prompt.py`, read `src/idiolect/AGENTS.md` and
-inspect the production contract directly.
+These instructions apply to `tests/` and all subdirectories. Before changing a
+mirrored suite, read the matching guide under `src/idiolect/`. For root suites,
+read `src/idiolect/AGENTS.md` and inspect the production contract directly.
 
-## Quality bar
+## Principle: tests must have alpha
 
-- Optimize for confidence per test, not test count or coverage percentage. Every
-  test must catch a realistic defect, protect an external contract, or serve a
-  clear structural purpose.
-- Test public behavior, data contracts, invariants, meaningful boundaries,
-  invalid inputs, failure behavior, integration boundaries, and known
-  regressions. For each bug fix, add a regression test that fails without the
-  fix.
-- Before editing a suite, inspect its production contract and review existing
-  tests critically. Preserve tests for historical bugs, compatibility, subtle
-  edge cases, and otherwise-uncovered behavior. Rename or rewrite a legitimate
-  test whose purpose is unclear.
-- Remove tests that only execute lines, restate implementation details, check
-  obvious constructors, getters, or constants, repeat an equivalent case, or
-  enumerate branches without adding a semantic property.
-- Test schemas only when serialization is nontrivial, validation encodes a
-  business rule, compatibility matters, coercion or aliases matter, the schema
-  is an external API, or a regression requires it. Assert the behavior rather
-  than every declared field or default.
-- Keep assertions focused on one behavior or one closely related contract. Use
-  parameterization only when all cases establish the same semantic property.
-  Avoid arbitrary permutations and combinatorial matrices.
-- Name files `test_*.py` and tests `test_<behavior>`. A test name must state the
-  protected behavior, such as
-  `test_rejects_unknown_metric_when_loading_eval_config`.
+A test has **alpha** when it materially increases confidence that the
+implementation is correct by detecting a realistic defect.
+
+Optimize for **defect-detection value per unit of maintenance**, not test count
+or coverage percentage.
+
+A good test:
+
+- fails for a plausible incorrect implementation;
+- passes for a correct implementation;
+- survives contract-preserving refactors;
+- provides signal not already supplied by another test; and
+- justifies its maintenance cost.
+
+Before adding or retaining a test, ask:
+
+> What realistic defect would this test catch?
+
+If there is no convincing answer, do not add it. Remove or consolidate existing
+tests with no distinct signal.
+
+Tests verify implementation correctness. They do not mirror implementation,
+enumerate branches, or create mandatory work whenever the repository changes.
+
+## What to test
+
+Test observable behavior, stable contracts, domain invariants, meaningful
+boundaries, invalid inputs, failure modes, state transitions, integration
+boundaries, and known regressions.
+
+- Prefer the smallest stable interface that exposes the contract.
+- For bug fixes, add a regression test only when existing tests do not already
+  reproduce the failure and recurrence is plausible.
+- Assert the strongest stable property relevant to the contract and no more.
+- Prefer properties, invariants, round trips, or metamorphic relations over many
+  example cases when they provide stronger signal.
+- Use parameterization only when all cases establish the same semantic property.
+- Test schemas only when serialization, validation, compatibility, coercion,
+  aliases, or external API behavior is material.
+- Avoid broad snapshots unless the representation itself is the contract.
+- Do not add tests solely for uncovered lines, branches, functions, or files.
+  Coverage is diagnostic information, not an objective.
+
+Remove tests that only check constructors, getters, constants, framework
+behavior, implementation details, equivalent cases, or arbitrary branch
+permutations.
+
+Name files `test_*.py` and tests `test_<behavior>`. Names must describe the
+protected behavior.
 
 ## Isolation and fixtures
 
-- Never read live configuration, credentials, environment-specific paths,
-  `var/`, user files, real Signal data, chat transcripts, or private artifacts.
-  Tests must not depend on `.env` or mutable machine state.
-- Use `tmp_path`, synthetic messages, explicit safe settings, and deterministic
-  fixtures or factories. A fixture must create and clean up all state it owns and
-  must never fall back to live state.
-- Keep fixtures minimal, scoped, easy to override, and proportionate to the
-  behavior. Use a factory for small variations of one valid object; avoid giant
-  fixtures and one-use abstraction layers.
+Tests must be hermetic by default.
+
+- Use synthetic fixtures, `tmp_path`, temporary stores, explicit safe settings,
+  deterministic state, and small factories.
+- Never read live configuration, `.env`, credentials, `var/`, user data, real
+  Signal data, private artifacts, home-directory state, or caches.
 - Never contact Signal, model hubs, tracking systems, cloud services, or other
-  networks. Replace each external boundary with a small fake or a mock at the
-  defined port.
-- Never download a model or run training, fine-tuning, inference, GPU work, or
-  another expensive routine. Test the local policy, inputs, outputs, state
-  changes, and failures around the expensive boundary.
-- Prefer in-memory fakes when behavior across a port matters. Use mocks only at
-  defined boundaries. Do not mock the unit under test or assert incidental call
-  order.
-- Make time, randomness, identifiers, and ordering deterministic. Do not use
-  sleeps or timing assumptions when an event, state poll, synchronization point,
-  or fake clock can express the contract.
+  networks.
+- Never download models or run training, inference, GPU work, or other expensive
+  routines in the normal suite.
+- Fake external boundaries such as model providers, subprocesses, storage,
+  clocks, and network clients.
+- Prefer small functional fakes when boundary behavior matters. Use mocks for
+  narrow interactions at defined ports.
+- Do not mock the unit under test or private collaborators merely to observe
+  implementation structure.
+- Keep fixtures minimal and understandable. Avoid production captures, giant
+  datasets, and one-use abstraction layers.
+- Make time, randomness, identifiers, ordering, and asynchronous behavior
+  deterministic. Do not use sleeps when explicit synchronization or fake clocks
+  can express the contract.
+- Tests must not depend on execution order or leave persistent state.
 
-## Required stage coverage
+## Refactor resilience
 
-- Ingest and store tests protect duplicate-event handling, transaction behavior,
-  revision ordering, and normalized relationships. Use temporary DuckDB files.
-- Data tests protect chronological splitting, leakage prevention, target-relative
-  rendering, and immutable artifact identity. Use temporary Parquet and artifact
-  directories.
-- Train, inference, and evaluation tests fake MLX and subprocess boundaries and
-  verify complete policies, recorded identities, deterministic seeds, artifacts,
-  and failure behavior without loading weights.
-- Chat worker tests use fake backends and explicit synchronization. TUI tests use
-  a fake runtime and Textual pilot sessions. They must not import MLX, require a
-  GPU, or contact a model hub.
-- Documentation tests protect commands, public examples, and links without
-  reading private configuration.
+Tests protect contracts, not implementations.
 
-## Verification and reporting
+A contract-preserving refactor should normally leave tests unchanged. Widespread
+test edits during an internal refactor indicate excessive implementation
+coupling.
 
-Run the affected tests first, then the broader relevant suite, then `just check`
-before handoff. Do not weaken an assertion, replace behavior coverage with an
-import check, or change production behavior only to make a test pass.
+Do not test that production code:
 
-After a test cleanup, review every remaining test and ask: "What realistic
-regression would this catch?" Remove it unless the answer is convincing or it
-has a documented structural purpose. Report tests removed or consolidated,
-fixtures introduced, live-state dependencies eliminated, important coverage
-retained or added, questionable tests kept and why, and every command and result.
+- calls a private helper;
+- uses a particular internal class or decomposition;
+- creates a particular intermediate representation; or
+- performs equivalent internal calls in a fixed order or count.
+
+Assert call order or cardinality only when it is part of the external protocol.
+
+If code requires extensive internal mocking to test, prefer improving the
+dependency boundary rather than increasing mock choreography.
+
+## High-value contracts
+
+These are priorities, not coverage quotas.
+
+- **Ingest/store:** duplicate handling, transactions, revision ordering, and
+  normalized relationships. Use temporary DuckDB files.
+- **Data:** chronological splitting, leakage prevention, target-relative
+  rendering, and immutable artifact identity. Use synthetic repositories and
+  temporary JSONL artifact directories.
+- **Train/inference/evaluation:** fake MLX and subprocess boundaries; protect
+  policies, identities, seeds, artifacts, and failure behavior without weights.
+- **Chat/TUI:** use fake backends, explicit synchronization, fake runtimes, and
+  Textual pilot sessions. Never require MLX, GPUs, or model hubs.
+- **Documentation:** test executable commands, public examples, or links only
+  when automated validation has meaningful alpha.
+
+Prefer one strong invariant test over several tests that enumerate instances.
+
+## Changing tests
+
+A production-code change does not imply that tests should change.
+
+When a test fails, classify it first:
+
+1. **Implementation regression** — fix production code.
+2. **Intentional contract change** — update the test.
+3. **Implementation-coupled test** — rewrite or remove it.
+4. **Invalid, redundant, or flaky test** — repair, consolidate, or remove it.
+5. **Environmental failure** — repair isolation or infrastructure.
+
+Never mechanically update expected values or weaken assertions to make the suite
+green.
+
+Delete tests when their contract disappears, another test subsumes them, they
+protect obsolete implementation structure, or their maintenance burden exceeds
+their unique signal.
+
+Deleting a low-alpha test is test-suite maintenance, not loss of quality.
+
+## Agent workflow
+
+When modifying code:
+
+1. Read the applicable guides, production contract, and existing tests.
+2. Identify the behavior, invariant, or failure mode affected.
+3. Determine whether existing tests already provide sufficient signal.
+4. Reproduce a bug before fixing it when practical.
+5. Add or modify the minimum tests needed to distinguish correct from incorrect
+   behavior.
+6. Implement the change.
+7. Run the narrowest affected tests, then the broader relevant suite.
+8. Run `just check` before handoff.
+9. Remove temporary diagnostics and generated state.
+
+Do not add a test for every changed function or rewrite healthy behavioral tests
+to accommodate an implementation approach.
+
+## Review and reporting
+
+For each test, ask:
+
+- What realistic defect does it catch?
+- Would a plausible incorrect implementation fail it?
+- Is that signal already covered?
+- Does it test a contract rather than implementation structure?
+- Would it survive a legitimate refactor?
+- Is there a cheaper or stronger way to establish the same property?
+- Is its maintenance burden justified?
+
+If not, simplify, consolidate, or remove it.
+
+After test work, report material tests added, removed, or consolidated; important
+fixtures or fakes introduced; live-state or nondeterministic dependencies
+removed; and validation commands run with their results.
+
+The objective is not a larger test suite. It is the smallest maintainable suite
+that provides strong evidence that the implementation is correct.

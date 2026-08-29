@@ -24,15 +24,8 @@ from idiolect.chat.storage import ChatStorageError, ChatStore, SavedChat
 from idiolect.chat.worker import LoadProbe, RuntimeProbe, WorkerState
 from idiolect.config import ChatConfig, GenerationConfig, TrainDataConfig
 from idiolect.model import ModelSpec
-from idiolect.tui.app import (
-    ChatApp,
-    ChromaTheme,
-    _accent_theme_css,
-    _episode_segments,
-    _random_link_id,
-    _watermark,
-)
-from idiolect.tui.specs import HalfCellScrollBarRender, SpecsDocument
+from idiolect.tui.app import ChatApp
+from idiolect.tui.specs import SpecsDocument
 from idiolect.tui.widgets import (
     CommandMenu,
     Composer,
@@ -443,7 +436,7 @@ def test_specs_connects_to_the_selected_registry_entry(tmp_path) -> None:
     asyncio.run(verify())
 
 
-def test_specs_page_uses_a_stable_half_cell_scrollbar(tmp_path) -> None:
+def test_specs_page_uses_a_narrow_scrollbar(tmp_path) -> None:
     """Check the SPECS scrollbar width and interaction-state colors."""
     assistant = _assistant()
     app = ChatApp(
@@ -463,7 +456,6 @@ def test_specs_page_uses_a_stable_half_cell_scrollbar(tmp_path) -> None:
 
             scroller = app.query_one("#specs-scroll", VerticalScroll)
             assert scroller.styles.scrollbar_size_vertical == 1
-            assert scroller.vertical_scrollbar.renderer is HalfCellScrollBarRender
             assert (
                 scroller.styles.scrollbar_color_hover == scroller.styles.scrollbar_color
             )
@@ -847,21 +839,9 @@ def test_registry_confirms_trace_erasure(tmp_path) -> None:
                 "←→ MOVE    ENTER SELECT    ESC RETAIN"
             )
             chooser = app.query_one("#chooser", OptionList)
-            app._trace_blink_visible = True
-            app._refresh_catalog_prompts(f"saved-{saved.id}")
             subject = chooser.get_option_at_index(1).prompt
             assert isinstance(subject, Text)
             assert "Night session" in subject.plain
-            app._trace_blink_visible = False
-            app._refresh_catalog_prompts(f"saved-{saved.id}")
-            hidden_subject = chooser.get_option_at_index(1).prompt
-            assert isinstance(hidden_subject, Text)
-            assert "Night session" not in hidden_subject.plain
-            assert "\n" not in hidden_subject.plain
-            assert hidden_subject.plain.startswith(saved.assistant.target_run)
-            assert hidden_subject.plain.rstrip().endswith("READY")
-            app._trace_blink_visible = True
-            app._refresh_catalog_prompts(f"saved-{saved.id}")
 
             await pilot.press("left", "left", "enter")
             await pilot.pause()
@@ -917,16 +897,6 @@ def test_registry_renames_trace_with_current_name_as_default(tmp_path) -> None:
             assert str(app.query_one("#catalog-hints", Static).content) == (
                 "ENTER NAME    ESC RETAIN"
             )
-            assert app._trace_blink_timer is not None
-            app._trace_blink_visible = False
-            app._refresh_catalog_prompts(f"saved-{saved.id}")
-            subject = (
-                app.query_one("#chooser", OptionList).get_option_at_index(0).prompt
-            )
-            assert isinstance(subject, Text)
-            assert "Night session" not in subject.plain
-            app._trace_blink_visible = True
-            app._refresh_catalog_prompts(f"saved-{saved.id}")
             name.value = "Morning session"
             await pilot.press("enter")
             await pilot.pause()
@@ -935,26 +905,8 @@ def test_registry_renames_trace_with_current_name_as_default(tmp_path) -> None:
             trace = app.query_one("#chooser", OptionList).get_option_at_index(0).prompt
             assert isinstance(trace, Text)
             assert "Morning session" in trace.plain
-            assert app._trace_blink_timer is None
 
     asyncio.run(verify())
-
-
-def test_assistant_episode_displays_as_distinct_message_bubbles() -> None:
-    """Check serving interprets serialization boundaries as new messages."""
-    segments = _episode_segments(
-        "DIXIE",
-        "first bubble\n[new message]\nsecond bubble",
-    )
-
-    assert segments == (
-        ("DIXIE", "first bubble"),
-        ("DIXIE", "second bubble"),
-    )
-    # A reply without boundaries stays one displayed message.
-    assert _episode_segments("DIXIE", "plain reply") == (("DIXIE", "plain reply"),)
-    # Blank serialization segments are never shown.
-    assert _episode_segments("DIXIE", "\n[new message]\nreal") == (("DIXIE", "real"),)
 
 
 def test_transcript_formats_markdown_and_remains_scrollable(tmp_path) -> None:
@@ -1104,8 +1056,11 @@ def test_loaded_trace_starts_at_the_bottom_of_chat_history(tmp_path) -> None:
             assert scroller.max_scroll_y > 0
 
             scroller.scroll_home(animate=False)
-            app._show_chat()
+            composer = app.query_one(Composer)
+            composer.insert("/specs")
+            await pilot.press("enter")
             await pilot.pause()
+            await pilot.press("escape")
             await pilot.pause()
             assert scroller.scroll_y == scroller.max_scroll_y
 
@@ -1275,56 +1230,6 @@ def test_prefill_progress_appears_above_composer(tmp_path) -> None:
         asyncio.run(verify())
     finally:
         runtime.release_prefill.set()
-
-
-def test_theme_uses_terminal_surfaces_and_truecolor_accents() -> None:
-    """Check the terminal surface and supplied accent color contract."""
-    app = ChatApp(ChatConfig(), GenerationConfig())
-
-    assert app.native_ansi_color is True
-    assert "ansi_default" in ChatApp.CSS
-    assert "ansi_bright_black" in ChatApp.CSS
-    for accent in (
-        "#00AAFF",
-        "#FF002B",
-        "#FFD500",
-        "#FF00D5",
-        "#AA00FF",
-        "#00FFFF",
-        "#80FF00",
-        "#FF5500",
-    ):
-        assert accent in ChatApp.CSS
-
-
-def test_chroma_declaration_accepts_hex_for_css_and_rich() -> None:
-    """Check one supplied hexadecimal accent reaches both render paths."""
-    theme = ChromaTheme("rose", "#A1B2C3", "CONFIDANT")
-
-    css = _accent_theme_css((theme,))
-    assert ".-accent-rose" in css
-    assert "color: #A1B2C3" in css
-    assert "solid #A1B2C3" in css
-    assert "tall #A1B2C3" in css
-    watermark = _watermark(theme.accent)
-    style = watermark.get_style_at_offset(Console(), 0)
-    assert style.color is not None
-    truecolor = style.color.get_truecolor()
-    assert (truecolor.red, truecolor.green, truecolor.blue) == (161, 178, 195)
-
-
-def test_link_id_uses_three_random_bytes(monkeypatch) -> None:
-    """Check the live link ID uses six random hexadecimal digits."""
-    requested = []
-
-    def fake_token_hex(byte_count: int) -> str:
-        requested.append(byte_count)
-        return "a1b2c3"
-
-    monkeypatch.setattr("idiolect.tui.app.secrets.token_hex", fake_token_hex)
-
-    assert _random_link_id() == "A1B2C3"
-    assert requested == [3]
 
 
 def test_model_load_keeps_event_processing_active(tmp_path) -> None:
@@ -1558,19 +1463,6 @@ def test_command_menu_filters_navigates_and_returns_to_registry(tmp_path) -> Non
             assert str(app.query_one("#footer", Static).content) == (
                 "↑↓ MOVE    ENTER COMMAND    ESC CLOSE"
             )
-            app._show_ack("COMMAND aligned")
-            await pilot.pause()
-            alert = app.query_one("#chat-alert", StatusLine)
-            visible_actions = tuple(
-                action for action in menu.query(".command-action") if action.display
-            )
-            assert alert.region.y == visible_actions[-1].region.y
-            assert (
-                alert.region.right
-                == app.query_one("#activity-row", Horizontal).region.right
-            )
-            app._clear_notice()
-
             await pilot.press("down")
             assert chroma_button.has_class("-selected")
             await pilot.press("down")
@@ -1678,7 +1570,7 @@ def test_echo_command_uses_an_env_turn_and_argument_bar(tmp_path) -> None:
             await pilot.pause()
 
             command_bar = app.query_one("#command-bar", Static)
-            assert app._command_selected
+            assert composer.command_selected
             assert command_bar.display
             assert isinstance(command_bar.content, Text)
             assert command_bar.content.plain == "/ ECHO SYS echo."
@@ -1752,7 +1644,7 @@ def test_command_argument_errors_use_generic_messages(tmp_path) -> None:
             assert command_bar.region.right <= alert.region.x
             assert alert.region.right == activity.region.right
 
-            app._clear_command()
+            await pilot.press("escape")
             composer.clear()
             await pilot.pause()
             composer.insert("/chroma extra")
@@ -1786,7 +1678,7 @@ def test_echo_command_can_be_selected_after_prefilled_arguments(tmp_path) -> Non
             await pilot.press("enter")
             await pilot.pause()
 
-            assert app._command_selected
+            assert composer.command_selected
             assert composer.text == "hello"
             assert app.query_one("#command-bar", Static).display
 
@@ -1823,7 +1715,7 @@ def test_slash_command_menu_opens_for_a_token_inside_prompt(tmp_path) -> None:
             await pilot.press("enter")
             await pilot.pause()
 
-            assert app._command_selected
+            assert composer.command_selected
             assert composer.text == "prompt "
             assert app.query_one("#command-bar", Static).display
 
@@ -1834,7 +1726,7 @@ def test_reference_menu_selects_bubble_and_escape_clears_reference(tmp_path) -> 
     """Check reference selection, replacement, and Escape semantics."""
     chat = ChatConfig(output=tmp_path)
     generation = GenerationConfig()
-    runtime = ImmediateRuntime(chat, generation)
+    runtime = ReferenceRuntime(chat, generation)
     app = ChatApp(
         chat,
         generation,
@@ -1845,18 +1737,14 @@ def test_reference_menu_selects_bubble_and_escape_clears_reference(tmp_path) -> 
     async def verify() -> None:
         async with app.run_test(size=(80, 24)) as pilot:
             await _wait_for_chat(app, pilot)
-            assert runtime.session is not None
-            runtime.session.add_user("first")
-            runtime.session.begin_generation()
-            runtime.session.finish_generation(
-                "one\n[new message]\ntwo",
-                "stop",
-                1,
-                TurnTelemetry(2, 1),
-            )
-            app._render_transcript()
-
             composer = app.query_one(Composer)
+            composer.insert("first")
+            await pilot.press("enter")
+            for _ in range(20):
+                await pilot.pause()
+                if "two" in app.query_one(Transcript).plain:
+                    break
+
             composer.insert("@")
             await pilot.pause()
 
@@ -1871,19 +1759,6 @@ def test_reference_menu_selects_bubble_and_escape_clears_reference(tmp_path) -> 
             assert str(app.query_one("#footer", Static).content) == (
                 "↑↓ MOVE    ENTER REF    ESC CLOSE"
             )
-            app._show_ack("REF aligned")
-            await pilot.pause()
-            alert = app.query_one("#chat-alert", StatusLine)
-            visible_actions = tuple(
-                action for action in menu.query(".reference-action") if action.display
-            )
-            assert alert.region.y == visible_actions[-1].region.y
-            assert (
-                alert.region.right
-                == app.query_one("#activity-row", Horizontal).region.right
-            )
-            app._clear_notice()
-
             composer_bar = app.query_one("#composer-bar", Horizontal)
             before_geometry = (
                 composer_bar.region.x,
@@ -1933,7 +1808,6 @@ def test_reference_menu_selects_bubble_and_escape_clears_reference(tmp_path) -> 
 
             composer.insert("follow-up")
             await pilot.pause()
-            assert app._reference_selected
             assert composer.reference_selected
             assert composer.has_focus
             assert not composer.command_menu_active
@@ -1972,7 +1846,6 @@ def test_reference_menu_selects_bubble_and_escape_clears_reference(tmp_path) -> 
             await pilot.pause()
             assert composer.text == "prompt"
             assert "@ OP:00" in bar.content.plain
-            assert app._reference_selected
 
             composer.clear()
             composer.insert("@first")
@@ -2008,10 +1881,15 @@ def test_reference_menu_selects_bubble_and_escape_clears_reference(tmp_path) -> 
             await pilot.press("enter")
             await pilot.pause()
             assert composer.text == "prompt"
-            assert app._reference_selected
+            assert composer.reference_selected
 
-            runtime.session.add_user("sent", reference=2)
-            app._render_transcript()
+            composer.clear()
+            composer.insert("sent")
+            await pilot.press("enter")
+            for _ in range(20):
+                await pilot.pause()
+                if "REF @DIXIE:02" in app.query_one(Transcript).plain:
+                    break
             transcript = app.query_one(Transcript)
             assert "OP:\n REF @DIXIE:02\n sent" in transcript.plain
             segments = tuple(Console().render(cast(RenderableType, transcript.content)))
@@ -2309,7 +2187,7 @@ def test_chat_errors_align_right_above_composer(tmp_path) -> None:
     """Check inline failure placement and loading-status visual language."""
     chat = ChatConfig(output=tmp_path)
     generation = GenerationConfig()
-    runtime = ImmediateRuntime(chat, generation)
+    runtime = BlockingRuntime(chat, generation)
     app = ChatApp(
         chat,
         generation,
@@ -2320,8 +2198,8 @@ def test_chat_errors_align_right_above_composer(tmp_path) -> None:
     async def verify() -> None:
         async with app.run_test(size=(80, 24)) as pilot:
             await _wait_for_chat(app, pilot)
+            assert await asyncio.to_thread(runtime.started.wait, 1)
             composer = app.query_one(Composer)
-            app._loading = True
             composer.insert("message during load")
             await pilot.press("enter")
             await pilot.pause()
@@ -2335,7 +2213,11 @@ def test_chat_errors_align_right_above_composer(tmp_path) -> None:
             assert loading.region.y == failure.region.y
             assert failure.region.right == activity.region.right
 
-            app._loading = False
+            runtime.release.set()
+            for _ in range(20):
+                await pilot.pause()
+                if not loading.display:
+                    break
             composer.clear()
             composer.insert("/unknown")
             await pilot.press("enter")
@@ -2437,12 +2319,14 @@ def test_commands_follow_generation_navigation_rules(tmp_path) -> None:
             await pilot.press("enter")
             assert await asyncio.to_thread(runtime.prefill_started.wait, 1)
 
-            app._command("disconnect")
+            composer.insert("/disconnect")
+            await pilot.press("enter")
             await pilot.pause()
             assert app.query_one("#chat-alert", StatusLine).state == (
                 "SYS: ERR CONSTRUCT is generating."
             )
 
+            composer.clear()
             composer.insert("/disconnect")
             await pilot.pause()
             disconnect = app.query_one("#command-disconnect", Horizontal)
@@ -2618,6 +2502,30 @@ class ImmediateRuntime(BlockingRuntime):
     def close(self) -> None:
         """Record fake runtime shutdown."""
         self.closed = True
+
+
+class ReferenceRuntime(ImmediateRuntime):
+    """Generate an assistant episode with two serialized bubbles."""
+
+    def generate(
+        self,
+        attempt: int = 0,
+        prompt_progress: Callable[[int, int], None] | None = None,
+    ) -> Iterator[str]:
+        """Commit one synthetic two-bubble assistant reply."""
+        del prompt_progress
+        if self.session is None:
+            raise RuntimeError("No fake chat session")
+        self.session.begin_generation()
+        value = "one\n[new message]\ntwo"
+        yield value
+        self.session.finish_generation(
+            value,
+            "stop",
+            101 + attempt,
+            TurnTelemetry(2, 1),
+            attempt=attempt,
+        )
 
 
 class BufferRuntime(ImmediateRuntime):

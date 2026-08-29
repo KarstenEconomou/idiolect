@@ -4,7 +4,6 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
-from rich.color import Color
 from rich.console import Console
 
 from idiolect.chat.discovery import Assistant
@@ -15,12 +14,7 @@ from idiolect.config import ChatConfig, GenerationConfig, TrainDataConfig
 from idiolect.data.local import BuildResult
 from idiolect.model import ModelSpec
 from idiolect.train.base import LoadedRun
-from idiolect.tui.specs import (
-    HalfCellScrollBarRender,
-    render_buffer,
-    render_probe,
-    render_specs,
-)
+from idiolect.tui.specs import render_buffer, render_probe, render_specs
 from idiolect.types import DatasetId, DatasetRef, PersonId, RunId, RunRef, Split
 
 _NOW = datetime(2026, 8, 22, 12, tzinfo=UTC)
@@ -337,24 +331,6 @@ def test_completion_format_omits_structurally_invalid_system_and_roles(
     assert "PROMPT\nPREFIX\n —\nSUFFIX\n \\n\nLIMIT\n 0 TOK\n" in policy
     assert (
         "COMPLETION\nPREFIX\n <assistant>\\n\nSUFFIX\n —\nLIMIT\n 128 TOK\n" in policy
-    )
-
-
-def test_specs_scrollbar_uses_a_half_cell_thumb() -> None:
-    """Check the narrow scrollbar renderer keeps one clickable cell."""
-    rendered = HalfCellScrollBarRender.render_bar(
-        size=12,
-        virtual_size=48,
-        window_size=12,
-        bar_color=Color.parse("white"),
-        back_color=Color.parse("black"),
-    )
-
-    thumb = [segment for segment in rendered.segments if segment.text == "▐"]
-    assert thumb
-    assert all(
-        segment.style is not None and segment.style.meta.get("@mouse.down") == "grab"
-        for segment in thumb
     )
 
 

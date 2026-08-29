@@ -1,6 +1,7 @@
 """Test chat runtime model selection behavior."""
 
-import time
+from collections.abc import Iterable
+from queue import Queue
 
 import pytest
 
@@ -57,7 +58,7 @@ def test_failed_load_clears_measurements_from_the_previous_target() -> None:
         worker_factory=lambda: worker,
     )
     runtime.select(_assistant())
-    worker.events.extend([FailureEvent("Synthetic load failure")])
+    worker.add_events([FailureEvent("Synthetic load failure")])
 
     with pytest.raises(ChatError, match="Synthetic load failure"):
         runtime.select(_assistant())
@@ -76,7 +77,7 @@ def test_generation_reports_measured_prefill_progress() -> None:
     )
     session = runtime.select(_assistant())
     session.add_user("Hello")
-    worker.events.extend(
+    worker.add_events(
         [
             StateEvent(WorkerState.GENERATING),
             PrefillEvent(0, 5),
@@ -115,7 +116,7 @@ def test_abandoned_reply_cancels_the_worker_and_drains_events() -> None:
     )
     session = runtime.select(_assistant())
     session.add_user("Hello")
-    worker.events.extend(
+    worker.add_events(
         [
             DeltaEvent("Stale"),
             DeltaEvent(" text"),
@@ -133,7 +134,7 @@ def test_abandoned_reply_cancels_the_worker_and_drains_events() -> None:
     assert not session.generating
     assert [turn.role for turn in session.turns] == ["user"]
 
-    worker.events.extend(
+    worker.add_events(
         [DeltaEvent("Fresh"), CompleteEvent(BackendResult("", "stop", 6, 1), 0.1, 0.3)]
     )
     pieces = list(runtime.generate())
@@ -148,22 +149,28 @@ class ReadyWorker:
     def __init__(self) -> None:
         """Create command and event records."""
         self.commands = []
-        self.events: list[WorkerEvent] = [
-            ProbeEvent(_runtime_probe()),
-            LoadEvent(_load_probe()),
-            StateEvent(WorkerState.READY),
-        ]
+        self.events: Queue[WorkerEvent] = Queue()
+        self.add_events(
+            [
+                ProbeEvent(_runtime_probe()),
+                LoadEvent(_load_probe()),
+                StateEvent(WorkerState.READY),
+            ]
+        )
         self.alive = True
+
+    def add_events(self, events: Iterable[WorkerEvent]) -> None:
+        """Publish synthetic worker events in arrival order."""
+        for event in events:
+            self.events.put(event)
 
     def send(self, command) -> None:
         """Record one worker command."""
         self.commands.append(command)
 
-    def receive(self, _timeout):
-        """Return the next fixed worker event or block on an empty queue."""
-        while not self.events:
-            time.sleep(0.01)
-        return self.events.pop(0)
+    def receive(self, timeout: float | None = None) -> WorkerEvent:
+        """Return the next fixed worker event using queue synchronization."""
+        return self.events.get(timeout=timeout)
 
     def cancel(self) -> None:
         """Record one cancellation request."""
