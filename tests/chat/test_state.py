@@ -85,9 +85,7 @@ def test_env_turns_are_display_only_and_do_not_enter_prompt() -> None:
 
     assert "local diagnostic" not in prepared.prompt
     assert "next" in prepared.prompt
-    assert [bubble.content for bubble in enumerate_bubbles(state.turns)] == [
-        "next"
-    ]
+    assert [bubble.content for bubble in enumerate_bubbles(state.turns)] == ["next"]
 
 
 def test_reference_numbers_assistant_bubbles_and_rejects_future_targets() -> None:
@@ -97,7 +95,10 @@ def test_reference_numbers_assistant_bubbles_and_rejects_future_targets() -> Non
     state.begin_generation()
     state.finish_generation("one\n[new message]\ntwo", "stop", 1, TurnTelemetry(2, 1))
 
-    assert [(bubble.index, bubble.role, bubble.content) for bubble in enumerate_bubbles(state.turns)] == [
+    assert [
+        (bubble.index, bubble.role, bubble.content)
+        for bubble in enumerate_bubbles(state.turns)
+    ] == [
         (0, "user", "first"),
         (1, "assistant", "one"),
         (2, "assistant", "two"),

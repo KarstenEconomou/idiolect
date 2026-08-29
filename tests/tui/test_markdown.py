@@ -43,31 +43,17 @@ def test_formats_supported_inline_text_and_retains_heading_prefixes() -> None:
 
 def test_indents_each_list_level_and_aligns_wrapped_item_text() -> None:
     """Check authored list markers, nesting, numbering, and hanging wraps."""
-    source = (
-        "- alpha beta gamma delta\n"
-        "  + nested\n\n"
-        "3) third\n"
-        "7) seventh"
-    )
+    source = "- alpha beta gamma delta\n  + nested\n\n3) third\n7) seventh"
 
     assert _capture(source, width=16) == (
-        " - alpha beta \n"
-        "   gamma delta\n"
-        "  + nested\n"
-        "\n"
-        " 3) third\n"
-        " 7) seventh\n"
+        " - alpha beta \n   gamma delta\n  + nested\n\n 3) third\n 7) seventh\n"
     )
 
 
 def test_indents_each_quote_level_and_aligns_wrapped_quote_text() -> None:
     """Check retained quote markers, nesting, emphasis, and hanging wraps."""
     source = (
-        "> alpha beta gamma delta\n"
-        "> > nested\n"
-        "> **bold**\n"
-        "`> inline code`\n"
-        "\\> escaped"
+        "> alpha beta gamma delta\n> > nested\n> **bold**\n`> inline code`\n\\> escaped"
     )
 
     segments = _segments(source, width=16)

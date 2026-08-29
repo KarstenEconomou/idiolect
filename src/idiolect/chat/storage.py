@@ -242,7 +242,9 @@ class ChatStore:
                 assistant = _base_assistant(assistant_value)
             else:
                 raise TypeError
-            if canonical_json_bytes(_assistant_value(assistant)) != canonical_json_bytes(assistant_value):
+            if canonical_json_bytes(
+                _assistant_value(assistant)
+            ) != canonical_json_bytes(assistant_value):
                 raise ChatStorageError(
                     "Saved chat assistant does not match local artifacts"
                 )
@@ -511,8 +513,7 @@ def _backend_versions(value: object) -> Mapping[str, str | None]:
     if value is None:
         return {}
     if not isinstance(value, dict) or not all(
-        isinstance(name, str)
-        and (item is None or isinstance(item, str))
+        isinstance(name, str) and (item is None or isinstance(item, str))
         for name, item in value.items()
     ):
         raise TypeError
@@ -557,7 +558,9 @@ def _read_turns(path: Path) -> tuple[ChatTurn, ...]:
             raise ChatStorageError(
                 f"Chat turn is not valid: {path}:{number}"
             ) from error
-        if turn.role not in {"user", "assistant", "env"} or not isinstance(turn.content, str):
+        if turn.role not in {"user", "assistant", "env"} or not isinstance(
+            turn.content, str
+        ):
             raise ChatStorageError(f"Chat turn is not valid: {path}:{number}")
         if turn.role in {"user", "env"} and (
             turn.attempt != 0
@@ -586,25 +589,16 @@ def _read_turns(path: Path) -> tuple[ChatTurn, ...]:
             raise ChatStorageError(f"Chat assistant turn is not valid: {path}:{number}")
         if turn.role == "env":
             previous = next(
-                (
-                    item
-                    for item in reversed(turns)
-                    if item.role != "env"
-                ),
+                (item for item in reversed(turns) if item.role != "env"),
                 None,
             )
             if previous is not None and previous.role == "user":
-                raise ChatStorageError(
-                    f"Chat ENV turn is not valid: {path}:{number}"
-                )
+                raise ChatStorageError(f"Chat ENV turn is not valid: {path}:{number}")
         turns.append(turn)
     model_turns = tuple(turn for turn in turns if turn.role != "env")
-    if (
-        (model_turns and model_turns[0].role != "user")
-        or any(
-            turn.role == model_turns[index - 1].role
-            for index, turn in enumerate(model_turns[1:], 1)
-        )
+    if (model_turns and model_turns[0].role != "user") or any(
+        turn.role == model_turns[index - 1].role
+        for index, turn in enumerate(model_turns[1:], 1)
     ):
         raise ChatStorageError(f"Chat transcript order is not valid: {path}")
     bubbles = enumerate_bubbles(turns)
@@ -670,7 +664,6 @@ def _text(value: dict[str, Any], name: str) -> str:
     return result
 
 
-
 def _jsonl_bytes(rows: list[dict[str, Any]]) -> bytes:
     return (
         "\n".join(
@@ -678,7 +671,6 @@ def _jsonl_bytes(rows: list[dict[str, Any]]) -> bytes:
         )
         + "\n"
     ).encode()
-
 
 
 def _nonnegative_int(value: object) -> TypeGuard[int]:

@@ -210,17 +210,9 @@ def _accent_theme_css(
         colored = ", ".join(prefix + selector for selector in color_selectors)
         buttons = ", ".join(prefix + selector for selector in button_selectors)
         rules.append(f"{colored} {{ color: {accent}; }}")
-        rules.append(
-            f"{prefix}#composer-bar {{ border: solid {accent}; }}"
-        )
-        rules.append(
-            f"{prefix}#reference-bar "
-            f"{{ border: solid {accent}; }}"
-        )
-        rules.append(
-            f"{prefix}#command-bar "
-            f"{{ border: solid {accent}; }}"
-        )
+        rules.append(f"{prefix}#composer-bar {{ border: solid {accent}; }}")
+        rules.append(f"{prefix}#reference-bar {{ border: solid {accent}; }}")
+        rules.append(f"{prefix}#command-bar {{ border: solid {accent}; }}")
         rules.append(f"{buttons} {{ border: tall {accent}; }}")
     return "\n".join(rules)
 
@@ -239,9 +231,7 @@ def _episode_segments(
     Stored turn content stays exact; only the display separates the bubbles
     of one episode. Blank serialization segments are never shown.
     """
-    segments = tuple(
-        segment for segment in split_bubbles(content) if segment.strip()
-    )
+    segments = tuple(segment for segment in split_bubbles(content) if segment.strip())
     if not segments:
         return ((name, content),)
     return tuple((name, segment) for segment in segments)
@@ -255,11 +245,7 @@ def _telemetry_footer(
     """Format the measured values that fit in the footer."""
     max_prompt_tokens = max(1, max_prompt_tokens)
     pressure = 100 * telemetry.prompt_tokens / max_prompt_tokens
-    context = (
-        "CTX "
-        f"{telemetry.prompt_tokens:,}/{max_prompt_tokens:,} "
-        f"({pressure:.0f}%)"
-    )
+    context = f"CTX {telemetry.prompt_tokens:,}/{max_prompt_tokens:,} ({pressure:.0f}%)"
     if len(context) > available_width:
         compact_context = f"CTX {pressure:.0f}%"
         return compact_context if len(compact_context) <= available_width else ""
@@ -576,9 +562,10 @@ class ChatApp(App[None]):
             and not self.query_one("#command-menu", CommandMenu).display
             and not self.query_one("#reference-menu", ReferenceMenu).display
         ):
-            if self._command_selected or self.query_one(
-                "#command-bar", CommandBar
-            ).display:
+            if (
+                self._command_selected
+                or self.query_one("#command-bar", CommandBar).display
+            ):
                 self._escape_command()
             else:
                 self._escape_reference()
@@ -687,9 +674,7 @@ class ChatApp(App[None]):
     def _set_accent_theme(self, name: str) -> None:
         """Apply one configured ANSI accent theme across the interface."""
         theme_index = next(
-            index
-            for index, theme in enumerate(_CHROMA_THEMES)
-            if theme.color == name
+            index for index, theme in enumerate(_CHROMA_THEMES) if theme.color == name
         )
         self._accent_theme_index = theme_index
         theme = _CHROMA_THEMES[theme_index]
@@ -852,8 +837,7 @@ class ChatApp(App[None]):
         )
         self._command_matches = (
             ()
-            if composer.text == self._dismissed_command_text
-            or command_token is None
+            if composer.text == self._dismissed_command_text or command_token is None
             else completions(command_token[2])
         )
         self._update_command_menu()
@@ -987,16 +971,16 @@ class ChatApp(App[None]):
         if not enabled:
             return
         current = (
-            enabled.index(self._command_index)
-            if self._command_index in enabled
-            else 0
+            enabled.index(self._command_index) if self._command_index in enabled else 0
         )
         self._command_index = enabled[(current + event.offset) % len(enabled)]
         self._update_command_menu()
 
     def on_composer_command_dismissed(self, event: Composer.CommandDismissed) -> None:
         """Hide the command menu until the composer value changes."""
-        self._dismissed_command_text = self._composer_value(self.query_one(Composer).text)
+        self._dismissed_command_text = self._composer_value(
+            self.query_one(Composer).text
+        )
         self._command_matches = ()
         self._update_command_menu()
 
@@ -1036,9 +1020,7 @@ class ChatApp(App[None]):
             self._command_name = selected[1:]
             self._command_token_span = None
             composer.load_text(replacement)
-            composer.move_cursor(
-                self._cursor_location(replacement, replacement_offset)
-            )
+            composer.move_cursor(self._cursor_location(replacement, replacement_offset))
             self._render_command()
             self._update_command_menu()
             self._update_reference_menu()
@@ -1145,9 +1127,10 @@ class ChatApp(App[None]):
             and not self.query_one("#command-menu", CommandMenu).display
             and not self.query_one("#reference-menu", ReferenceMenu).display
         ):
-            if self._command_selected or self.query_one(
-                "#command-bar", CommandBar
-            ).display:
+            if (
+                self._command_selected
+                or self.query_one("#command-bar", CommandBar).display
+            ):
                 self._escape_command()
             else:
                 self._escape_reference()
@@ -1250,9 +1233,7 @@ class ChatApp(App[None]):
         self.query_one("#landing").display = False
         self.query_one("#chat").display = True
         self.query_one("#identity", Static).update(session.assistant.name)
-        self.query_one("#chat-link", Static).update(
-            _link_label(self._link_id)
-        )
+        self.query_one("#chat-link", Static).update(_link_label(self._link_id))
         self._render_transcript()
         self._render_command()
         self._render_reference()
@@ -1304,7 +1285,11 @@ class ChatApp(App[None]):
         if session is None:
             return None
         return next(
-            (bubble for bubble in enumerate_bubbles(session.turns) if bubble.index == index),
+            (
+                bubble
+                for bubble in enumerate_bubbles(session.turns)
+                if bubble.index == index
+            ),
             None,
         )
 
@@ -1340,9 +1325,9 @@ class ChatApp(App[None]):
             if (
                 self._reference_search_text(bubble).startswith(query)
                 or (
-                    f"{self._reference_name(bubble)}:{bubble.index}"
-                    .casefold()
-                    .startswith(query)
+                    f"{self._reference_name(bubble)}:{bubble.index}".casefold().startswith(
+                        query
+                    )
                 )
                 or f"{bubble.index:02d}".startswith(query)
                 or str(bubble.index).startswith(query)
@@ -1413,9 +1398,7 @@ class ChatApp(App[None]):
             return start
         base = value[:start] + value[end:]
         extra = int(
-            start < len(base)
-            and base[start - 1].isspace()
-            and base[start].isspace()
+            start < len(base) and base[start - 1].isspace() and base[start].isspace()
         )
         return min(
             cursor_offset - (end - start) - extra,
@@ -1439,11 +1422,7 @@ class ChatApp(App[None]):
         for marker in range(min(column, len(line)), -1, -1):
             if marker >= len(line) or line[marker] != "@":
                 continue
-            if (
-                not allow_embedded
-                and marker
-                and not line[marker - 1].isspace()
-            ):
+            if not allow_embedded and marker and not line[marker - 1].isspace():
                 continue
             end = next(
                 (
@@ -1545,7 +1524,10 @@ class ChatApp(App[None]):
         """Refresh the leading-@ reference selector."""
         composer = self.query_one(Composer)
         menu = self.query_one("#reference-menu", ReferenceMenu)
-        if self._command_selected or self.query_one("#command-menu", CommandMenu).display:
+        if (
+            self._command_selected
+            or self.query_one("#command-menu", CommandMenu).display
+        ):
             self._reference_token_span = None
             self._reference_bubbles = ()
             if not self._reference_selected:
@@ -1616,7 +1598,10 @@ class ChatApp(App[None]):
             self.call_after_refresh(self._scroll_transcript_end)
 
     def _update_footer(self) -> None:
-        if self._active_dialog is not None and self._active_dialog.kind is DialogKind.CHROMA:
+        if (
+            self._active_dialog is not None
+            and self._active_dialog.kind is DialogKind.CHROMA
+        ):
             self._set_footer("←→ MOVE    ENTER EQUIP    ESC CANCEL")
             return
         if self._active_dialog is not None and self._active_dialog.kind in {
@@ -1664,9 +1649,7 @@ class ChatApp(App[None]):
 
     def _update_status(self) -> None:
         state = self.runtime.state.value
-        self._set_status(
-            self._link_status_label(state) if self._loading else state
-        )
+        self._set_status(self._link_status_label(state) if self._loading else state)
 
     def _set_status(self, value: str | None) -> None:
         normalized = (
@@ -1753,10 +1736,13 @@ class ChatApp(App[None]):
 
     def _command_cursor_in_block(self, composer: Composer) -> bool:
         """Return whether the composer cursor is inside its slash token."""
-        return self._command_token_at_cursor(
-            composer.text,
-            composer.cursor_location,
-        ) is not None
+        return (
+            self._command_token_at_cursor(
+                composer.text,
+                composer.cursor_location,
+            )
+            is not None
+        )
 
     def _selected_command(self) -> str | None:
         if self._command_selected:
@@ -1880,7 +1866,10 @@ class ChatApp(App[None]):
         }
         bottom = 3 if overlay else 1
         self._sync_active_selector()
-        if self._active_selector is not None and self._active_selector.accessory_selected:
+        if (
+            self._active_selector is not None
+            and self._active_selector.accessory_selected
+        ):
             bottom += 2
         scroller.styles.padding = (1, 2, bottom, 2)
         self.call_after_refresh(self._scroll_transcript_end)
@@ -1889,12 +1878,13 @@ class ChatApp(App[None]):
         """Derive the one active selector record from rendered controls."""
         command_menu = self.query_one("#command-menu", CommandMenu).display
         reference_menu = self.query_one("#reference-menu", ReferenceMenu).display
-        command_selected = self._command_selected or self.query_one(
-            "#command-bar", CommandBar
-        ).display
-        reference_selected = self._reference_selected or self.query_one(
-            "#reference-bar", ReferenceBar
-        ).display
+        command_selected = (
+            self._command_selected or self.query_one("#command-bar", CommandBar).display
+        )
+        reference_selected = (
+            self._reference_selected
+            or self.query_one("#reference-bar", ReferenceBar).display
+        )
         if command_menu or command_selected:
             self._active_selector = ActiveSelector(
                 SelectorKind.COMMAND,
@@ -2062,9 +2052,7 @@ class ChatApp(App[None]):
             )
         elif reference_menu.display:
             offset = sum(
-                action.display for action in reference_menu.query(
-                    ".reference-action"
-                )
+                action.display for action in reference_menu.query(".reference-action")
             )
         else:
             offset = 0
@@ -2151,9 +2139,7 @@ class ChatApp(App[None]):
                 saved.assistant.model_basename,
                 "TRACE",
                 "READY",
-                trace_name=(
-                    saved.title if self._trace_details_expanded else None
-                ),
+                trace_name=(saved.title if self._trace_details_expanded else None),
             )
             key = f"saved-{saved.id}"
             self._rows[key] = saved
@@ -2367,7 +2353,10 @@ class ChatApp(App[None]):
 
     def _update_catalog_hints(self) -> None:
         """Show actions available for the current registry row."""
-        if self._active_dialog is not None and self._active_dialog.kind is DialogKind.CHROMA:
+        if (
+            self._active_dialog is not None
+            and self._active_dialog.kind is DialogKind.CHROMA
+        ):
             self.query_one("#catalog-hints", Static).update(
                 "←→ MOVE    ENTER EQUIP    ESC CANCEL"
             )

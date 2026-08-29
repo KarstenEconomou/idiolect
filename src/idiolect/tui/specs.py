@@ -463,9 +463,13 @@ def _buffer_reference_name(session: ChatSession, reference: ChatBubble) -> str:
 def _byte_property(name: str, value: object) -> bool:
     """Return true when one integer device property reports bytes."""
     normalized = name.casefold()
-    return isinstance(value, int) and not isinstance(value, bool) and (
-        normalized.endswith(("_length", "_size", "_memory"))
-        or "working_set_size" in normalized
+    return (
+        isinstance(value, int)
+        and not isinstance(value, bool)
+        and (
+            normalized.endswith(("_length", "_size", "_memory"))
+            or "working_set_size" in normalized
+        )
     )
 
 
@@ -545,9 +549,10 @@ def _field(
         return
     displayed = _display(value)
     if (
-        "token" in field_name.split("_")
-        or "tokens" in field_name.split("_")
-    ) and isinstance(value, int) and not isinstance(value, bool):
+        ("token" in field_name.split("_") or "tokens" in field_name.split("_"))
+        and isinstance(value, int)
+        and not isinstance(value, bool)
+    ):
         displayed = f"{value:,} TOK"
     document.append_inset(
         Text(label, style=_FIELD_NAME),

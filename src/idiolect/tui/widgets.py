@@ -361,9 +361,8 @@ class CommandMenu(VerticalMenu):
         for command in COMMANDS:
             action = self.query_one(f"#command-{command[1:]}", Horizontal)
             action.display = command in preview
-            disabled = (
-                (command == "/disconnect" and not registry_enabled)
-                or (command == "/trace" and not trace_enabled)
+            disabled = (command == "/disconnect" and not registry_enabled) or (
+                command == "/trace" and not trace_enabled
             )
             action.set_class(command == selected and not disabled, "-selected")
             action.set_class(disabled, "-disabled")
@@ -394,10 +393,7 @@ class SelectionBar(Static):
         def border_style(strip: Strip) -> Strip:
             """Apply the dimmed accent over Textual's default border style."""
             return Strip(
-                [
-                    Segment(segment.text, dim, segment.control)
-                    for segment in strip
-                ],
+                [Segment(segment.text, dim, segment.control) for segment in strip],
                 strip.cell_length,
             )
 
@@ -514,7 +510,6 @@ class ReferenceBar(SelectionBar):
         self.update(value)
 
 
-
 class Transcript(Static):
     """Render transcript labels and focused Markdown message blocks."""
 
@@ -535,8 +530,7 @@ class Transcript(Static):
     ) -> None:
         """Set labeled turns without changing their stored message text."""
         current = tuple(
-            (turn[0], turn[1], turn[2] if len(turn) == 3 else False)
-            for turn in turns
+            (turn[0], turn[1], turn[2] if len(turn) == 3 else False) for turn in turns
         )
         messages = tuple(
             self._cached_messages[index]
@@ -575,11 +569,7 @@ class Transcript(Static):
         """Render a speaker label with a dim reference annotation."""
         marker = name.find(" [@")
         if marker < 0:
-            style = (
-                Style(color=self._accent, dim=True)
-                if dimmed
-                else self._accent
-            )
+            style = Style(color=self._accent, dim=True) if dimmed else self._accent
             return Text(f"{name}:", style=style)
         speaker = name[:marker]
         reference = name[marker + 2 : -1]

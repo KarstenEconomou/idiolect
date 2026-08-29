@@ -50,12 +50,16 @@ class MenuCursor:
             ),
             None,
         )
-        self.index = requested if requested is not None else (enabled[0] if enabled else None)
+        self.index = (
+            requested if requested is not None else (enabled[0] if enabled else None)
+        )
 
     @property
     def enabled_indexes(self) -> tuple[int, ...]:
         """Return indexes for all enabled items."""
-        return tuple(index for index, item in enumerate(self.items) if not item.disabled)
+        return tuple(
+            index for index, item in enumerate(self.items) if not item.disabled
+        )
 
     @property
     def selected(self) -> MenuItem | None:
@@ -126,7 +130,9 @@ class VerticalMenu(Static):
                     id=f"{self.row_prefix}-{index}",
                     classes="menu-action",
                 ):
-                    yield Static("", markup=False, classes=f"menu-name {self.name_class}")
+                    yield Static(
+                        "", markup=False, classes=f"menu-name {self.name_class}"
+                    )
                     yield Static(
                         "",
                         markup=False,
@@ -245,7 +251,11 @@ class HorizontalMenuModal(ModalScreen[str | None]):
 
     def compose(self) -> ComposeResult:
         """Create the heading and horizontal actions."""
-        classes = "horizontal-menu -unplaced" if self.hidden_until_placed else "horizontal-menu"
+        classes = (
+            "horizontal-menu -unplaced"
+            if self.hidden_until_placed
+            else "horizontal-menu"
+        )
         with Vertical(id=self.dialog_id, classes=classes):
             yield Static(
                 self.menu_title,

@@ -185,7 +185,7 @@ class _MlxSession:
             del self._model
             del self._tokenizer
             mx.clear_cache()
-        except (AttributeError, ImportError):
+        except AttributeError, ImportError:
             return
 
 

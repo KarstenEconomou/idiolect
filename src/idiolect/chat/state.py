@@ -254,7 +254,9 @@ def replace_partial(turn: ChatTurn, content: str) -> ChatTurn:
     return replace(turn, content=content)
 
 
-def enumerate_bubbles(turns: tuple[ChatTurn, ...] | list[ChatTurn]) -> tuple[ChatBubble, ...]:
+def enumerate_bubbles(
+    turns: tuple[ChatTurn, ...] | list[ChatTurn],
+) -> tuple[ChatBubble, ...]:
     """Return stored transcript bubbles in chronological display order."""
     bubbles: list[ChatBubble] = []
     for turn in turns:
@@ -289,7 +291,9 @@ def _active_references(
         segments = (
             (turn.content,)
             if turn.role == "user"
-            else tuple(segment for segment in split_bubbles(turn.content) if segment.strip())
+            else tuple(
+                segment for segment in split_bubbles(turn.content) if segment.strip()
+            )
         )
         if not segments:
             segments = (turn.content,)
@@ -330,9 +334,7 @@ def _validate_turn_order(turns: tuple[ChatTurn, ...]) -> None:
         if turn.role == "env":
             previous = _last_model_turn(turns[:index])
             if previous is not None and previous.role == "user":
-                raise ChatStateError(
-                    "An ENV turn cannot follow a pending user message"
-                )
+                raise ChatStateError("An ENV turn cannot follow a pending user message")
             if (
                 turn.attempt != 0
                 or turn.finish_reason is not None
@@ -376,10 +378,7 @@ def _entry_header(
         if turn.role == "user"
         else state.assistant.target_name
     )
-    if (
-        turn.reference is None
-        or state.assistant.mode != TargetMode.RUN_ADAPTER
-    ):
+    if turn.reference is None or state.assistant.mode != TargetMode.RUN_ADAPTER:
         return author
     referenced = bubbles[turn.reference]
     referenced_author = (

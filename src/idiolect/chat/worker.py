@@ -382,9 +382,7 @@ def worker_main(commands: Any, events: Any, cancel: Any) -> None:
                         command.seed,
                         command.config,
                         cancel,
-                        lambda current, total: events.put(
-                            PrefillEvent(current, total)
-                        ),
+                        lambda current, total: events.put(PrefillEvent(current, total)),
                     ):
                         if event.text:
                             if first_at is None:

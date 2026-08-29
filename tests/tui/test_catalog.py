@@ -8,15 +8,9 @@ from idiolect.tui.catalog import CatalogLayout
 
 def test_catalog_columns_follow_terminal_width() -> None:
     """Check the fields that fit at each supported width."""
-    narrow = CatalogLayout.for_terminal(45).line(
-        "CONSTRUCT", "BASE", "TYPE", "STATUS"
-    )
-    medium = CatalogLayout.for_terminal(62).line(
-        "CONSTRUCT", "BASE", "TYPE", "STATUS"
-    )
-    wide = CatalogLayout.for_terminal(100).line(
-        "CONSTRUCT", "BASE", "TYPE", "STATUS"
-    )
+    narrow = CatalogLayout.for_terminal(45).line("CONSTRUCT", "BASE", "TYPE", "STATUS")
+    medium = CatalogLayout.for_terminal(62).line("CONSTRUCT", "BASE", "TYPE", "STATUS")
+    wide = CatalogLayout.for_terminal(100).line("CONSTRUCT", "BASE", "TYPE", "STATUS")
 
     assert "TYPE" not in narrow
     assert "TYPE" not in medium
@@ -32,9 +26,10 @@ def test_catalog_row_has_a_stable_cell_width_for_unicode_names() -> None:
 
     row = layout.text("模型::BASE", "LOCAL", "BASE", "READY")
 
-    assert cell_len(row.plain) == sum(
-        (layout.target_run, layout.base, layout.kind, layout.status)
-    ) + 3
+    assert (
+        cell_len(row.plain)
+        == sum((layout.target_run, layout.base, layout.kind, layout.status)) + 3
+    )
     assert row.plain.rstrip().endswith("READY")
 
 
@@ -85,14 +80,10 @@ def test_catalog_type_and_status_follow_description_selection_style() -> None:
     """Check TYPE and STATUS use the same slash-description styling."""
     layout = CatalogLayout.for_terminal(80)
     unselected = layout.text("TARGET::RUN", "BASE", "BASE", "READY")
-    selected = layout.text(
-        "TARGET::RUN", "BASE", "BASE", "READY", selected=True
-    )
+    selected = layout.text("TARGET::RUN", "BASE", "BASE", "READY", selected=True)
     console = Console()
 
-    type_style = unselected.get_style_at_offset(
-        console, unselected.plain.index("BASE")
-    )
+    type_style = unselected.get_style_at_offset(console, unselected.plain.index("BASE"))
     status_style = unselected.get_style_at_offset(
         console, unselected.plain.index("READY")
     )
@@ -141,9 +132,7 @@ def test_catalog_trace_places_metadata_name_after_model() -> None:
         "READY",
         trace_name="Night session",
     )
-    trace_style = row.get_style_at_offset(
-        Console(), row.plain.index("Night session")
-    )
+    trace_style = row.get_style_at_offset(Console(), row.plain.index("Night session"))
 
     assert "\n" not in row.plain
     assert row.plain.startswith("DIXIE::BASE Night session")

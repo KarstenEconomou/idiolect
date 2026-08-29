@@ -113,7 +113,9 @@ def collect_judgments(
         },
         "judgments": judgments,
     }
-    judgment_id = JudgmentId(hashlib.sha256(canonical_json_bytes(artifact_recipe)).hexdigest())
+    judgment_id = JudgmentId(
+        hashlib.sha256(canonical_json_bytes(artifact_recipe)).hexdigest()
+    )
     root = _evaluation_root(config) / "judgments"
     destination = root / str(judgment_id)
     if destination.exists():
@@ -130,7 +132,9 @@ def collect_judgments(
             "created_at": created_at.isoformat(),
             "recipe": artifact_recipe,
             "files": {
-                "judgments.jsonl": hashlib.sha256(judgment_path.read_bytes()).hexdigest()
+                "judgments.jsonl": hashlib.sha256(
+                    judgment_path.read_bytes()
+                ).hexdigest()
             },
         }
         write_json(temporary / "manifest.json", manifest_value)
@@ -140,7 +144,9 @@ def collect_judgments(
         raise
     except (OSError, TypeError, ValueError) as error:
         shutil.rmtree(temporary, ignore_errors=True)
-        raise EvaluationError(f"Cannot create judgment artifact: {destination}") from error
+        raise EvaluationError(
+            f"Cannot create judgment artifact: {destination}"
+        ) from error
     return JudgmentRef(
         judgment_id,
         evaluation.id,
@@ -159,7 +165,9 @@ def create_panel(
     """Create one immutable report from familiar-rater judgments."""
     evaluation = load_evaluation(evaluation_path)
     if not judgment_paths:
-        raise EvaluationError("Panel evaluation requires at least one judgment artifact")
+        raise EvaluationError(
+            "Panel evaluation requires at least one judgment artifact"
+        )
     loaded = tuple(load_judgment(path) for path in judgment_paths)
     if any(value.evaluation_id != evaluation.id for value in loaded):
         raise EvaluationError("Panel judgments do not match the evaluation")
@@ -175,14 +183,11 @@ def create_panel(
         rows = _read_jsonl(reference.path / "judgments.jsonl")
         expected = _evaluation_ballots(evaluation, config, rater)
         _validate_judgment_schedule(manifest, rows, expected, config)
-        judgments.extend(
-            {**row, "rater_id": rater} for row in rows
-        )
+        judgments.extend({**row, "rater_id": rater} for row in rows)
     primary = [
         value
         for value in judgments
-        if value["matchup"] == "policy-base"
-        and value["dimension"] == "target_likeness"
+        if value["matchup"] == "policy-base" and value["dimension"] == "target_likeness"
     ]
     complete = (
         len(raters) >= config.min_panel_raters
@@ -196,8 +201,7 @@ def create_panel(
         "human_controls": _control_summary(judgments, config),
         "position_a_decisive_rate": _position_rate(judgments),
         "krippendorff_alpha": {
-            dimension: _agreement(judgments, dimension)
-            for dimension, _ in _DIMENSIONS
+            dimension: _agreement(judgments, dimension) for dimension, _ in _DIMENSIONS
         },
     }
     recipe = {
@@ -318,17 +322,21 @@ def _evaluation_ballots(
     base_path = _source_path(sources, "base_inference")
     base_ref = load_inference(base_path)
     inference_recipe = recipe.get("inferences")
-    if not isinstance(inference_recipe, dict) or str(base_ref.id) != inference_recipe.get(
-        "base"
-    ):
-        raise EvaluationError("Evaluation base inference source does not match its recipe")
+    if not isinstance(inference_recipe, dict) or str(
+        base_ref.id
+    ) != inference_recipe.get("base"):
+        raise EvaluationError(
+            "Evaluation base inference source does not match its recipe"
+        )
     base = _load_predictions(base_path)
     run_paths = sources.get("run_inferences")
     if not isinstance(run_paths, list) or not run_paths:
         raise EvaluationError("Evaluation does not contain run inference sources")
     expected_runs = inference_recipe.get("runs")
     if not isinstance(expected_runs, list) or len(expected_runs) != len(run_paths):
-        raise EvaluationError("Evaluation run inference sources do not match its recipe")
+        raise EvaluationError(
+            "Evaluation run inference sources do not match its recipe"
+        )
     verified_run_paths = tuple(Path(_required_text(value)) for value in run_paths)
     for path, expected in zip(verified_run_paths, expected_runs, strict=True):
         if str(load_inference(path).id) != expected:
@@ -357,8 +365,7 @@ def _ballots(
     primary = count - controls
     matchups = ["policy-base"] * primary
     matchups.extend(
-        "human-policy" if index % 2 == 0 else "human-base"
-        for index in range(controls)
+        "human-policy" if index % 2 == 0 else "human-base" for index in range(controls)
     )
     random.Random(config.ballot_seed + 1).shuffle(matchups)
     order_rng = random.Random(_derived_seed(config.ballot_seed, rater_id))
@@ -391,7 +398,9 @@ def _ballots(
             "example_id": row.example_id,
             "matchup": matchup,
             "seed": seed,
-            "run_index": run_index if "policy" in {value[0] for value in candidates} else None,
+            "run_index": run_index
+            if "policy" in {value[0] for value in candidates}
+            else None,
         }
         ballot_id = hashlib.sha256(canonical_json_bytes(canonical)).hexdigest()
         left, right = candidates
@@ -424,7 +433,9 @@ def _answer(read: Callable[[str], str], question: str) -> str:
         try:
             value = read(f"{question} [a/b/tie/neither]: ").strip().casefold()
         except EOFError as error:
-            raise EvaluationError("Rating input ended before the session was complete") from error
+            raise EvaluationError(
+                "Rating input ended before the session was complete"
+            ) from error
         if value in _CHOICES:
             return value
 
@@ -529,9 +540,7 @@ def _preference_summary(
             "base": counts["base"],
             "tie": counts["tie"],
             "neither": counts["neither"],
-            "policy_decisive_rate": _cluster_interval(
-                values, "policy", "base", config
-            ),
+            "policy_decisive_rate": _cluster_interval(values, "policy", "base", config),
         }
     return result
 
@@ -544,8 +553,7 @@ def _control_summary(
         values = [
             value
             for value in judgments
-            if value["matchup"] == matchup
-            and value["dimension"] == "target_likeness"
+            if value["matchup"] == matchup and value["dimension"] == "target_likeness"
         ]
         counts = Counter(value["choice"] for value in values)
         model = "policy" if matchup == "human-policy" else "base"
@@ -554,9 +562,7 @@ def _control_summary(
             model: counts[model],
             "tie": counts["tie"],
             "neither": counts["neither"],
-            "human_decisive_rate": _cluster_interval(
-                values, "human", model, config
-            ),
+            "human_decisive_rate": _cluster_interval(values, "human", model, config),
         }
     return result
 
@@ -568,17 +574,12 @@ def _position_rate(judgments: Sequence[Mapping[str, Any]]) -> float | None:
     return sum(value["position"] == "a" for value in decisive) / len(decisive)
 
 
-def _agreement(
-    judgments: Sequence[Mapping[str, Any]], dimension: str
-) -> float | None:
+def _agreement(judgments: Sequence[Mapping[str, Any]], dimension: str) -> float | None:
     if len({value["rater_id"] for value in judgments}) < 2:
         return None
     units: dict[str, list[str]] = {}
     for value in judgments:
-        if (
-            value["matchup"] != "policy-base"
-            or value["dimension"] != dimension
-        ):
+        if value["matchup"] != "policy-base" or value["dimension"] != dimension:
             continue
         units.setdefault(value["ballot_id"], []).append(value["choice"])
     comparable = [values for values in units.values() if len(values) > 1]
@@ -598,9 +599,9 @@ def _agreement(
     observed = observed_disagreement / total
     if total < 2:
         return None
-    expected = (
-        total * total - sum(count * count for count in categories.values())
-    ) / (total * (total - 1))
+    expected = (total * total - sum(count * count for count in categories.values())) / (
+        total * (total - 1)
+    )
     return 1.0 - observed / expected if expected else 1.0
 
 
@@ -682,18 +683,21 @@ def _validate_panel_config(recipe: object, config: EvalConfig) -> None:
     )
     for name in names:
         if recorded.get(name) != getattr(config, name):
-            raise EvaluationError("Selected configuration does not match the evaluation")
+            raise EvaluationError(
+                "Selected configuration does not match the evaluation"
+            )
 
 
-def _verify_simple_artifact(
-    path: Path, id_key: str, label: str
-) -> Mapping[str, Any]:
+def _verify_simple_artifact(path: Path, id_key: str, label: str) -> Mapping[str, Any]:
     try:
         value = _read_manifest(path)
         identifier = _required_text(value[id_key])
         if path.name != identifier or not is_digest(identifier):
             raise EvaluationError(f"{label} manifest does not match its path: {path}")
-        if hashlib.sha256(canonical_json_bytes(value["recipe"])).hexdigest() != identifier:
+        if (
+            hashlib.sha256(canonical_json_bytes(value["recipe"])).hexdigest()
+            != identifier
+        ):
             raise EvaluationError(f"{label} recipe does not match its ID: {path}")
         files = value["files"]
         if not isinstance(files, dict):
@@ -710,10 +714,14 @@ def _verify_simple_artifact(
             if not file_path.is_relative_to(path.resolve()) or not file_path.is_file():
                 raise EvaluationError(f"{label} manifest contains an invalid file path")
             if hashlib.sha256(file_path.read_bytes()).hexdigest() != expected:
-                raise EvaluationError(f"{label} file does not match its manifest: {file_path}")
+                raise EvaluationError(
+                    f"{label} file does not match its manifest: {file_path}"
+                )
         return value
     except (KeyError, OSError, TypeError, ValueError) as error:
-        raise EvaluationError(f"Cannot read {label.casefold()} artifact: {path}") from error
+        raise EvaluationError(
+            f"Cannot read {label.casefold()} artifact: {path}"
+        ) from error
 
 
 def _dataset_reference(path: Path) -> Any:
@@ -755,8 +763,7 @@ def _derived_seed(seed: int, value: str) -> int:
 def _read_jsonl(path: Path) -> tuple[Mapping[str, Any], ...]:
     try:
         values = tuple(
-            json.loads(line)
-            for line in path.read_text(encoding="utf-8").splitlines()
+            json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()
         )
     except (OSError, json.JSONDecodeError) as error:
         raise EvaluationError(f"Cannot read JSON Lines: {path}") from error

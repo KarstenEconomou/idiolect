@@ -167,7 +167,9 @@ def _render_list(
 ) -> list[RenderableType]:
     renderables: list[RenderableType] = []
     for item in node.children:
-        marker = item.markup if node.type == "bullet_list" else f"{item.info}{item.markup}"
+        marker = (
+            item.markup if node.type == "bullet_list" else f"{item.info}{item.markup}"
+        )
         prefix = f"{' ' * list_depth}{marker} "
         children = item.children
         cursor = _node_map(item)[0]

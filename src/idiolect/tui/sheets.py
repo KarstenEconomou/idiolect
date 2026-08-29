@@ -69,7 +69,9 @@ class InfoSheet(Widget):
         """Create the heading, divider, scrolling body, and footer."""
         with Horizontal(id="specs-heading", classes="sheet-heading"):
             yield Static("", markup=False, id="specs-identity", classes="sheet-title")
-            yield Static("", markup=False, id="specs-link", classes="brand-link sheet-link")
+            yield Static(
+                "", markup=False, id="specs-link", classes="brand-link sheet-link"
+            )
         yield Rule(line_style="solid", id="specs-rule", classes="sheet-rule")
         with SheetScroll(id="specs-scroll", classes="sheet-scroll"):
             yield Static("", markup=False, id="specs-body", classes="sheet-body")

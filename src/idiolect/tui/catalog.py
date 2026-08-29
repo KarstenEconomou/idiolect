@@ -45,11 +45,7 @@ class CatalogLayout:
         )
         target_run_width = max(
             8,
-            content_width
-            - base_width
-            - kind_width
-            - status_width
-            - visible_separators,
+            content_width - base_width - kind_width - status_width - visible_separators,
         )
         return cls(target_run_width, base_width, kind_width, status_width)
 
@@ -142,11 +138,7 @@ class CatalogLayout:
         target_run_width = cell_len(target_run)
         if trace_name is None or target_run_width >= self.target_run - 1:
             text = set_cell_size(target_run, self.target_run)
-            return (
-                Text(text)
-                if model_style is None
-                else Text(text, style=model_style)
-            )
+            return Text(text) if model_style is None else Text(text, style=model_style)
         trace_width = self.target_run - target_run_width - 1
         value = (
             Text(target_run)

@@ -49,8 +49,7 @@ def build_episodes(
             current is not None
             and message.chat_id == current.chat_id
             and message.author_id == current.author_id
-            and _gap_seconds(members[-1].sent_at, message.sent_at)
-            <= burst_gap_seconds
+            and _gap_seconds(members[-1].sent_at, message.sent_at) <= burst_gap_seconds
             and (
                 message.reply_to is None
                 or message.reply_to in {item.id for item in members}
@@ -70,9 +69,7 @@ def build_episodes(
             )
             chats.setdefault(message.chat_id, []).append(current)
     return tuple(
-        episode
-        for chat_id in sorted(chats, key=str)
-        for episode in chats[chat_id]
+        episode for chat_id in sorted(chats, key=str) for episode in chats[chat_id]
     )
 
 

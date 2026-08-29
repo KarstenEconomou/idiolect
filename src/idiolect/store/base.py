@@ -43,7 +43,9 @@ class Repository(Protocol):
 class DatasetStore(Protocol):
     """Store fixed model datasets."""
 
-    def save(self, dataset: DatasetRef, split: Split, examples: Iterable[Example]) -> None:
+    def save(
+        self, dataset: DatasetRef, split: Split, examples: Iterable[Example]
+    ) -> None:
         """Save one dataset part."""
         ...
 

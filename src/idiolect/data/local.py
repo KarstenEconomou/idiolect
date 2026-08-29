@@ -219,7 +219,9 @@ class LocalBuilder:
                 os.chmod(path, 0o600)
             manifest_path = temporary / "manifest.json"
             with manifest_path.open("x", encoding="utf-8") as stream:
-                json.dump(manifest, stream, ensure_ascii=False, indent=2, sort_keys=True)
+                json.dump(
+                    manifest, stream, ensure_ascii=False, indent=2, sort_keys=True
+                )
                 stream.write("\n")
             os.chmod(manifest_path, 0o600)
             temporary.rename(destination)
@@ -291,10 +293,7 @@ def resolve_self(people: Iterable[PersonSummary]) -> PersonId:
 def _validate_config(config: DataConfig) -> None:
     if config.context < 1:
         raise DataError("Dataset context must be greater than zero")
-    if (
-        not math.isfinite(config.burst_gap_seconds)
-        or config.burst_gap_seconds <= 0
-    ):
+    if not math.isfinite(config.burst_gap_seconds) or config.burst_gap_seconds <= 0:
         raise DataError("Dataset burst_gap_seconds must be greater than zero")
     if not 0 <= config.valid_ratio < 1:
         raise DataError("Dataset valid_ratio must be at least zero and less than one")
@@ -313,17 +312,25 @@ def _validate_messages(messages: Sequence[Message]) -> None:
         identifiers.add(message.id)
         values = (message.sent_at, message.edited_at, message.deleted_at)
         if any(value is not None and value.utcoffset() is None for value in values):
-            raise DataError(f"Source message has a timestamp without a time zone: {message.id}")
+            raise DataError(
+                f"Source message has a timestamp without a time zone: {message.id}"
+            )
         if message.edited_at is not None and message.edited_at < message.sent_at:
-            raise DataError(f"Source message edit is before its send time: {message.id}")
+            raise DataError(
+                f"Source message edit is before its send time: {message.id}"
+            )
         if message.deleted_at is not None and message.deleted_at < message.sent_at:
-            raise DataError(f"Source message deletion is before its send time: {message.id}")
+            raise DataError(
+                f"Source message deletion is before its send time: {message.id}"
+            )
         try:
             validate_mentions(message.text, message.mentions)
             if message.quote is not None:
                 validate_mentions(message.quote.text, message.quote.mentions)
         except RenderError as error:
-            raise DataError(f"Source message has invalid mentions: {message.id}") from error
+            raise DataError(
+                f"Source message has invalid mentions: {message.id}"
+            ) from error
         if message.quote is not None and (
             message.reply_to is None
             or message.quote.sent_at.utcoffset() is None
@@ -354,7 +361,9 @@ def _validate_messages(messages: Sequence[Message]) -> None:
             message.quote.author_id != original.author_id
             or message.quote.sent_at != original.sent_at
         ):
-            raise DataError(f"Source message quote does not match its target: {message.id}")
+            raise DataError(
+                f"Source message quote does not match its target: {message.id}"
+            )
 
 
 def _select_target_episodes(
@@ -399,8 +408,7 @@ def _select_target_episodes(
             continue
         included_messages += sum(len(value) for value in runs)
         targets.extend(
-            ResponseEpisode(episode.chat_id, episode.author_id, value)
-            for value in runs
+            ResponseEpisode(episode.chat_id, episode.author_id, value) for value in runs
         )
     selection = {
         "target_episodes": total,
@@ -440,7 +448,9 @@ def _split_targets(
     test = _holdout_count(len(ordered), config.test_ratio)
     train = len(ordered) - valid - test
     if train < 1:
-        raise DataError("The target has too few response episodes for the requested splits")
+        raise DataError(
+            "The target has too few response episodes for the requested splits"
+        )
     train_end = train
     valid_end = train + valid
     return {
@@ -685,7 +695,11 @@ def _message_value(message: Message) -> Mapping[str, Any]:
             _mention_value(value)
             for value in sorted(
                 message.mentions,
-                key=lambda value: (value.start_utf16, value.length_utf16, str(value.person_id)),
+                key=lambda value: (
+                    value.start_utf16,
+                    value.length_utf16,
+                    str(value.person_id),
+                ),
             )
         ],
         "quote": quote,
@@ -730,14 +744,14 @@ def _existing_result(path: Path, dataset_id: DatasetId) -> BuildResult:
             key: value[key]
             for key in ("recipe", "counts", "selection", "files", "pseudonyms")
         }
-        if hashlib.sha256(canonical_json_bytes(identity)).hexdigest() != str(dataset_id):
+        if hashlib.sha256(canonical_json_bytes(identity)).hexdigest() != str(
+            dataset_id
+        ):
             raise DataError(f"Dataset identity does not match its ID: {path}")
         files = value["files"]
         if not isinstance(files, dict):
             raise TypeError
-        actual_names = {
-            item.name for item in path.iterdir() if item.is_file()
-        }
+        actual_names = {item.name for item in path.iterdir() if item.is_file()}
         if actual_names != {"manifest.json", *files}:
             raise DataError(f"Dataset files do not match its manifest: {path}")
         for name, expected in files.items():
@@ -746,7 +760,9 @@ def _existing_result(path: Path, dataset_id: DatasetId) -> BuildResult:
                 raise TypeError
             actual = hashlib.sha256(file_path.read_bytes()).hexdigest()
             if actual != expected:
-                raise DataError(f"Dataset file does not match its manifest: {file_path}")
+                raise DataError(
+                    f"Dataset file does not match its manifest: {file_path}"
+                )
         raw_counts = value["counts"]
         if not isinstance(raw_counts, dict) or any(
             not isinstance(count, int) or isinstance(count, bool)
@@ -765,9 +781,10 @@ def _existing_result(path: Path, dataset_id: DatasetId) -> BuildResult:
                 raise DataError(
                     f"Dataset split count does not match its file: {split_path}"
                 )
-            if expected > 0 and len(
-                split_path.read_text(encoding="utf-8").splitlines()
-            ) != expected:
+            if (
+                expected > 0
+                and len(split_path.read_text(encoding="utf-8").splitlines()) != expected
+            ):
                 raise DataError(
                     f"Dataset split count does not match its file: {split_path}"
                 )
@@ -868,7 +885,9 @@ def _validate_split_rows(path: Path) -> None:
         try:
             value = json.loads(line)
         except json.JSONDecodeError as error:
-            raise DataError(f"Dataset row is not valid: {path}:{line_number}") from error
+            raise DataError(
+                f"Dataset row is not valid: {path}:{line_number}"
+            ) from error
         if (
             not isinstance(value, dict)
             or set(value) != {"prompt", "completion"}
@@ -922,11 +941,7 @@ def _validate_pseudonyms(value: Any, target_id: Any) -> None:
 
 
 def _validate_index(path: Path, counts: Mapping[Split, int]) -> None:
-    expected = [
-        (split, index)
-        for split in Split
-        for index in range(counts[split])
-    ]
+    expected = [(split, index) for split in Split for index in range(counts[split])]
     rows = path.read_text(encoding="utf-8").splitlines()
     if len(rows) != len(expected):
         raise DataError(f"Dataset index count does not match its splits: {path}")
@@ -954,7 +969,9 @@ def _validate_index(path: Path, counts: Mapping[Split, int]) -> None:
             sent_at = datetime.fromisoformat(value["target_sent_at"])
             end_at = datetime.fromisoformat(value["target_end_sent_at"])
         except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
-            raise DataError(f"Dataset index row is not valid: {path}:{line_number}") from error
+            raise DataError(
+                f"Dataset index row is not valid: {path}:{line_number}"
+            ) from error
         context_ids = value.get("context_message_ids")
         reaction_ids = value.get("context_reaction_event_ids")
         target_ids = value.get("target_message_ids")
@@ -1001,7 +1018,9 @@ def _validate_index(path: Path, counts: Mapping[Split, int]) -> None:
     for index, split in enumerate(Split):
         for other in tuple(Split)[index + 1 :]:
             if not sources[split].isdisjoint(sources[other]):
-                raise DataError(f"Dataset source message crosses split boundaries: {path}")
+                raise DataError(
+                    f"Dataset source message crosses split boundaries: {path}"
+                )
 
 
 def _reaction_key(reaction: Reaction) -> tuple[datetime, str]:

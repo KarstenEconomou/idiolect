@@ -46,7 +46,9 @@ class FakeRepository:
         """Return all or one person's messages."""
         if person_id is None:
             return self._messages
-        return tuple(message for message in self._messages if message.author_id == person_id)
+        return tuple(
+            message for message in self._messages if message.author_id == person_id
+        )
 
 
 def test_builder_writes_immutable_leakage_safe_mlx_data(tmp_path: Path) -> None:
@@ -292,7 +294,9 @@ def test_delayed_native_reply_keeps_its_parent_in_context(tmp_path: Path) -> Non
     """Check that hours-old reply parents survive recency truncation."""
     parent = _message("parent", _FRIEND, 0, text="should we use gemma?")
     filler = tuple(
-        _message(f"filler-{index:02d}", PersonId(f"person-{index:02d}"), 60 + index * 60)
+        _message(
+            f"filler-{index:02d}", PersonId(f"person-{index:02d}"), 60 + index * 60
+        )
         for index in range(8)
     )
     reply = _message(
@@ -397,9 +401,10 @@ def test_context_never_depends_on_target_text(tmp_path: Path) -> None:
             "DIXIE",
             DataConfig(context=2, valid_ratio=0, test_ratio=0),
         )
-        return [row["context_message_ids"] for row in _read_jsonl(
-            result.dataset.path / "index.jsonl"
-        )]
+        return [
+            row["context_message_ids"]
+            for row in _read_jsonl(result.dataset.path / "index.jsonl")
+        ]
 
     neutral_contexts = build(plain_target, "neutral")
     loaded_contexts = build(leaking_target, "loaded")

@@ -68,7 +68,9 @@ def resolve_model(spec: ModelSpec) -> Path:
     return Path(path)
 
 
-def verify_model(path: Path, spec: ModelSpec, expected_digest: str | None = None) -> str:
+def verify_model(
+    path: Path, spec: ModelSpec, expected_digest: str | None = None
+) -> str:
     """Verify one local model and return its directory digest."""
     if not path.is_dir():
         raise ModelError(f"Resolved model path does not exist: {path}")

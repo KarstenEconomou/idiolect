@@ -128,9 +128,7 @@ def model_basename(value: str) -> str:
 def canonical_name(target_name: str, run_id: str, model_name: str) -> str:
     """Return one canonical local assistant name."""
     target_run = _target_run(target_name, run_id)
-    return (
-        f"IDIOLECT // {target_run} [{model_basename(model_name)}]"
-    )
+    return f"IDIOLECT // {target_run} [{model_basename(model_name)}]"
 
 
 def _target_run(target_name: str, run_id: str | None) -> str:

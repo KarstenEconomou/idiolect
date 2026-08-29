@@ -135,7 +135,7 @@ def test_renderer_preserves_name_and_native_addressing() -> None:
 
     assert "You are DIXIE." in rendered.prompt
     assert (
-        "[friend | mentions @DIXIE | reply to DIXIE: \"I'll check\"]" in rendered.prompt
+        '[friend | mentions @DIXIE | reply to DIXIE: "I\'ll check"]' in rendered.prompt
     )
     assert "Hey @DIXIE, coming?" in rendered.prompt
     assert "DIXIE, can you answer?" in rendered.prompt
@@ -165,7 +165,7 @@ def test_renderer_reports_the_reply_edge_of_the_episode_start() -> None:
         {_FRIEND: "friend"},
     )
 
-    assert "[friend | reply to DIXIE: \"the question\"]" in rendered.prompt
+    assert '[friend | reply to DIXIE: "the question"]' in rendered.prompt
     assert "first part\n[new message]\nsecond part" in rendered.prompt
 
 
@@ -268,7 +268,7 @@ def test_renderer_interleaves_only_causal_reactions() -> None:
         {_FRIEND: "friend"},
     )
 
-    assert "[DIXIE reacted \"👍\" to friend's message]" in rendered.prompt
+    assert '[DIXIE reacted "👍" to friend\'s message]' in rendered.prompt
     assert rendered.prompt.index('reacted "👍"') < rendered.prompt.index("more news")
     assert "❌" not in rendered.prompt
 

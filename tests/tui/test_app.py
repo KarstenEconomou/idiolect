@@ -110,9 +110,7 @@ def test_registry_opens_highlighted_assistant_from_keyboard(tmp_path) -> None:
             assert app.query_one("#catalog-heading").content_region.x == 2
             assert app.query_one("#catalog-description").content_region.x == 3
             assert chooser.content_region.x == 2
-            assert chooser.get_component_styles(
-                "option-list--option"
-            ).padding.left == 1
+            assert chooser.get_component_styles("option-list--option").padding.left == 1
             assert app.query_one("#catalog-hints", Static).content_region.x == 2
             assert chooser.highlighted == 1
             assert chooser.has_focus
@@ -159,9 +157,9 @@ def test_registry_chroma_menu_previews_all_themes_and_persists(tmp_path) -> None
             await pilot.pause()
             dialog = app.screen.query_one("#chroma-dialog", Vertical)
             assert not dialog.has_class("-unplaced")
-            assert dialog.region.bottom == app.query_one(
-                "#catalog-hints", Static
-            ).region.y
+            assert (
+                dialog.region.bottom == app.query_one("#catalog-hints", Static).region.y
+            )
             assert str(app.screen.query_one("#chroma-message", Static).content) == (
                 "CHROMA"
             )
@@ -182,15 +180,14 @@ def test_registry_chroma_menu_previews_all_themes_and_persists(tmp_path) -> None
             heading = app.screen.query_one("#chroma-message", Static)
             blue = app.screen.query_one("#chroma-blue", KeyboardButton)
             assert blue.render_line(0).text.startswith("LOCKSMITH")
+            assert blue.content_region.x - heading.content_region.x == 1
             assert (
-                blue.content_region.x
-                - heading.content_region.x
-                == 1
+                app.screen.query_one(
+                    "#chroma-orange",
+                    KeyboardButton,
+                ).region.right
+                <= dialog.content_region.right
             )
-            assert app.screen.query_one(
-                "#chroma-orange",
-                KeyboardButton,
-            ).region.right <= dialog.content_region.right
             assert str(app.query_one("#catalog-hints", Static).content) == (
                 "←→ MOVE    ENTER EQUIP    ESC CANCEL"
             )
@@ -279,9 +276,7 @@ def test_registry_chroma_menu_previews_all_themes_and_persists(tmp_path) -> None
             )
             transcript = app.query_one("#transcript", Transcript)
             transcript.set_turns((("OP", "Theme check"),))
-            segments = tuple(
-                Console().render(cast(RenderableType, transcript.content))
-            )
+            segments = tuple(Console().render(cast(RenderableType, transcript.content)))
             label = next(segment for segment in segments if segment.text == "OP:")
             assert label.style is not None
             assert label.style.color is not None
@@ -324,9 +319,10 @@ def test_chroma_command_opens_menu_in_chat(tmp_path) -> None:
 
             dialog = app.screen.query_one("#chroma-dialog", Vertical)
             assert app.query_one("#chat").display
-            assert dialog.region.bottom == app.query_one(
-                "#composer-bar", Horizontal
-            ).region.y
+            assert (
+                dialog.region.bottom
+                == app.query_one("#composer-bar", Horizontal).region.y
+            )
             assert app.query_one(Transcript).region.bottom <= dialog.region.y
             assert app.focused is not None
             assert app.focused.id == "chroma-green"
@@ -334,8 +330,9 @@ def test_chroma_command_opens_menu_in_chat(tmp_path) -> None:
                 "←→ MOVE    ENTER EQUIP    ESC CANCEL"
             )
             assert (
-                app.query_one("#transcript-scroll", VerticalScroll)
-                .styles.padding.bottom
+                app.query_one(
+                    "#transcript-scroll", VerticalScroll
+                ).styles.padding.bottom
                 == 3
             )
 
@@ -349,8 +346,9 @@ def test_chroma_command_opens_menu_in_chat(tmp_path) -> None:
             assert app.has_class("-accent-green")
             assert str(app.query_one("#footer", Static).content) == footer_before
             assert (
-                app.query_one("#transcript-scroll", VerticalScroll)
-                .styles.padding.bottom
+                app.query_one(
+                    "#transcript-scroll", VerticalScroll
+                ).styles.padding.bottom
                 == 1
             )
 
@@ -363,8 +361,9 @@ def test_chroma_command_opens_menu_in_chat(tmp_path) -> None:
             )
             assert str(app.query_one("#footer", Static).content) == footer_before
             assert (
-                app.query_one("#transcript-scroll", VerticalScroll)
-                .styles.padding.bottom
+                app.query_one(
+                    "#transcript-scroll", VerticalScroll
+                ).styles.padding.bottom
                 == 1
             )
 
@@ -466,8 +465,7 @@ def test_specs_page_uses_a_stable_half_cell_scrollbar(tmp_path) -> None:
             assert scroller.styles.scrollbar_size_vertical == 1
             assert scroller.vertical_scrollbar.renderer is HalfCellScrollBarRender
             assert (
-                scroller.styles.scrollbar_color_hover
-                == scroller.styles.scrollbar_color
+                scroller.styles.scrollbar_color_hover == scroller.styles.scrollbar_color
             )
             assert (
                 scroller.styles.scrollbar_color_active
@@ -575,9 +573,7 @@ def test_specs_prompt_wrap_uses_the_transcript_inset(tmp_path) -> None:
             ]
             start = rendered.index("SYSTEM") + 1
             end = next(
-                index
-                for index in range(start, len(rendered))
-                if rendered[index] == ""
+                index for index in range(start, len(rendered)) if rendered[index] == ""
             )
             prompt_lines = rendered[start:end]
 
@@ -649,9 +645,7 @@ def test_registry_does_not_open_specs_for_a_fault(tmp_path) -> None:
         async with app.run_test(size=(80, 24)) as pilot:
             chooser = app.query_one("#chooser", OptionList)
             assert chooser.highlighted is None
-            disabled = chooser.get_component_rich_style(
-                "option-list--option-disabled"
-            )
+            disabled = chooser.get_component_rich_style("option-list--option-disabled")
             assert disabled.color is not None and disabled.color.number == 8
             assert disabled.dim
 
@@ -732,9 +726,7 @@ def test_registry_expands_and_collapses_trace_names(tmp_path) -> None:
             chooser = app.query_one("#chooser", OptionList)
             trace = chooser.get_option_at_index(1).prompt
             assert isinstance(trace, Text)
-            assert trace.plain.startswith(
-                f"{assistant.target_run} Night session"
-            )
+            assert trace.plain.startswith(f"{assistant.target_run} Night session")
             assert "\n" not in trace.plain
             second_trace = chooser.get_option_at_index(2).prompt
             assert isinstance(second_trace, Text)
@@ -842,9 +834,10 @@ def test_registry_confirms_trace_erasure(tmp_path) -> None:
             assert app.focused is not None
             assert app.focused.id == "retain"
             trace_message = app.screen.query_one("#trace-message", Static)
-            assert trace_message.content_region.x == app.query_one(
-                "#catalog-hints", Static
-            ).content_region.x
+            assert (
+                trace_message.content_region.x
+                == app.query_one("#catalog-hints", Static).content_region.x
+            )
             assert (
                 app.screen.query_one("#erase", KeyboardButton).content_region.x
                 - trace_message.content_region.x
@@ -915,12 +908,11 @@ def test_registry_renames_trace_with_current_name_as_default(tmp_path) -> None:
             assert app.screen.query_one("#trace-name-dialog").region.bottom == (
                 app.query_one("#catalog-hints").region.y
             )
-            trace_name_message = app.screen.query_one(
-                "#trace-name-message", Static
+            trace_name_message = app.screen.query_one("#trace-name-message", Static)
+            assert (
+                trace_name_message.content_region.x
+                == app.query_one("#catalog-hints", Static).content_region.x
             )
-            assert trace_name_message.content_region.x == app.query_one(
-                "#catalog-hints", Static
-            ).content_region.x
             assert name.content_region.x - trace_name_message.content_region.x == 1
             assert str(app.query_one("#catalog-hints", Static).content) == (
                 "ENTER NAME    ESC RETAIN"
@@ -928,7 +920,9 @@ def test_registry_renames_trace_with_current_name_as_default(tmp_path) -> None:
             assert app._trace_blink_timer is not None
             app._trace_blink_visible = False
             app._refresh_catalog_prompts(f"saved-{saved.id}")
-            subject = app.query_one("#chooser", OptionList).get_option_at_index(0).prompt
+            subject = (
+                app.query_one("#chooser", OptionList).get_option_at_index(0).prompt
+            )
             assert isinstance(subject, Text)
             assert "Night session" not in subject.plain
             app._trace_blink_visible = True
@@ -1264,7 +1258,9 @@ def test_prefill_progress_appears_above_composer(tmp_path) -> None:
             assert rendered.plain.endswith(" PREFILL 0/4 TOK")
             assert status.display is True
             assert status.content_region.x == scroller.content_region.x
-            assert status.styles.color == app.query_one("#catalog-subtitle").styles.color
+            assert (
+                status.styles.color == app.query_one("#catalog-subtitle").styles.color
+            )
 
             runtime.release_prefill.set()
             assert await asyncio.to_thread(runtime.generation_finished.wait, 1)
@@ -1359,7 +1355,9 @@ def test_model_load_keeps_event_processing_active(tmp_path) -> None:
             assert isinstance(rendered, Text)
             assert rendered.plain.endswith(" LINK LOADING")
             assert "// MODEL SESSION" not in rendered.plain
-            assert status.styles.color == app.query_one("#catalog-subtitle").styles.color
+            assert (
+                status.styles.color == app.query_one("#catalog-subtitle").styles.color
+            )
             assert app.query_one("#chooser", OptionList).disabled is True
             runtime.release.set()
             await _wait_for_chat(app, pilot)
@@ -1400,7 +1398,9 @@ def test_failed_confirmation_save_keeps_memory_only_chat(tmp_path) -> None:
             assert str(app.screen.query_one("#confirm-message", Static).content) == (
                 "LINK DIRTY"
             )
-            assert app.screen.query_one("#confirm-message", Static).styles.color.ansi == 7
+            assert (
+                app.screen.query_one("#confirm-message", Static).styles.color.ansi == 7
+            )
             assert app.screen.query_one(
                 "#confirm-message", Static
             ).styles.text_style.bold
@@ -1500,9 +1500,7 @@ def test_command_menu_filters_navigates_and_returns_to_registry(tmp_path) -> Non
             assert str(menu.query_one("#command-message", Static).content) == "COMMAND"
             assert menu.query_one("#command-message", Static).styles.color.ansi == 7
             assert menu.query_one("#command-message", Static).styles.text_style.bold
-            terminate_name = terminate_button.query_one(
-                ".command-name", Static
-            )
+            terminate_name = terminate_button.query_one(".command-name", Static)
             assert str(terminate_name.content) == "/terminate"
             disconnect_name = disconnect_button.query_one(".command-name", Static)
             assert disconnect_name.content_region.width >= len("/disconnect")
@@ -1511,27 +1509,34 @@ def test_command_menu_filters_navigates_and_returns_to_registry(tmp_path) -> Non
                 - menu.query_one("#command-message", Static).content_region.x
                 == 1
             )
-            assert str(
-                terminate_button.query_one(".command-description", Static).content
-            ) == "Terminate IDIOLECT."
-            assert str(
-                disconnect_button.query_one(".command-description", Static).content
-            ) == "Disconnect active LINK."
-            assert str(
-                trace_button.query_one(".command-description", Static).content
-            ) == "Save current TRACE."
-            assert str(
-                specs_button.query_one(".command-description", Static).content
-            ) == "View CONSTRUCT specifications."
-            assert str(
-                probe_button.query_one(".command-description", Static).content
-            ) == "View active LINK."
-            assert str(
-                buffer_button.query_one(".command-description", Static).content
-            ) == "View context BUFFER."
-            assert str(
-                chroma_button.query_one(".command-description", Static).content
-            ) == "Equip CHROMA."
+            assert (
+                str(terminate_button.query_one(".command-description", Static).content)
+                == "Terminate IDIOLECT."
+            )
+            assert (
+                str(disconnect_button.query_one(".command-description", Static).content)
+                == "Disconnect active LINK."
+            )
+            assert (
+                str(trace_button.query_one(".command-description", Static).content)
+                == "Save current TRACE."
+            )
+            assert (
+                str(specs_button.query_one(".command-description", Static).content)
+                == "View CONSTRUCT specifications."
+            )
+            assert (
+                str(probe_button.query_one(".command-description", Static).content)
+                == "View active LINK."
+            )
+            assert (
+                str(buffer_button.query_one(".command-description", Static).content)
+                == "View context BUFFER."
+            )
+            assert (
+                str(chroma_button.query_one(".command-description", Static).content)
+                == "Equip CHROMA."
+            )
             assert terminate_button.display is False
             assert trace_button.has_class("-disabled")
             assert trace_button.has_class("-selected") is False
@@ -1560,9 +1565,10 @@ def test_command_menu_filters_navigates_and_returns_to_registry(tmp_path) -> Non
                 action for action in menu.query(".command-action") if action.display
             )
             assert alert.region.y == visible_actions[-1].region.y
-            assert alert.region.right == app.query_one(
-                "#activity-row", Horizontal
-            ).region.right
+            assert (
+                alert.region.right
+                == app.query_one("#activity-row", Horizontal).region.right
+            )
             app._clear_notice()
 
             await pilot.press("down")
@@ -1667,9 +1673,7 @@ def test_echo_command_uses_an_env_turn_and_argument_bar(tmp_path) -> None:
 
             menu = app.query_one("#command-menu", CommandMenu)
             assert menu.display
-            assert menu.query_one("#command-echo", Horizontal).has_class(
-                "-selected"
-            )
+            assert menu.query_one("#command-echo", Horizontal).has_class("-selected")
             await pilot.press("enter")
             await pilot.pause()
 
@@ -1702,9 +1706,7 @@ def test_echo_command_uses_an_env_turn_and_argument_bar(tmp_path) -> None:
             assert runtime.session.turns[-1].content == "@hello"
             transcript = app.query_one(Transcript)
             assert "SYS:\n @hello" in transcript.plain
-            segments = tuple(
-                Console().render(cast(RenderableType, transcript.content))
-            )
+            segments = tuple(Console().render(cast(RenderableType, transcript.content)))
             env_label = next(segment for segment in segments if segment.text == "SYS:")
             env_text = next(segment for segment in segments if "@hello" in segment.text)
             assert env_label.style is not None and env_label.style.dim
@@ -1817,9 +1819,7 @@ def test_slash_command_menu_opens_for_a_token_inside_prompt(tmp_path) -> None:
 
             menu = app.query_one("#command-menu", CommandMenu)
             assert menu.display
-            assert menu.query_one("#command-echo", Horizontal).has_class(
-                "-selected"
-            )
+            assert menu.query_one("#command-echo", Horizontal).has_class("-selected")
             await pilot.press("enter")
             await pilot.pause()
 
@@ -1863,7 +1863,10 @@ def test_reference_menu_selects_bubble_and_escape_clears_reference(tmp_path) -> 
             menu = app.query_one("#reference-menu", ReferenceMenu)
             assert menu.display
             assert str(app.query_one("#reference-message", Static).content) == "REF"
-            assert str(menu.query_one("#reference-2 .reference-name", Static).content) == "DIXIE:02"
+            assert (
+                str(menu.query_one("#reference-2 .reference-name", Static).content)
+                == "DIXIE:02"
+            )
             assert menu.query_one("#reference-2").has_class("-selected")
             assert str(app.query_one("#footer", Static).content) == (
                 "↑↓ MOVE    ENTER REF    ESC CLOSE"
@@ -1872,14 +1875,13 @@ def test_reference_menu_selects_bubble_and_escape_clears_reference(tmp_path) -> 
             await pilot.pause()
             alert = app.query_one("#chat-alert", StatusLine)
             visible_actions = tuple(
-                action
-                for action in menu.query(".reference-action")
-                if action.display
+                action for action in menu.query(".reference-action") if action.display
             )
             assert alert.region.y == visible_actions[-1].region.y
-            assert alert.region.right == app.query_one(
-                "#activity-row", Horizontal
-            ).region.right
+            assert (
+                alert.region.right
+                == app.query_one("#activity-row", Horizontal).region.right
+            )
             app._clear_notice()
 
             composer_bar = app.query_one("#composer-bar", Horizontal)
@@ -1945,8 +1947,14 @@ def test_reference_menu_selects_bubble_and_escape_clears_reference(tmp_path) -> 
             composer.insert("@D")
             await pilot.pause()
             assert menu.display
-            assert str(menu.query_one("#reference-0 .reference-name", Static).content) == "DIXIE:01"
-            assert str(menu.query_one("#reference-1 .reference-name", Static).content) == "DIXIE:02"
+            assert (
+                str(menu.query_one("#reference-0 .reference-name", Static).content)
+                == "DIXIE:01"
+            )
+            assert (
+                str(menu.query_one("#reference-1 .reference-name", Static).content)
+                == "DIXIE:02"
+            )
             assert menu.query_one("#reference-2").display is False
             await pilot.press("enter")
             await pilot.pause()
@@ -1956,7 +1964,10 @@ def test_reference_menu_selects_bubble_and_escape_clears_reference(tmp_path) -> 
             composer.insert("@O")
             await pilot.pause()
             assert menu.display
-            assert str(menu.query_one("#reference-0 .reference-name", Static).content) == "OP:00"
+            assert (
+                str(menu.query_one("#reference-0 .reference-name", Static).content)
+                == "OP:00"
+            )
             await pilot.press("enter")
             await pilot.pause()
             assert composer.text == "prompt"
@@ -1981,7 +1992,10 @@ def test_reference_menu_selects_bubble_and_escape_clears_reference(tmp_path) -> 
             composer.insert("@ ")
             await pilot.pause()
             assert menu.display
-            assert str(menu.query_one("#reference-2 .reference-name", Static).content) == "DIXIE:02"
+            assert (
+                str(menu.query_one("#reference-2 .reference-name", Static).content)
+                == "DIXIE:02"
+            )
             assert composer.cursor_location == (0, 2)
             await pilot.press("right")
             await pilot.pause()
@@ -2000,9 +2014,7 @@ def test_reference_menu_selects_bubble_and_escape_clears_reference(tmp_path) -> 
             app._render_transcript()
             transcript = app.query_one(Transcript)
             assert "OP:\n REF @DIXIE:02\n sent" in transcript.plain
-            segments = tuple(
-                Console().render(cast(RenderableType, transcript.content))
-            )
+            segments = tuple(Console().render(cast(RenderableType, transcript.content)))
             annotation = next(
                 segment for segment in segments if "REF @DIXIE:02" in segment.text
             )
@@ -2082,9 +2094,10 @@ def test_specs_command_restores_the_unchanged_trace_chat(tmp_path) -> None:
 
             assert app.query_one("#chat").display
             assert app.query_one("#specs").display is False
-            assert str(
-                app.screen.query_one("#confirm-message", Static).content
-            ) == "LINK DIRTY"
+            assert (
+                str(app.screen.query_one("#confirm-message", Static).content)
+                == "LINK DIRTY"
+            )
             await pilot.press("escape")
             await pilot.pause()
 
@@ -2383,8 +2396,9 @@ def test_dirty_slash_commands_open_connection_confirmation(tmp_path) -> None:
                 "←→ MOVE    ENTER SELECT    ESC RESUME"
             )
             assert (
-                app.query_one("#transcript-scroll", VerticalScroll)
-                .styles.padding.bottom
+                app.query_one(
+                    "#transcript-scroll", VerticalScroll
+                ).styles.padding.bottom
                 == 3
             )
 
@@ -2393,8 +2407,9 @@ def test_dirty_slash_commands_open_connection_confirmation(tmp_path) -> None:
             assert app.query_one("#chat").display
             assert str(app.query_one("#footer", Static).content) == ""
             assert (
-                app.query_one("#transcript-scroll", VerticalScroll)
-                .styles.padding.bottom
+                app.query_one(
+                    "#transcript-scroll", VerticalScroll
+                ).styles.padding.bottom
                 == 1
             )
 
@@ -2437,9 +2452,10 @@ def test_commands_follow_generation_navigation_rules(tmp_path) -> None:
                 ".command-description",
                 Static,
             )
-            assert disabled_name.styles.color == app.query_one(
-                "#catalog-subtitle"
-            ).styles.color
+            assert (
+                disabled_name.styles.color
+                == app.query_one("#catalog-subtitle").styles.color
+            )
             assert disabled_description.styles.color == disabled_name.styles.color
             assert disabled_name.styles.text_style.dim
             assert disabled_description.styles.text_style.dim

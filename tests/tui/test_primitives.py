@@ -44,6 +44,7 @@ class _VerticalMenuApp(App[None]):
 
 def test_vertical_menu_renders_rows_and_variants() -> None:
     """Check declarative rows keep labels, descriptions, and variants."""
+
     async def verify() -> None:
         async with _VerticalMenuApp().run_test() as pilot:
             menu = pilot.app.query_one(VerticalMenu)
@@ -86,6 +87,7 @@ class _ModalApp(App[None]):
 
 def test_horizontal_menu_focus_wrap_escape_and_highlight() -> None:
     """Check shared horizontal keyboard behavior and safe cancellation."""
+
     async def verify() -> None:
         highlights: list[str] = []
         result: list[str | None] = []
@@ -129,6 +131,7 @@ def test_horizontal_menu_focus_wrap_escape_and_highlight() -> None:
 
 def test_horizontal_menu_reveals_selection_at_narrow_widths() -> None:
     """Check focus-following scroll survives narrow widths and resize."""
+
     async def verify() -> None:
         items = tuple(
             MenuItem(identity, label)
@@ -194,9 +197,9 @@ def test_trace_name_field_is_hidden_until_anchored() -> None:
         hidden_before_show = False
 
         def _show_dialog(self) -> None:
-            self.hidden_before_show = self.query_one(
-                "#trace-name-dialog"
-            ).has_class("-unplaced")
+            self.hidden_before_show = self.query_one("#trace-name-dialog").has_class(
+                "-unplaced"
+            )
             super()._show_dialog()
 
     async def verify() -> None:
@@ -232,6 +235,7 @@ class _SheetApp(App[None]):
 
 def test_info_sheet_opens_refreshes_resets_and_focuses() -> None:
     """Check one page owns shared sheet rendering and interaction capabilities."""
+
     async def verify() -> None:
         rendered = ["ONE"]
         async with _SheetApp().run_test(size=(60, 12)) as pilot:

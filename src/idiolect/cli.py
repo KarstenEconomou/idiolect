@@ -72,11 +72,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 dataset_path = _artifact_path(arguments.dataset, config.data.output)
                 initial_assistant = load_assistant(run_path, dataset_path)
                 selected = next(
-                    (
-                        row
-                        for row in rows
-                        if row.run_id == initial_assistant.run_id
-                    ),
+                    (row for row in rows if row.run_id == initial_assistant.run_id),
                     None,
                 )
                 if selected is not None and not selected.available:

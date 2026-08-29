@@ -84,7 +84,9 @@ def test_probe_omits_structurally_absent_device_and_base_adapter() -> None:
     assert "DEVICE\n" not in document.plain
 
 
-def test_buffer_shows_context_measurements_and_active_references(tmp_path: Path) -> None:
+def test_buffer_shows_context_measurements_and_active_references(
+    tmp_path: Path,
+) -> None:
     """Check BUFFER reports fitted context and complete active bubble text."""
     assistant = _base(tmp_path)
     assert assistant.base_data is not None
@@ -113,7 +115,11 @@ def test_buffer_shows_context_measurements_and_active_references(tmp_path: Path)
         GenerationConfig(max_prompt_tokens=100),
         (
             ChatTurn("user", "old"),
-            ChatTurn("assistant", "first\n[new message]\nsecond", telemetry=TurnTelemetry(2, 2)),
+            ChatTurn(
+                "assistant",
+                "first\n[new message]\nsecond",
+                telemetry=TurnTelemetry(2, 2),
+            ),
             ChatTurn("user", "active question"),
         ),
     )
@@ -258,14 +264,19 @@ def test_specs_group_generation_policy_and_align_prompt_format_blocks(
         "BASE",
     )
 
-    assert "CONVERSATION\nFORMAT\n chat-template\nTURN CAPACITY\n 32\n" in document.plain
+    assert (
+        "CONVERSATION\nFORMAT\n chat-template\nTURN CAPACITY\n 32\n" in document.plain
+    )
     assert "DIGEST\n —\n" in document.plain
     assert "LINEAGE\n" not in document.plain
     assert "TRACE\n" not in document.plain
     assert "GENERATION\n" not in document.plain
     assert "BACKEND\n" not in document.plain
     assert "SYSTEM\n First line.\n \n Second line.\n" in document.plain
-    assert "PROMPT\nROLE\n user\nPREFIX\n —\nSUFFIX\n \\n\nLIMIT\n 1,920 TOK\n" in document.plain
+    assert (
+        "PROMPT\nROLE\n user\nPREFIX\n —\nSUFFIX\n \\n\nLIMIT\n 1,920 TOK\n"
+        in document.plain
+    )
     assert "COMPLETION\nROLE\n assistant\n" in document.plain
     assert "PREFIX\n <assistant>\\n\nSUFFIX\n —\nLIMIT\n 128 TOK\n" in document.plain
     assert "SAMPLING\nTEMPERATURE\n 0.7\nTOP-P\n 0.8\n" in document.plain
@@ -274,8 +285,7 @@ def test_specs_group_generation_policy_and_align_prompt_format_blocks(
     assert "FIDELITY\n" in document.plain
     offset = " "
     assert (
-        f"SYSTEM\n{offset}First line.\n{offset}\n{offset}Second line."
-        in document.plain
+        f"SYSTEM\n{offset}First line.\n{offset}\n{offset}Second line." in document.plain
     )
     assert "↵" not in document.plain
     assert "CONTEXT TURNS" not in document.plain
@@ -325,7 +335,9 @@ def test_completion_format_omits_structurally_invalid_system_and_roles(
     assert "SYSTEM\n" not in policy
     assert "ROLE\n" not in policy
     assert "PROMPT\nPREFIX\n —\nSUFFIX\n \\n\nLIMIT\n 0 TOK\n" in policy
-    assert "COMPLETION\nPREFIX\n <assistant>\\n\nSUFFIX\n —\nLIMIT\n 128 TOK\n" in policy
+    assert (
+        "COMPLETION\nPREFIX\n <assistant>\\n\nSUFFIX\n —\nLIMIT\n 128 TOK\n" in policy
+    )
 
 
 def test_specs_scrollbar_uses_a_half_cell_thumb() -> None:
@@ -341,8 +353,7 @@ def test_specs_scrollbar_uses_a_half_cell_thumb() -> None:
     thumb = [segment for segment in rendered.segments if segment.text == "▐"]
     assert thumb
     assert all(
-        segment.style is not None
-        and segment.style.meta.get("@mouse.down") == "grab"
+        segment.style is not None and segment.style.meta.get("@mouse.down") == "grab"
         for segment in thumb
     )
 

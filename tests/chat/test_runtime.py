@@ -100,9 +100,9 @@ def test_generation_reports_measured_prefill_progress() -> None:
     assert runtime.last_prompt is not None
     assert runtime.last_prompt.prompt_tokens == 5
     assert runtime.last_prompt.active_turns == 1
-    assert [reference.content for reference in runtime.last_prompt.active_references] == [
-        "Hello"
-    ]
+    assert [
+        reference.content for reference in runtime.last_prompt.active_references
+    ] == ["Hello"]
 
 
 def test_abandoned_reply_cancels_the_worker_and_drains_events() -> None:
@@ -128,14 +128,14 @@ def test_abandoned_reply_cancels_the_worker_and_drains_events() -> None:
     assert next(generator) == "Stale"
     generator.close()
 
-    assert any(
-        isinstance(command, CancelCommand) for command in worker.commands
-    )
+    assert any(isinstance(command, CancelCommand) for command in worker.commands)
     assert runtime.state == WorkerState.CANCELLED
     assert not session.generating
     assert [turn.role for turn in session.turns] == ["user"]
 
-    worker.events.extend([DeltaEvent("Fresh"), CompleteEvent(BackendResult("", "stop", 6, 1), 0.1, 0.3)])
+    worker.events.extend(
+        [DeltaEvent("Fresh"), CompleteEvent(BackendResult("", "stop", 6, 1), 0.1, 0.3)]
+    )
     pieces = list(runtime.generate())
 
     assert pieces == ["Fresh"]

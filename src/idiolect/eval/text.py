@@ -21,9 +21,7 @@ class TrainingMatchIndex:
     seeds: Mapping[int, tuple[int, ...]]
 
     @classmethod
-    def build(
-        cls, texts: Sequence[str], threshold: int
-    ) -> TrainingMatchIndex:
+    def build(cls, texts: Sequence[str], threshold: int) -> TrainingMatchIndex:
         """Build one sparse index for a minimum match length."""
         normalized = tuple(normalize_text(text) for text in texts)
         seed_chars = min(threshold, _MAX_SEED_CHARS)
@@ -40,10 +38,7 @@ class TrainingMatchIndex:
             seed_chars,
             normalized,
             frozenset(value for value in normalized if value),
-            {
-                key: tuple(sorted(indices))
-                for key, indices in values.items()
-            },
+            {key: tuple(sorted(indices)) for key, indices in values.items()},
         )
 
     def longest(self, candidate: str) -> int:

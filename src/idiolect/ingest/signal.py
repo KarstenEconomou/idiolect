@@ -62,14 +62,18 @@ class SubprocessRunner:
             raise SignalError(f"Signal program does not exist: {command[0]}") from error
         if result.returncode != 0:
             detail = result.stderr.decode(errors="replace").strip()
-            raise SignalError(detail or f"Signal command failed with code {result.returncode}")
+            raise SignalError(
+                detail or f"Signal command failed with code {result.returncode}"
+            )
         return result.stdout
 
     def lines(self, command: Sequence[str]) -> Iterable[bytes]:
         """Run one command and yield its output lines."""
         try:
             with tempfile.TemporaryFile() as errors:
-                process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=errors)
+                process = subprocess.Popen(
+                    command, stdout=subprocess.PIPE, stderr=errors
+                )
                 if process.stdout is None:
                     raise SignalError("Signal command has no output stream")
                 try:
@@ -82,7 +86,9 @@ class SubprocessRunner:
                 if return_code != 0:
                     errors.seek(0)
                     detail = errors.read().decode(errors="replace").strip()
-                    raise SignalError(detail or f"Signal command failed with code {return_code}")
+                    raise SignalError(
+                        detail or f"Signal command failed with code {return_code}"
+                    )
         except FileNotFoundError as error:
             raise SignalError(f"Signal program does not exist: {command[0]}") from error
 
@@ -121,7 +127,8 @@ class SignalSource:
                 SignalGroup(
                     id=item["id"],
                     name=item.get("name") if isinstance(item.get("name"), str) else "",
-                    active=bool(item.get("isMember", True)) and not bool(item.get("isBlocked", False)),
+                    active=bool(item.get("isMember", True))
+                    and not bool(item.get("isBlocked", False)),
                 )
             )
         return tuple(groups)
@@ -307,7 +314,11 @@ def _source_id(value: dict[str, Any], fallback: str) -> str:
     if not isinstance(envelope, dict):
         return fallback
     timestamp = envelope.get("timestamp")
-    source = envelope.get("sourceUuid") or envelope.get("sourceNumber") or envelope.get("source")
+    source = (
+        envelope.get("sourceUuid")
+        or envelope.get("sourceNumber")
+        or envelope.get("source")
+    )
     return f"{source or 'unknown'}:{timestamp or fallback}"
 
 
@@ -346,7 +357,11 @@ def _author(envelope: dict[str, Any], root: dict[str, Any]) -> str | None:
     if isinstance(sync, dict) and isinstance(sync.get("sentMessage"), dict):
         value = envelope.get("sourceUuid") or root.get("account")
     else:
-        value = envelope.get("sourceUuid") or envelope.get("sourceNumber") or envelope.get("source")
+        value = (
+            envelope.get("sourceUuid")
+            or envelope.get("sourceNumber")
+            or envelope.get("source")
+        )
     return value if isinstance(value, str) else None
 
 
@@ -490,7 +505,9 @@ def _attachments(value: Any) -> tuple[Attachment, ...]:
                 id=f"signal-attachment:{attachment_id}",
                 media_type=media_type if isinstance(media_type, str) else None,
                 name=name if isinstance(name, str) else None,
-                size=size if isinstance(size, int) and not isinstance(size, bool) else None,
+                size=size
+                if isinstance(size, int) and not isinstance(size, bool)
+                else None,
             )
         )
     return tuple(attachments)
@@ -503,10 +520,18 @@ def _reaction_records(
     author_id: PersonId,
     sent_at: datetime,
 ) -> tuple[Reaction, ...]:
-    target_author = value.get("targetAuthorUuid") or value.get("targetAuthorNumber") or value.get("targetAuthor")
+    target_author = (
+        value.get("targetAuthorUuid")
+        or value.get("targetAuthorNumber")
+        or value.get("targetAuthor")
+    )
     target_time = value.get("targetSentTimestamp")
     emoji = value.get("emoji")
-    if not isinstance(target_author, str) or not isinstance(target_time, int) or not isinstance(emoji, str):
+    if (
+        not isinstance(target_author, str)
+        or not isinstance(target_time, int)
+        or not isinstance(emoji, str)
+    ):
         raise SignalError("Signal reaction has invalid target data")
     return (
         Reaction(

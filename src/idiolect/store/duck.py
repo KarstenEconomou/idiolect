@@ -127,7 +127,9 @@ class DuckRepository:
         try:
             with duckdb.connect(str(self._path)) as connection:
                 connection.begin()
-                if connection.execute("SELECT 1 FROM events WHERE id = ?", [str(event.id)]).fetchone():
+                if connection.execute(
+                    "SELECT 1 FROM events WHERE id = ?", [str(event.id)]
+                ).fetchone():
                     connection.rollback()
                     return False
                 connection.execute(
@@ -135,7 +137,13 @@ class DuckRepository:
                     INSERT INTO events (id, source, source_id, received_at, payload)
                     VALUES (?, ?, ?, ?, ?)
                     """,
-                    [str(event.id), event.source, event.source_id, event.received_at, event.payload],
+                    [
+                        str(event.id),
+                        event.source,
+                        event.source_id,
+                        event.received_at,
+                        event.payload,
+                    ],
                 )
                 for record in values:
                     if isinstance(record, Message):
@@ -235,8 +243,12 @@ class DuckRepository:
         try:
             with duckdb.connect(str(self._path), read_only=True) as connection:
                 events = connection.execute("SELECT count(*) FROM events").fetchone()
-                messages = connection.execute("SELECT count(*) FROM messages").fetchone()
-                reactions = connection.execute("SELECT count(*) FROM reactions").fetchone()
+                messages = connection.execute(
+                    "SELECT count(*) FROM messages"
+                ).fetchone()
+                reactions = connection.execute(
+                    "SELECT count(*) FROM reactions"
+                ).fetchone()
         except duckdb.Error as error:
             raise StoreError(f"Cannot read counts from: {self._path}") from error
         assert events is not None
@@ -248,15 +260,21 @@ class DuckRepository:
             reactions=cast(int, reactions[0]),
         )
 
-    def _save_message(self, connection: duckdb.DuckDBPyConnection, message: Message) -> None:
+    def _save_message(
+        self, connection: duckdb.DuckDBPyConnection, message: Message
+    ) -> None:
         revision = message.deleted_at or message.edited_at or message.sent_at
         current = connection.execute(
             "SELECT revision_at FROM messages WHERE id = ?", [str(message.id)]
         ).fetchone()
         if current is not None and cast(datetime, current[0]) > revision:
             return
-        connection.execute("DELETE FROM attachments WHERE message_id = ?", [str(message.id)])
-        connection.execute("DELETE FROM mentions WHERE message_id = ?", [str(message.id)])
+        connection.execute(
+            "DELETE FROM attachments WHERE message_id = ?", [str(message.id)]
+        )
+        connection.execute(
+            "DELETE FROM mentions WHERE message_id = ?", [str(message.id)]
+        )
         connection.execute("DELETE FROM messages WHERE id = ?", [str(message.id)])
         connection.execute(
             """
@@ -327,7 +345,9 @@ class DuckRepository:
                 ],
             )
 
-    def _save_reaction(self, connection: duckdb.DuckDBPyConnection, reaction: Reaction) -> None:
+    def _save_reaction(
+        self, connection: duckdb.DuckDBPyConnection, reaction: Reaction
+    ) -> None:
         connection.execute(
             """
             INSERT INTO reactions (

@@ -133,11 +133,17 @@ def test_parser_keeps_allowed_message_context(signal_events: Path) -> None:
     assert edit[0].edited_at is not None
 
 
-def test_parser_makes_delete_tombstone(signal_events: Path, signal_delete: Path) -> None:
+def test_parser_makes_delete_tombstone(
+    signal_events: Path, signal_delete: Path
+) -> None:
     """Check that a remote delete removes message text."""
     parser = SignalParser((ChatId("group-allowed"),))
-    original_event = next(iter(SignalFileSource(signal_events, clock=lambda: _NOW).events()))
-    delete_event = next(iter(SignalFileSource(signal_delete, clock=lambda: _NOW).events()))
+    original_event = next(
+        iter(SignalFileSource(signal_events, clock=lambda: _NOW).events())
+    )
+    delete_event = next(
+        iter(SignalFileSource(signal_delete, clock=lambda: _NOW).events())
+    )
     original = next(iter(parser.records(original_event)))
     deleted = next(iter(parser.records(delete_event)))
 
