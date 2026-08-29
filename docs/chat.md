@@ -20,7 +20,7 @@ just setup-chat
 Open the local registry:
 
 ```console
-just chat
+idiolect chat
 ```
 
 The registry lists the configured base model, verified run-and-dataset pairs,
@@ -30,13 +30,13 @@ model worker resolves and loads the selected model after the session starts.
 Open one run and dataset pair directly:
 
 ```console
-just chat run RUN_ID DATASET_ID
+idiolect chat --run RUN_ID --dataset DATASET_ID
 ```
 
 Resume one saved snapshot directly:
 
 ```console
-just chat resume CHAT_ID
+idiolect chat --resume CHAT_ID
 ```
 
 The run and dataset arguments can be artifact IDs or paths. Resume uses a saved

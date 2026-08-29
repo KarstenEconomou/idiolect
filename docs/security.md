@@ -31,8 +31,8 @@ touch .env
 chmod 600 .env
 ```
 
-Just recipes that launch Idiolect load `.env`. Direct `uv run idiolect`
-commands require `--env-file .env` to load it.
+Product commands require the private environment values to be exported. When
+running through `uv`, use `uv run --env-file .env idiolect ...`.
 
 Use `IDIOLECT_CONFIG` only to select a public configuration file. Do not use it
 to hide private policy values in another TOML file.

@@ -5,7 +5,12 @@ from pathlib import Path
 import pytest
 
 from idiolect.chat.runtime import ChatError, validate_chat_policy
-from idiolect.config import ConfigError, load_config
+from idiolect.config import (
+    ConfigError,
+    create_configuration,
+    load_config,
+    resolve_config_path,
+)
 from idiolect.train.mlx import training_policy
 
 
@@ -163,3 +168,46 @@ def test_inference_rejects_non_finite_sampling_values(
 
     with pytest.raises(ConfigError, match="must be finite"):
         load_config(path, {})
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    (
+        (None, Path("conf/idiolect.toml")),
+        ("default", Path("conf/idiolect.toml")),
+        ("idiolect", Path("conf/idiolect.toml")),
+        ("smoke-test", Path("conf/exp/smoke-test.toml")),
+        ("custom.toml", Path("custom.toml")),
+        ("elsewhere/custom.toml", Path("elsewhere/custom.toml")),
+    ),
+)
+def test_configuration_references_have_one_canonical_resolution(
+    value: str | None, expected: Path
+) -> None:
+    """Check canonical, named, and explicit configuration selection."""
+    assert resolve_config_path(value, {}) == expected
+
+
+def test_environment_configuration_uses_named_resolution() -> None:
+    """Check that the environment follows command-line selection rules."""
+    assert resolve_config_path(None, {"IDIOLECT_CONFIG": "smoke-test"}) == Path(
+        "conf/exp/smoke-test.toml"
+    )
+
+
+def test_create_configuration_copies_named_or_explicit_source(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Check that new policies are complete copies and cannot overwrite."""
+    canonical = tmp_path / "conf" / "idiolect.toml"
+    canonical.parent.mkdir()
+    canonical.write_text("[signal]\ntimeout = 7\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    first = create_configuration("first")
+    second = create_configuration("second", "first")
+
+    assert first.read_bytes() == canonical.read_bytes()
+    assert second.read_bytes() == canonical.read_bytes()
+    with pytest.raises(ConfigError, match="already exists"):
+        create_configuration("first")

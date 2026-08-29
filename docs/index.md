@@ -44,6 +44,6 @@ test isolation, and required checks.
 - Stop continuous collection before `reindex` or dataset construction.
 - Collection can run during training, inference, chat, and evaluation. These
   stages use immutable files.
-- Keep the Mac awake for long MLX-LM operations. The training, inference, and
-  automatic evaluation recipes use `caffeinate`.
+- On macOS, Idiolect keeps the Mac awake during training, batch inference, and
+  automatic evaluation.
 - Keep all files under `var/` private.

@@ -46,8 +46,8 @@ IDIOLECT_SIGNAL_ACCOUNT="+14165550123"
 
 The number is a placeholder. Do not commit a real account.
 
-Just recipes that launch Idiolect load `.env`. A direct `uv run idiolect`
-command must include `--env-file .env` when it needs these values.
+Product commands require these private environment values to be exported. When
+running through `uv`, use `uv run --env-file .env idiolect ...`.
 
 Supported launch environment values are:
 
@@ -67,7 +67,7 @@ valid only in `IDIOLECT_SIGNAL_CHATS`.
 List groups that the linked device can see:
 
 ```console
-just idiolect signal groups
+idiolect signal groups
 ```
 
 The output has this form:
@@ -93,19 +93,19 @@ the group later does not restore that event.
 Run one bounded receive operation:
 
 ```console
-just idiolect signal collect
+idiolect signal collect
 ```
 
 Run continuously until the process receives a stop signal:
 
 ```console
-just idiolect signal collect --follow
+idiolect signal collect --follow
 ```
 
 Set explicit bounds when required:
 
 ```console
-just idiolect signal collect --timeout 30 --max-messages 100
+idiolect signal collect --timeout 30 --max-messages 100
 ```
 
 `--follow` and `--timeout` are mutually exclusive. `max_messages` must be
@@ -114,13 +114,13 @@ greater than zero. A timeout must be `-1` or greater.
 Show stored counts:
 
 ```console
-just idiolect signal stats
+idiolect signal stats
 ```
 
 Import saved `signal-cli` JSON lines:
 
 ```console
-just idiolect signal import path/to/events.jsonl
+idiolect signal import path/to/events.jsonl
 ```
 
 ## Collection guarantees and limits

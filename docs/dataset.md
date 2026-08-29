@@ -101,13 +101,13 @@ canonical dataset.
 Stop continuous collection. Build a dataset for the linked Signal account:
 
 ```console
-just data build TARGET_NAME
+idiolect data build TARGET_NAME
 ```
 
 Use the CLI when the target is not the linked account:
 
 ```console
-just idiolect data build --person PERSON_ID --name TARGET_NAME
+idiolect data build TARGET_NAME --person PERSON_ID
 ```
 
 Start collection again after the build finishes.

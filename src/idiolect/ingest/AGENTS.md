@@ -16,7 +16,7 @@ These instructions apply to `src/idiolect/ingest/`.
   older message revision; an older revision cannot replace a newer one.
 - Keep `signal-cli` execution behind the source boundary. Do not invoke a live
   account in tests or as part of ordinary code verification.
-- Use `just collect status`, `just collect start`, and `just collect stop` only
+- Use `idiolect signal status`, `idiolect signal start`, and `idiolect signal stop` only
   for user-requested collector operations. Follow `docs/signal.md` and
   `docs/launchd.md`; do not install or operate the LaunchAgent during code work.
 - Update `docs/signal.md` when collection requirements, parsing, normalization,

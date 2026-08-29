@@ -1,6 +1,7 @@
 """Test the Python docstring rules."""
 
 import ast
+import re
 from pathlib import Path
 
 
@@ -26,3 +27,20 @@ def test_source_has_docstrings() -> None:
             assert ast.get_docstring(node), (
                 f"Public definition has no docstring: {path}:{node.lineno}"
             )
+
+
+def test_public_material_has_no_removed_command_paths() -> None:
+    """Check that public operational text uses only the canonical CLI."""
+    root = Path(__file__).parents[1]
+    paths = [root / "README.md", root / "AGENTS.md", root / "justfile"]
+    paths.extend((root / "docs").glob("*"))
+    paths.extend((root / "src" / "idiolect").glob("*/AGENTS.md"))
+    removed = re.compile(
+        r"just (?:idiolect|train|chat|collect|config|data|eval|inference)\b"
+        r"|idiolect inference\b|idiolect eval policy\b"
+        r"|idiolect chat (?:run|resume)\b|data build --self\b"
+        r"|inference text\b|--base-of\b"
+    )
+    for path in paths:
+        if path.is_file():
+            assert removed.search(path.read_text(encoding="utf-8")) is None, path

@@ -23,8 +23,8 @@ These instructions apply to `src/idiolect/data/`.
   artifacts atomically and never mutate an existing dataset.
 - Keep examples and tests synthetic. Never read live Signal data or `var/` during
   verification.
-- Use `just idiolect data people` to list normalized authors and
-  `just data build <name>` to build the linked user's dataset. These are private
+- Use `idiolect data people` to list normalized authors and
+  `idiolect data build <name>` to build the linked user's dataset. These are private
   operational commands; do not run them for code verification.
 - Update `docs/dataset.md` when transformation, splitting, identity, or output
   behavior changes.

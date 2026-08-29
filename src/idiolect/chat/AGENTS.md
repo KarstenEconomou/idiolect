@@ -42,9 +42,9 @@ These instructions apply to `src/idiolect/chat/`. Read
   parents until they become leaves through explicit child erasure.
 - Rename a verified leaf by creating its immutable replacement with the same
   lineage parent, then erase the replaced leaf.
-- Use `just setup-chat` for optional packages, `just chat` for `REGISTRY`,
-  `just chat run <run> <dataset>` for a verified assistant, and
-  `just chat resume <chat>` for a verified snapshot. Chat launch commands keep
-  the Mac awake and read private state; do not run them for code verification.
+- Use `just setup-chat` for optional packages, `idiolect chat` for `REGISTRY`,
+  `idiolect chat --run <run> --dataset <dataset>` for a verified assistant, and
+  `idiolect chat --resume <chat>` for a verified snapshot. Chat commands read
+  private state; do not run them for code verification.
 - Update `docs/chat.md` when chat policy, identity, worker lifecycle, context,
   commands, snapshots, or recovery behavior changes.

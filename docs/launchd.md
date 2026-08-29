@@ -55,7 +55,7 @@ Do not run a manual `collect --follow` process at the same time.
 Show the current state:
 
 ```console
-just collect status
+idiolect signal status
 ```
 
 Restart the process without unloading the agent:
@@ -67,13 +67,13 @@ launchctl kickstart -k gui/$(id -u)/com.idiolect.collect
 Stop and unload the agent:
 
 ```console
-just collect stop
+idiolect signal stop
 ```
 
 Load the installed agent again:
 
 ```console
-just collect start
+idiolect signal start
 ```
 
 Watch the private logs:

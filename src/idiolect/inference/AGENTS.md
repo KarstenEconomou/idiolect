@@ -17,8 +17,8 @@ These instructions apply to `src/idiolect/inference/`.
   not leak MLX objects into local orchestration or other stages.
 - Tests must use fake backends. Do not load weights, import MLX, contact model
   hubs, or run GPU generation.
-- Use `just inference base`, `just inference base-of`, or `just inference run`
-  for configured generation. These commands keep the Mac awake and are
-  operational, not verification steps.
+- Use `idiolect infer --base`, `idiolect infer <run> --base`, or
+  `idiolect infer <run>` for configured generation. Batch inference keeps the
+  Mac awake and is operational, not a verification step.
 - Update `docs/inference.md` when target selection, generation policy, or
   prediction artifacts change.

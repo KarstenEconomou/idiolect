@@ -109,7 +109,7 @@ Raw events keep the source mention and quote data. Rebuild normalized records
 after a normalization change:
 
 ```console
-just idiolect signal reindex
+idiolect signal reindex
 ```
 
 Stop continuous collection before this command. `reindex` reads DuckDB only. It

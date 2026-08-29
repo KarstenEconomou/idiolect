@@ -52,9 +52,8 @@ an external reporting service.
 ├── conf/                    Public and reproducible TOML policies
 │   └── exp/                 Complete experiment policies
 ├── docs/                    Procedures and data-contract explanations
-├── just/                    Task-specific Just recipes
 ├── tests/                   Synthetic tests that mirror the package
-├── justfile                 Repository command interface
+├── justfile                 Setup, build, and verification recipes
 └── var/                     Ignored private state and artifacts
 ```
 
@@ -70,8 +69,9 @@ directories.
 - A current `signal-cli` release for collection
 - Apple silicon for local MLX-LM operations
 
-Run commands from the repository root. Use the root `justfile` as the command
-interface. Use `uv` directly only for dependency maintenance.
+Run commands from the repository root. Use `idiolect` for product operations.
+Use the root `justfile` only for setup, build, and verification. Use `uv`
+directly only for dependency maintenance.
 
 ## Set up
 
@@ -80,6 +80,11 @@ Install the core environment:
 ```console
 just setup
 ```
+
+Activate `.venv` before the `idiolect` examples below, and export the required
+private environment values. To invoke the same CLI without activation, prefix a
+command with `uv run --env-file .env`, for example
+`uv run --env-file .env idiolect signal stats`.
 
 See [docs/signal.md](docs/signal.md) before collection.
 That procedure creates the private Signal state and `.env` file.
@@ -91,40 +96,40 @@ evaluation:
 just setup-train
 ```
 
-## Use the pipeline
+## COLLECT → BUILD → TRAIN → EVALUATE → CHAT
 
-**Ingest.** Collect Signal events:
+**Collect.** Collect Signal events:
 
 ```console
-just idiolect signal collect
+idiolect signal collect
 ```
 
 **Data.** List stored people and build a dataset for the linked Signal account:
 
 ```console
-just idiolect data people
-just data build TARGET_NAME
+idiolect data people
+idiolect data build TARGET_NAME
 ```
 
 **Train.** Train the canonical policy or a named experiment policy:
 
 ```console
-just train var/data/DATASET_ID
-just config train qwen3-8b-smoke var/data/DATASET_ID
+idiolect train var/data/DATASET_ID
+idiolect -c qwen3-8b-smoke train var/data/DATASET_ID
 ```
 
 **Inference.** Generate predictions from the base model recorded by a run and
 from its adapter:
 
 ```console
-just inference base-of var/runs/RUN_ID var/data/DATASET_ID test qwen3-8b-smoke
-just inference run var/runs/RUN_ID var/data/DATASET_ID test qwen3-8b-smoke
+idiolect -c qwen3-8b-smoke infer var/runs/RUN_ID --base --data var/data/DATASET_ID --split test
+idiolect -c qwen3-8b-smoke infer var/runs/RUN_ID --data var/data/DATASET_ID --split test
 ```
 
 **Evaluation.** Evaluate all runs from one policy:
 
 ```console
-just eval policy var/data/DATASET_ID \
+idiolect eval var/data/DATASET_ID \
   var/runs/RUN_ID_ONE \
   var/runs/RUN_ID_TWO \
   var/runs/RUN_ID_THREE
@@ -133,7 +138,7 @@ just eval policy var/data/DATASET_ID \
 **Chat.** Open the private terminal chat:
 
 ```console
-just chat
+idiolect chat
 ```
 
 See [docs/index.md](docs/index.md) for the complete procedures, required stop
@@ -146,9 +151,13 @@ experiment policies. The configuration system does not merge files. Create a
 new policy before changing an experiment:
 
 ```console
-just config list
-just config new EXPERIMENT_NAME
+idiolect config list
+idiolect config new EXPERIMENT_NAME
 ```
+
+The default names `default` and `idiolect` select `conf/idiolect.toml`. Other
+bare names select `conf/exp/NAME.toml`. `-c`, `--config`, and
+`IDIOLECT_CONFIG` use these rules. A path selects that TOML file directly.
 
 Commit a policy before its first run. Do not change a policy after a recorded
 run uses it.

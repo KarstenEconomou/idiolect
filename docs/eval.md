@@ -49,23 +49,23 @@ just setup-train
 Run the complete canonical seed set:
 
 ```console
-just eval policy var/data/DATASET_ID \
+idiolect eval var/data/DATASET_ID \
   var/runs/RUN_ID_ONE \
   var/runs/RUN_ID_TWO \
   var/runs/RUN_ID_THREE
 ```
 
-Select a named experiment policy through `IDIOLECT_CONFIG`:
+Select a named experiment policy with `-c`:
 
 ```console
-IDIOLECT_CONFIG=conf/exp/qwen3-8b-smoke.toml \
-  just eval policy var/data/DATASET_ID var/runs/RUN_ID_ONE
+idiolect -c qwen3-8b-smoke eval var/data/DATASET_ID var/runs/RUN_ID_ONE
 ```
 
 Use the same policy for rating and panel commands. It contains the fixed ballot
 rules.
 
-The recipe uses `caffeinate -i`. Collection can run during evaluation.
+On macOS, automatic evaluation holds an idle-sleep assertion for its duration.
+Rating and panel creation do not. Collection can run during evaluation.
 
 ## Read the automatic report
 
@@ -136,7 +136,7 @@ permission to view every sampled conversation.
 Run one private session on the data owner's computer:
 
 ```console
-just idiolect eval rate var/eval/EVALUATION_ID --rater rater-01
+idiolect eval rate var/eval/EVALUATION_ID --rater rater-01
 ```
 
 The session presents blind A/B comparisons. Most ballots compare policy output
@@ -152,7 +152,7 @@ artifact stores choices and provenance, not prompt or reply text.
 After the configured sessions finish, create the panel:
 
 ```console
-just idiolect eval panel var/eval/EVALUATION_ID \
+idiolect eval panel var/eval/EVALUATION_ID \
   var/eval/judgments/JUDGMENT_ID_ONE \
   var/eval/judgments/JUDGMENT_ID_TWO \
   var/eval/judgments/JUDGMENT_ID_THREE

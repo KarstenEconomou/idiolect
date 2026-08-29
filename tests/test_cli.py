@@ -2,14 +2,81 @@
 
 import io
 import json
+from contextlib import nullcontext
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
+import idiolect.chat.cli
 import idiolect.cli
+import idiolect.eval.cli
+import idiolect.inference.cli
+import idiolect.ingest.cli
+import idiolect.train.cli
 from idiolect.cli import main
 from idiolect.inference.base import Prediction
 from idiolect.types import EvaluationId, EvaluationRef, RunId, RunRef, TrainResult
+
+
+def test_root_help_lists_only_canonical_product_commands(capsys) -> None:
+    """Check that removed root commands cannot appear as supported syntax."""
+    with pytest.raises(SystemExit, match="0"):
+        main(("--help",))
+    output = capsys.readouterr().out
+    assert "{signal,data,train,infer,eval,chat,config}" in output
+    assert "inference" not in output
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    (
+        ("inference",),
+        ("data", "build", "NAME", "--self"),
+        ("chat", "run", "RUN", "DATASET"),
+        ("infer", "RUN", "--base-of", "OTHER"),
+    ),
+)
+def test_removed_syntax_fails(arguments: tuple[str, ...]) -> None:
+    """Check that legacy product syntax has no compatibility dispatch."""
+    with pytest.raises(SystemExit, match="2"):
+        main(arguments)
+
+
+def test_incomplete_modes_fail_before_configuration(capsys) -> None:
+    """Check coupled chat and inference options at the CLI boundary."""
+    assert main(("chat", "--dataset", "DATASET")) == 2
+    assert main(("infer", "RUN", "--data", "DATASET")) == 2
+    assert main(("eval", "policy", "dataset", "run")) == 2
+    errors = capsys.readouterr().err
+    assert "--run and --dataset" in errors
+    assert "--data and --split" in errors
+    assert "policy is not a valid artifact reference" in errors
+
+
+@pytest.mark.parametrize(
+    ("action", "expected"),
+    (
+        ("status", ("launchctl", "print", "gui/501/com.idiolect.collect")),
+        ("stop", ("launchctl", "bootout", "gui/501/com.idiolect.collect")),
+    ),
+)
+def test_collector_lifecycle_uses_launchctl_without_configuration(
+    action: str, expected: tuple[str, ...], monkeypatch
+) -> None:
+    """Check the installed collector lifecycle subprocess boundary."""
+    seen = []
+    monkeypatch.setattr(idiolect.ingest.cli.sys, "platform", "darwin")
+    monkeypatch.setattr(idiolect.ingest.cli.os, "getuid", lambda: 501)
+    monkeypatch.setattr(
+        idiolect.ingest.cli.subprocess,
+        "run",
+        lambda command, check: seen.append((command, check)),
+    )
+
+    assert main(("-c", "missing", "signal", action)) == 0
+    assert seen == [(expected, True)]
 
 
 def test_import_and_stats_use_configured_store(
@@ -33,8 +100,6 @@ def test_import_and_stats_use_configured_store(
             str(local_config),
             "data",
             "build",
-            "--self",
-            "--name",
             "DIXIE",
         )
     )
@@ -115,9 +180,7 @@ def test_train_command_uses_fixed_dataset_and_config(
                 str(local_config),
                 "data",
                 "build",
-                "--self",
-                "--name",
-                "DIXIE",
+                    "DIXIE",
             )
         )
         == 0
@@ -140,7 +203,8 @@ def test_train_command_uses_fixed_dataset_and_config(
             )
             return TrainResult((run,))
 
-    monkeypatch.setattr(idiolect.cli, "MlxTrainer", FakeTrainer)
+    monkeypatch.setattr(idiolect.train.cli, "MlxTrainer", FakeTrainer)
+    monkeypatch.setattr(idiolect.train.cli, "keep_awake", nullcontext)
 
     code = main(("--config", str(local_config), "train", str(dataset_path)))
 
@@ -175,12 +239,12 @@ def test_inference_text_reads_stdin_and_writes_json_lines(
             seen.append((target, prompt, config))
             return (Prediction("example", 0, 101, 202, "reply", "stop", 8, 2),)
 
-    monkeypatch.setattr(idiolect.cli, "configured_target", lambda config: "base")
-    monkeypatch.setattr(idiolect.cli, "MlxBackend", object)
-    monkeypatch.setattr(idiolect.cli, "LocalInferencer", FakeInferencer)
-    monkeypatch.setattr(idiolect.cli.sys, "stdin", io.StringIO("private prompt"))
+    monkeypatch.setattr(idiolect.inference.cli, "configured_target", lambda config: "base")
+    monkeypatch.setattr(idiolect.inference.cli, "MlxBackend", object)
+    monkeypatch.setattr(idiolect.inference.cli, "LocalInferencer", FakeInferencer)
+    monkeypatch.setattr(idiolect.inference.cli.sys, "stdin", io.StringIO("private prompt"))
 
-    code = main(("--config", str(local_config), "inference", "text", "--base"))
+    code = main(("--config", str(local_config), "infer", "--base"))
 
     output = capsys.readouterr()
     assert code == 0
@@ -224,12 +288,12 @@ def test_inference_text_reports_invalid_utf8_before_model_access(
         def validate(self, config) -> None:
             """Accept one complete inference policy."""
 
-    monkeypatch.setattr(idiolect.cli, "configured_target", target)
-    monkeypatch.setattr(idiolect.cli, "MlxBackend", object)
-    monkeypatch.setattr(idiolect.cli, "LocalInferencer", FakeInferencer)
+    monkeypatch.setattr(idiolect.inference.cli, "configured_target", target)
+    monkeypatch.setattr(idiolect.inference.cli, "MlxBackend", object)
+    monkeypatch.setattr(idiolect.inference.cli, "LocalInferencer", FakeInferencer)
 
     code = main(
-        ("--config", str(local_config), "inference", "text", "--base", str(prompt))
+        ("--config", str(local_config), "infer", "--base", str(prompt))
     )
 
     output = capsys.readouterr()
@@ -248,8 +312,8 @@ def test_eval_policy_uses_every_supplied_run(
     """Check that the CLI passes the complete run set to evaluation."""
     seen = []
     evaluation_path = tmp_path / "eval" / "evaluation-id"
-    current_policy = idiolect.cli.training_policy(
-        idiolect.cli.load_config(local_config).train
+    current_policy = idiolect.eval.cli.training_policy(
+        idiolect.eval.cli.load_config(local_config).train
     )
     recorded_policy = json.loads(json.dumps(current_policy))
 
@@ -270,26 +334,26 @@ def test_eval_policy_uses_every_supplied_run(
             )
 
     monkeypatch.setattr(
-        idiolect.cli,
+        idiolect.eval.cli,
         "load_dataset",
         lambda path: SimpleNamespace(dataset="fixed-dataset"),
     )
     monkeypatch.setattr(
-        idiolect.cli,
+        idiolect.eval.cli,
         "load_run",
         lambda path: SimpleNamespace(name=path.name, policy=recorded_policy),
     )
-    monkeypatch.setattr(idiolect.cli, "MlxScoreBackend", object)
-    monkeypatch.setattr(idiolect.cli, "MlxBackend", object)
-    monkeypatch.setattr(idiolect.cli, "LocalInferencer", lambda backend: "inferencer")
-    monkeypatch.setattr(idiolect.cli, "LocalEvaluator", FakeEvaluator)
+    monkeypatch.setattr(idiolect.eval.cli, "MlxScoreBackend", object)
+    monkeypatch.setattr(idiolect.eval.cli, "MlxBackend", object)
+    monkeypatch.setattr(idiolect.eval.cli, "LocalInferencer", lambda backend: "inferencer")
+    monkeypatch.setattr(idiolect.eval.cli, "LocalEvaluator", FakeEvaluator)
+    monkeypatch.setattr(idiolect.eval.cli, "keep_awake", nullcontext)
 
     code = main(
         (
             "--config",
             str(local_config),
             "eval",
-            "policy",
             "dataset",
             "run-17",
             "run-42",
@@ -361,7 +425,7 @@ default_system_prompt = "Speak with terse technical precision."
     )
     seen = []
     monkeypatch.setattr(
-        idiolect.cli,
+        idiolect.chat.cli,
         "run_chat_app",
         lambda *args, **kwargs: seen.append((args, kwargs)),
     )

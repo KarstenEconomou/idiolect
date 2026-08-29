@@ -55,13 +55,13 @@ uses it.
 Show stored record counts:
 
 ```console
-just idiolect signal stats
+idiolect signal stats
 ```
 
 Rebuild normalized records from stored raw events:
 
 ```console
-just idiolect signal reindex
+idiolect signal reindex
 ```
 
 `reindex` does not contact Signal. Stop continuous collection before the

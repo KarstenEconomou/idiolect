@@ -23,7 +23,7 @@ LoRA adapters, generates verified local predictions, provides private terminal
 chat, and evaluates adapter policies against their recorded base models.
 
 Code lives in `src/idiolect/`. Tests mirror it in `tests/`. Public configuration
-lives in `conf/`. Procedures live in `docs/`. Just modules live in `just/`.
+lives in `conf/`. Procedures live in `docs/`.
 
 Keep dependencies and ownership explicit. Put external systems behind typed
 ports, keep protocol modules free of backend behavior, keep the CLI thin, and
@@ -31,22 +31,22 @@ put application behavior in the stage that owns it.
 
 ## Workflow
 
-Use the root `justfile` as the project command interface. Its recipes use `uv`.
+Use `idiolect` as the product interface. Use the root `justfile` only to set up,
+build, and verify the repository. Its recipes use `uv`.
 
 - `just setup`, `just setup-train`, and `just setup-chat` manage environments.
-- `just idiolect` runs the CLI; `just chat` opens the local registry.
-- `just config list`, `just config new`, and `just config train` manage complete
-  experiment policies.
-- `just data build`, `just train`, `just inference`, and `just eval policy` run
+- `idiolect` runs the CLI; `idiolect chat` opens the local registry.
+- `idiolect config list` and `idiolect config new` manage complete experiment
+  policies. Select a policy with `-c`, `--config`, or `IDIOLECT_CONFIG`.
+- `idiolect data build`, `idiolect train`, `idiolect infer`, and `idiolect eval` run
   the main pipeline stages. Read the applicable procedure before operational
   work.
 - `just build` builds distributions.
 - `just test`, `just lint`, `just typecheck`, and `just check` verify changes.
 
 Use `uv` directly only for dependency maintenance. Add packages with `uv add` or
-`uv add --dev`. Never edit `uv.lock` by hand. Recipes that launch Idiolect must
-use `uv run --env-file .env`. Setup, build, lint, type-check, and test recipes
-must not load `.env`.
+`uv add --dev`. Never edit `uv.lock` by hand. Setup, build, lint, type-check,
+and test recipes must not load `.env`.
 
 Run focused checks while working. Run `just check` before handoff.
 

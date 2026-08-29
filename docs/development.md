@@ -77,9 +77,9 @@ Operational checks use private state and are outside standard repository
 verification:
 
 ```console
-just idiolect signal groups
-just idiolect signal stats
-just collect status
+idiolect signal groups
+idiolect signal stats
+idiolect signal status
 ```
 
 Use `just setup-chat` before a manual chat check. On Apple silicon, check one

@@ -28,23 +28,27 @@ A hub model can download during the first run. Keep a required `HF_TOKEN` in
 List available policies:
 
 ```console
-just config list
+idiolect config list
 ```
 
 Copy the canonical policy:
 
 ```console
-just config new EXPERIMENT_NAME
+idiolect config new EXPERIMENT_NAME
 ```
 
 Copy another experiment policy:
 
 ```console
-just config new NEW_NAME SOURCE_NAME
+idiolect config new NEW_NAME --from SOURCE_NAME
 ```
 
 The command creates `conf/exp/NEW_NAME.toml`. Each file is complete. The
 configuration system does not merge files.
+
+The default names `default` and `idiolect` select `conf/idiolect.toml`. Other
+bare names select `conf/exp/NAME.toml`. `-c`, `--config`, and
+`IDIOLECT_CONFIG` use these rules. An explicit path remains unchanged.
 
 Use a name that identifies the model and main policy change. Commit the policy
 before its first run. Do not change it after a run uses it. Create a new policy
@@ -93,17 +97,18 @@ Build a verified dataset first. Stop collection only during the dataset build.
 Run the canonical policy:
 
 ```console
-just train var/data/DATASET_ID
+idiolect train var/data/DATASET_ID
 ```
 
 Run a named experiment policy:
 
 ```console
-just config train qwen3-8b-smoke var/data/DATASET_ID
+idiolect -c qwen3-8b-smoke train var/data/DATASET_ID
 ```
 
-The recipes use `caffeinate -i`. Connect the Mac to power. Collection can run
-during training because training reads immutable files.
+On macOS, training holds an idle-sleep assertion for its duration. Connect the
+Mac to power. Collection can run during training because training reads
+immutable files.
 
 ## Artifact
 

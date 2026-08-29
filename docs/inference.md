@@ -30,13 +30,13 @@ evaluation, and adapter chat consistent.
 
 ## Targets
 
-Select exactly one target:
+Select a target with one command shape:
 
-| Option | Target |
+| Command | Target |
 |---|---|
-| `--base` | Base model and text policy from the selected TOML file. |
-| `--base-of RUN` | Exact base model recorded by a verified run. |
-| `--run RUN` | Base model and adapter recorded by a verified run. |
+| `infer --base` | Base model and text policy from the selected TOML file. |
+| `infer RUN --base` | Exact base model recorded by a verified run. |
+| `infer RUN` | Base model and adapter recorded by a verified run. |
 
 For run targets, the selected TOML file supplies only the inference policy. The
 run supplies the model revision, model digest, text format, and adapter digest.
@@ -48,20 +48,20 @@ Put prompt text in an ignored file:
 ```console
 mkdir -p var/prompts
 $EDITOR var/prompts/check.txt
-just idiolect inference text --base var/prompts/check.txt
+idiolect infer --base var/prompts/check.txt
 ```
 
 Use standard input when prompt text must not enter a process argument:
 
 ```console
-just idiolect inference text --base
+idiolect infer --base
 ```
 
 Use a run target:
 
 ```console
-just idiolect inference text --base-of var/runs/RUN_ID var/prompts/check.txt
-just idiolect inference text --run var/runs/RUN_ID var/prompts/check.txt
+idiolect infer var/runs/RUN_ID --base var/prompts/check.txt
+idiolect infer var/runs/RUN_ID var/prompts/check.txt
 ```
 
 The command writes one JSON Lines result for each configured seed to standard
@@ -72,24 +72,24 @@ output. It does not create an inference artifact for a single prompt.
 Generate a split with the configured base:
 
 ```console
-just inference base var/data/DATASET_ID test
+idiolect infer --base --data var/data/DATASET_ID --split test
 ```
 
 Generate the same split with a run's recorded base and adapter:
 
 ```console
-just inference base-of var/runs/RUN_ID var/data/DATASET_ID test
-just inference run var/runs/RUN_ID var/data/DATASET_ID test
+idiolect infer var/runs/RUN_ID --base --data var/data/DATASET_ID --split test
+idiolect infer var/runs/RUN_ID --data var/data/DATASET_ID --split test
 ```
 
-Add an experiment-policy name as the final argument when its inference policy
-must apply:
+Select an experiment policy when its inference policy must apply:
 
 ```console
-just inference run var/runs/RUN_ID var/data/DATASET_ID test qwen3-8b-smoke
+idiolect -c qwen3-8b-smoke infer var/runs/RUN_ID --data var/data/DATASET_ID --split test
 ```
 
-The recipes use `caffeinate -i`. Collection can run during inference.
+On macOS, batch inference holds an idle-sleep assertion for its duration.
+Prompt inference does not. Collection can run during inference.
 
 ## Prediction artifact
 

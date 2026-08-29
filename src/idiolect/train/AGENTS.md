@@ -16,7 +16,7 @@ These instructions apply to `src/idiolect/train/`.
   private training text, model credentials, or local paths in public examples.
 - Tests must mock subprocess, MLX-LM, model resolution, and expensive work. Test
   the command, policy, verification, identity, and failure behavior owned here.
-- Use `just setup-train` for optional packages and `just train <dataset>` for a
+- Use `just setup-train` for optional packages and `idiolect train <dataset>` for a
   configured run. Training commands keep the Mac awake and are operational, not
   verification steps.
 - Update `docs/train.md` when setup, policy, execution, or run artifacts change.

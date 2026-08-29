@@ -3,6 +3,8 @@
 import json
 import math
 import os
+import re
+import shutil
 import tomllib
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -14,6 +16,58 @@ from idiolect.types import ChatId
 
 class ConfigError(ValueError):
     """Report an invalid configuration."""
+
+
+_CONFIG_NAME = re.compile(r"[a-z0-9][a-z0-9-]*")
+CANONICAL_CONFIG = Path("conf/idiolect.toml")
+EXPERIMENT_CONFIGS = Path("conf/exp")
+
+
+def resolve_config_path(
+    value: str | Path | None,
+    environ: Mapping[str, str] | None = None,
+) -> Path:
+    """Resolve one canonical, named, or explicit configuration reference."""
+    env = os.environ if environ is None else environ
+    selected = value if value is not None else env.get("IDIOLECT_CONFIG")
+    if selected is None or str(selected) in {"default", "idiolect"}:
+        return CANONICAL_CONFIG
+    text = str(selected)
+    if _CONFIG_NAME.fullmatch(text) is not None:
+        return EXPERIMENT_CONFIGS / f"{text}.toml"
+    return Path(selected)
+
+
+def list_configurations() -> tuple[str, ...]:
+    """Return canonical and sorted experiment configuration names."""
+    names = ()
+    if EXPERIMENT_CONFIGS.exists():
+        names = tuple(sorted(path.stem for path in EXPERIMENT_CONFIGS.glob("*.toml")))
+    return ("idiolect (default)", *names)
+
+
+def create_configuration(name: str, source: str | Path | None = None) -> Path:
+    """Create one named experiment configuration without replacement."""
+    if name in {"default", "idiolect"}:
+        raise ConfigError("idiolect is the canonical configuration")
+    if _CONFIG_NAME.fullmatch(name) is None:
+        raise ConfigError(
+            "Configuration name must use lowercase letters, digits, and hyphens"
+        )
+    source_path = CANONICAL_CONFIG if source is None else resolve_config_path(source)
+    if not source_path.is_file():
+        raise ConfigError(f"Configuration file does not exist: {source_path}")
+    target = EXPERIMENT_CONFIGS / f"{name}.toml"
+    if target.exists():
+        raise ConfigError(f"Configuration already exists: {target}")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with source_path.open("rb") as input_stream, target.open("xb") as output_stream:
+            shutil.copyfileobj(input_stream, output_stream)
+        target.chmod(0o644)
+    except OSError as error:
+        raise ConfigError(f"Cannot create configuration: {target}") from error
+    return target
 
 
 @dataclass(frozen=True, slots=True)

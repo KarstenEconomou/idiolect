@@ -22,9 +22,9 @@ These instructions apply to `src/idiolect/eval/`.
   Keep normalization explicit and bound index memory growth.
 - Tests must fake score and generation backends. Do not load a model, use a GPU,
   contact a model hub, or rely on private judgments.
-- Use `just eval policy <dataset> <runs...>` for a complete local policy
-  comparison, `just idiolect eval rate` for one private blind rating session,
-  and `just idiolect eval panel` to summarize judgments. These are operational,
+- Use `idiolect eval <dataset> <runs...>` for a complete local policy
+  comparison, `idiolect eval rate` for one private blind rating session,
+  and `idiolect eval panel` to summarize judgments. These are operational,
   not verification commands.
 - Update `docs/eval.md` when metrics, eligibility, ballots, panels,
   interpretation, or artifact formats change.
