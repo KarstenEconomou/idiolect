@@ -96,7 +96,7 @@ evaluation:
 just setup-train
 ```
 
-## COLLECT → BUILD → TRAIN → EVALUATE → CHAT
+## Workflow
 
 **Collect.** Collect Signal events:
 
