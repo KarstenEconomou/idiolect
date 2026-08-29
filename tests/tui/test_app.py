@@ -205,6 +205,11 @@ def test_registry_chroma_menu_previews_all_themes_and_persists(tmp_path) -> None
             actions = app.screen.query_one("#chroma-actions", HorizontalScroll)
             assert actions.scroll_x > 0
             assert actions.content_region.x - heading.content_region.x == 1
+            await pilot.press("right")
+            orange = app.screen.query_one("#chroma-orange", KeyboardButton)
+            assert orange.render_line(0).text == "REDHEAD"
+            assert orange.region.right == actions.content_region.right
+            await pilot.press("left")
             await pilot.resize_terminal(80, 24)
 
             await pilot.click("#chroma-blue")

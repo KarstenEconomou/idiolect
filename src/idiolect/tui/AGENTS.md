@@ -65,7 +65,8 @@ TUI tests.
   at narrow widths, select with Enter, cancel with Escape, and advertise `C
   CHROMA` in the navigation hints. Do not let pointer input focus, preview,
   scroll, or select a theme. Keep the action viewport one cell to the right of
-  the `CHROMA` heading, including while horizontally scrolled.
+  the `CHROMA` heading, including while horizontally scrolled. Do not retain
+  inter-item padding after the final theme.
 - For a `TRACE`, keep its `TARGET::RUN` identity first and show its trace name
   to the right in the remaining primary-column width. Ellipsize only the trace
   name when it does not fit. Expand trace names by default. Let Space toggle

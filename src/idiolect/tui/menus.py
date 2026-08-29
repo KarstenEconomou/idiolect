@@ -6,6 +6,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import ClassVar, Literal
 
+from rich.cells import cell_len
 from textual import events
 from textual.app import ComposeResult
 from textual.containers import Horizontal, HorizontalScroll, Vertical
@@ -166,6 +167,8 @@ class MenuButton(Button):
             self.styles.line_pad = 0
             self.styles.text_align = "left"
             self.styles.content_align = ("left", "middle")
+        if self.has_class("-flush-end"):
+            self.styles.width = cell_len(str(self.label))
 
     async def _on_mouse_down(self, event: events.MouseDown) -> None:
         event.prevent_default()
@@ -254,13 +257,15 @@ class HorizontalMenuModal(ModalScreen[str | None]):
                 id=self.actions_id,
                 classes="horizontal-menu-actions",
             ):
-                for item in self.items:
+                for index, item in enumerate(self.items):
                     button = MenuButton(
                         item.label,
                         id=f"{self.button_prefix}{item.identity}",
                     )
                     if self.flush_items:
                         button.add_class("-flush-label")
+                        if index == len(self.items) - 1:
+                            button.add_class("-flush-end")
                     yield button
 
     def on_mount(self) -> None:
