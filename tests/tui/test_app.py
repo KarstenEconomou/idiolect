@@ -366,7 +366,7 @@ def test_chroma_command_opens_menu_in_chat(tmp_path) -> None:
 
 def test_registry_opens_specs_and_returns_to_the_same_row(tmp_path) -> None:
     """Check SPECS navigation without loading or changing the selection."""
-    chat = ChatConfig(output=tmp_path)
+    chat = ChatConfig(output=tmp_path, seed=101, participant_name="person_01")
     generation = GenerationConfig(backend="mlx-lm", max_prompt_tokens=1920)
     assistant = _assistant()
     runtime = ImmediateRuntime(chat, generation)
@@ -391,6 +391,10 @@ def test_registry_opens_specs_and_returns_to_the_same_row(tmp_path) -> None:
             assert str(app.query_one("#specs-identity", Static).content) == (
                 assistant.name
             )
+            content = app.query_one("#specs-body", Static).content
+            assert isinstance(content, SpecsDocument)
+            assert "PARTICIPANT\n person_01\n" in content.plain
+            assert "GENERATION\nBACKEND\n MLX-LM\nSEED\n 101\n" in content.plain
             specs_heading = app.query_one("#specs-heading", Horizontal)
             chat_heading = app.query_one("#chat-heading", Horizontal)
             specs_link = app.query_one("#specs-link", Static)
@@ -612,7 +616,7 @@ def test_registry_opens_trace_specs_with_saved_lineage_and_policy(tmp_path) -> N
             assert isinstance(content, SpecsDocument)
             assert "TRACE\n" in content.plain
             assert trace.title in content.plain
-            assert trace.id in content.plain
+            assert trace.id.upper() in content.plain
             assert "TEMPERATURE\n 0.3" in content.plain
             assert "NOT EVALUATED" in content.plain
             assert runtime.session is None

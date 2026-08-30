@@ -18,7 +18,7 @@ from idiolect.chat.discovery import Assistant
 from idiolect.chat.state import ChatBubble, ChatSession, PreparedPrompt, TurnTelemetry
 from idiolect.chat.storage import SavedChat
 from idiolect.chat.worker import LoadProbe, RuntimeProbe, WorkerState
-from idiolect.config import GenerationConfig
+from idiolect.config import ChatConfig, GenerationConfig
 from idiolect.types import Split
 
 _ABBREVIATIONS = {
@@ -180,6 +180,7 @@ def render_specs(
     generation: GenerationConfig,
     kind: str,
     trace: SavedChat | None = None,
+    chat: ChatConfig | None = None,
 ) -> SheetDocument:
     """Return one responsive model specification document."""
     document = SheetDocument()
@@ -192,7 +193,6 @@ def render_specs(
     _field(document, "NAME", assistant.model.name)
     _field(document, "SOURCE", assistant.model.source.upper())
     _field(document, "REVISION", assistant.model.revision)
-    _field(document, "CACHE", assistant.model.cache)
     _field(document, "DIGEST", _upper_hex(assistant.model_digest))
     _field(
         document,
@@ -221,24 +221,27 @@ def render_specs(
         _section(document, "TRAINING")
         _field(document, "SEED", assistant.training_seed)
         _field(document, "MAX SEQUENCE TOKENS", assistant.run.max_seq_length)
-        for key, value in _flatten(assistant.run.policy):
+        for key, value in _flatten_training_policy(assistant.run.policy):
             _field(document, key, value)
+
+    chat = trace.chat if trace is not None else chat
+    _render_conversation_policy(document, assistant, generation, chat)
+    _section(document, "GENERATION")
+    _field(document, "BACKEND", generation.backend.upper())
+    _field(document, "SEED", None if chat is None else chat.seed)
+    _render_sampling_policy(document, generation)
 
     if trace is not None:
         _section(document, "TRACE")
         _field(document, "NAME", trace.title)
         _field(document, "ID", trace.id.upper())
-        _field(document, "PATH", trace.path)
-        _field(document, "PARENT ID", _upper_hex(trace.parent_id))
+        _field(document, "PARENT", _upper_hex(trace.parent_id))
         _field(document, "CREATED", trace.created_at.isoformat())
         _field(
             document,
             "TURNS",
             sum(turn.role != "env" for turn in trace.turns),
         )
-
-    _render_conversation_policy(document, assistant, generation)
-    _render_sampling_policy(document, generation)
 
     _section(document, "FIDELITY")
     _field(document, "STATUS", "NOT EVALUATED")
@@ -249,6 +252,7 @@ def _render_conversation_policy(
     document: SheetDocument,
     assistant: Assistant,
     generation: GenerationConfig,
+    chat: ChatConfig | None,
 ) -> None:
     """Append conversation, prompt, and completion policy fields."""
     data = assistant.data
@@ -257,6 +261,7 @@ def _render_conversation_policy(
     _section(document, "CONVERSATION")
     _field(document, "FORMAT", data.format)
     _field(document, "TURN CAPACITY", assistant.context_messages)
+    _field(document, "PARTICIPANT", None if chat is None else chat.participant_name)
     if chat_format:
         _prompt_block_field(
             document,
@@ -677,17 +682,29 @@ def _display(value: object) -> str:
     return str(value)
 
 
-def _flatten(
+def _flatten_training_policy(
     values: Mapping[str, Any],
     prefix: str = "",
 ) -> tuple[tuple[str, object], ...]:
     """Flatten a recorded policy into stable display fields."""
+    if not prefix:
+        priority = {"fine_tune_type": 0, "optimizer": 1, "lora": 3}
+        keys = sorted(values, key=lambda key: (priority.get(key, 2), key))
+    elif prefix == "lora":
+        priority = {"rank": 0, "scale": 1}
+        keys = sorted(values, key=lambda key: (priority.get(key, 2), key))
+    else:
+        keys = sorted(values)
     result: list[tuple[str, object]] = []
-    for key in sorted(values):
+    for key in keys:
         value = values[key]
-        name = f"{prefix} {key}".strip()
+        name = (
+            "fine-tune type"
+            if not prefix and key == "fine_tune_type"
+            else f"{prefix} {key}".strip()
+        )
         if isinstance(value, Mapping):
-            result.extend(_flatten(value, name))
+            result.extend(_flatten_training_policy(value, name))
         else:
             result.append((name, value))
     return tuple(result)

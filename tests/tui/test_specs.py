@@ -193,6 +193,7 @@ def test_construct_specs_show_verified_lineage_and_no_invented_evaluation(
         assistant,
         GenerationConfig(backend="mlx-lm", max_prompt_tokens=1920),
         "CONSTRUCT",
+        chat=ChatConfig(seed=101, participant_name="person_01"),
     )
 
     assert _RUN_ID.upper() in document.plain
@@ -206,16 +207,43 @@ def test_construct_specs_show_verified_lineage_and_no_invented_evaluation(
     assert document.plain.index("BASE\n") < document.plain.index("TYPE\n")
     assert "ENTRY" not in document.plain
     assert "MODEL\nNAME\n example/M\n" in document.plain
+    assert "CACHE\n" not in document.plain
     assert "RUN\nID\n" in document.plain
     assert "DATASET\nID\n" in document.plain
     assert "ADAPTER\nPATH\n" in document.plain
     assert "TRAIN 90    VALID 10    TEST 5" in document.plain
     assert "TRAINING\nSEED\n 7\nMAX SEQUENCE TOKENS\n 2,048 TOK\n" in document.plain
+    assert "FINE-TUNE TYPE\n lora\nOPTIMIZER\n adamw\n" in document.plain
+    assert document.plain.index("OPTIMIZER\n") < document.plain.index("LORA RANK\n")
+    assert document.plain.index("LORA RANK\n") < document.plain.index(
+        "LORA SCALE\n"
+    )
     assert "TRAINING POLICY" not in document.plain
     assert "RUN ID\n" not in document.plain
     assert "DATASET ID\n" not in document.plain
     assert "ADAPTER PATH\n" not in document.plain
     assert "LORA RANK" in document.plain
+    assert "PARTICIPANT\n person_01\n" in document.plain
+    assert "GENERATION\nBACKEND\n MLX-LM\nSEED\n 101\n" in document.plain
+    section_positions = [
+        document.plain.index(f"{section}\n")
+        for section in (
+            "IDENTITY",
+            "MODEL",
+            "RUN",
+            "DATASET",
+            "ADAPTER",
+            "TRAINING",
+            "CONVERSATION",
+            "PROMPT",
+            "COMPLETION",
+            "GENERATION",
+            "SAMPLING",
+            "REPETITION",
+            "FIDELITY",
+        )
+    ]
+    assert section_positions == sorted(section_positions)
     assert "NOT EVALUATED" in document.plain
     assert "SYNTHETIC // UI FIXTURE" not in document.plain
 
@@ -255,6 +283,12 @@ def test_trace_specs_add_snapshot_lineage_to_the_underlying_model(
     assert _NOW.isoformat() in document.plain
     assert "NOT EVALUATED" in document.plain
     assert "TURNS\n 2\n" in document.plain
+    assert "PATH\n" not in document.plain.split("\nTRACE\n", 1)[1]
+    assert "PARENT\n" in document.plain
+    assert "PARENT ID\n" not in document.plain
+    trace_section = document.plain.index("\nTRACE\n")
+    assert document.plain.index("REPETITION\n") < trace_section
+    assert trace_section < document.plain.index("FIDELITY\n")
     console = Console(width=36, color_system=None)
     model_digest = assistant.model_digest
     assert model_digest is not None
@@ -264,8 +298,8 @@ def test_trace_specs_add_snapshot_lineage_to_the_underlying_model(
     trace_start = rendered.index("TRACE")
     for label, next_label, value, search_start in (
         ("DIGEST", "TRUST REMOTE CODE", model_digest.upper(), 0),
-        ("ID", "PATH", trace.id.upper(), trace_start),
-        ("PATH", "PARENT ID", trace.path, trace_start),
+        ("ID", "PARENT", trace.id.upper(), trace_start),
+        ("PARENT", "CREATED", _TRACE_PARENT_ID.upper(), trace_start),
     ):
         start = rendered.index(label, search_start) + 1
         end = next(
@@ -286,21 +320,23 @@ def test_specs_group_generation_policy_and_align_prompt_format_blocks(
     document = render_specs(
         _base(tmp_path),
         GenerationConfig(
+            backend="mlx-lm",
             max_prompt_tokens=1920,
             repetition_penalty=1.1,
             repetition_context_size=20,
         ),
         "BASE",
+        chat=ChatConfig(seed=101, participant_name="person_01"),
     )
 
     assert (
-        "CONVERSATION\nFORMAT\n chat-template\nTURN CAPACITY\n 32\n" in document.plain
+        "CONVERSATION\nFORMAT\n chat-template\nTURN CAPACITY\n 32\n"
+        "PARTICIPANT\n person_01\n" in document.plain
     )
     assert "DIGEST\n —\n" in document.plain
     assert "LINEAGE\n" not in document.plain
     assert "TRACE\n" not in document.plain
-    assert "GENERATION\n" not in document.plain
-    assert "BACKEND\n" not in document.plain
+    assert "GENERATION\nBACKEND\n MLX-LM\nSEED\n 101\n" in document.plain
     assert "SYSTEM\n First line.\n \n Second line.\n" in document.plain
     assert (
         "PROMPT\nROLE\n user\nPREFIX\n —\nSUFFIX\n \\n\nLIMIT\n 1,920 TOK\n"
@@ -320,7 +356,8 @@ def test_specs_group_generation_policy_and_align_prompt_format_blocks(
     assert "CONTEXT TURNS" not in document.plain
     assert "EVALUATION" not in document.plain
     assert "GENERATION POLICY" not in document.plain
-    assert "GENERATION\n" not in document.plain
+    assert document.plain.index("COMPLETION\n") < document.plain.index("GENERATION\n")
+    assert document.plain.index("GENERATION\n") < document.plain.index("SAMPLING\n")
     assert "FIDELITY\n" in document.plain
 
 
@@ -420,7 +457,11 @@ def _construct(tmp_path: Path) -> Assistant:
         data,
         tmp_path / "adapter.safetensors",
         _ADAPTER_DIGEST,
-        {"optimizer": "adamw", "lora": {"rank": 8, "scale": 16}},
+        {
+            "fine_tune_type": "lora",
+            "optimizer": "adamw",
+            "lora": {"rank": 8, "scale": 16},
+        },
         7,
         2048,
     )

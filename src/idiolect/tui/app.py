@@ -2409,15 +2409,17 @@ class ChatApp(App[None]):
             assistant = row.assistant
             kind = "BASE" if assistant.run is None else "CONSTRUCT"
             generation = self.generation
+            chat = self.chat_policy
             trace = None
         elif isinstance(row, SavedChat):
             assistant = row.assistant
             kind = "TRACE"
             generation = row.generation
+            chat = row.chat
             trace = row
         else:
             return SheetDocument()
-        return render_specs(assistant, generation, kind, trace)
+        return render_specs(assistant, generation, kind, trace, chat)
 
     def _render_chat_specs_document(self) -> SheetDocument:
         """Render the active chat SPECS document."""
@@ -2431,7 +2433,7 @@ class ChatApp(App[None]):
             if assistant.run is None
             else "CONSTRUCT"
         )
-        return render_specs(assistant, session.generation, kind, trace)
+        return render_specs(assistant, session.generation, kind, trace, session.chat)
 
     def _refresh_catalog_prompts(self, selected_key: str) -> None:
         self._selected_catalog_key = selected_key
