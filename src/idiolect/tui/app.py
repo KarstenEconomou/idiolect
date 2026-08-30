@@ -61,6 +61,7 @@ from idiolect.tui.widgets import (
     CommandMenu,
     Composer,
     ConfirmModal,
+    ControlSheet,
     KeyboardOptionList,
     ReferenceBar,
     ReferenceMenu,
@@ -315,6 +316,11 @@ class ChatApp(App[None]):
     #composer .text-area--cursor-line, #composer .text-area--matching-bracket { background: $terminal; }
     #composer .text-area--gutter, #composer .text-area--suggestion, #composer .text-area--placeholder { color: $metadata; background: $terminal; }
     #command-menu { display: none; width: 100%; height: auto; max-height: 4; margin: 0 1; padding: 0 1; background: $terminal; }
+    #control-sheet { display: none; width: 100%; height: auto; margin: 0 1; padding: 0 1; background: $terminal; }
+    .control-actions { height: auto; }
+    .control-action, .control-gap { height: 1; }
+    .control-key { width: 5; height: 1; padding: 0 1; color: $terminal; }
+    .control-description { width: 1fr; height: 1; color: $metadata; }
     .menu-heading { height: 1; color: ansi_white; text-style: bold; }
     .menu-actions { height: auto; max-height: 3; }
     .menu-action { height: 1; }
@@ -440,6 +446,7 @@ class ChatApp(App[None]):
         self._dismissed_reference_text: str | None = None
         self._active_dialog: ActiveDialog | None = None
         self._active_selector: ActiveSelector | None = None
+        self._control_active = False
         self._trace_blink_visible = True
         self._trace_blink_timer: Timer | None = None
         self._load_status_text: str | None = None
@@ -496,6 +503,7 @@ class ChatApp(App[None]):
                 yield Transcript(id="transcript")
             with Horizontal(id="activity-row"):
                 with Container(id="activity-primary"):
+                    yield ControlSheet(id="control-sheet")
                     yield CommandMenu(id="command-menu")
                     yield ReferenceMenu(id="reference-menu")
                     yield StatusLine(id="status")
@@ -630,6 +638,7 @@ class ChatApp(App[None]):
 
     def _open_chroma(self) -> None:
         """Open the accent theme menu from the active screen."""
+        self._set_control(False)
         self._active_dialog = ActiveDialog(
             DialogKind.CHROMA,
             initial_theme_index=self._accent_theme_index,
@@ -803,6 +812,8 @@ class ChatApp(App[None]):
     def on_text_area_changed(self, event: TextArea.Changed) -> None:
         """Update slash and reference controls for one composer value."""
         value = event.text_area.text
+        if event.text_area is self.query_one(Composer) and value and self._control_active:
+            self._set_control(False)
         command_dismissed = value == self._dismissed_command_text
         reference_dismissed = value == self._dismissed_reference_text
         if not command_dismissed:
@@ -831,6 +842,23 @@ class ChatApp(App[None]):
         scroller = self.query_one("#transcript-scroll", VerticalScroll)
         if scroller.scroll_y >= scroller.max_scroll_y - event.height_delta - 1:
             scroller.scroll_end(animate=False)
+
+    def on_composer_control_requested(
+        self,
+        event: Composer.ControlRequested,
+    ) -> None:
+        """Open CONTROL for one blank composer request."""
+        del event
+        self._set_control(True)
+
+    def on_composer_control_dismissed(
+        self,
+        event: Composer.ControlDismissed,
+    ) -> None:
+        """Close CONTROL and optionally cancel active generation."""
+        self._set_control(False)
+        if event.cancel_generation and self._generating:
+            self.runtime.cancel()
 
     def on_text_area_selection_changed(
         self,
@@ -1244,6 +1272,7 @@ class ChatApp(App[None]):
         self.call_from_thread(self._set_status, f"prefill {current}/{total} TOK")
 
     def _show_chat(self) -> None:
+        self._set_control(False)
         session = self._session()
         self.chat_policy = session.chat
         self.generation = session.generation
@@ -1608,6 +1637,8 @@ class ChatApp(App[None]):
         composer.reference_menu_active = active
         composer.reference_menu_escape_enabled = active
         composer.reference_selected = self._reference_selected
+        if active:
+            self._set_control(False)
         self._sync_active_selector()
         self._update_footer()
         self._align_activity_notice()
@@ -1723,6 +1754,7 @@ class ChatApp(App[None]):
             elif self._generating:
                 self._show_err("CONSTRUCT is generating")
             else:
+                self._set_control(False)
                 self._active_dialog = ActiveDialog(DialogKind.TRACE_NAME)
                 self._update_confirmation_spacing()
                 self._update_footer()
@@ -1830,6 +1862,8 @@ class ChatApp(App[None]):
         composer.command_menu_escape_enabled = not self._generating
         composer.command_selected = self._command_selected
         composer.reference_selected = self._reference_selected
+        if visible_matches:
+            self._set_control(False)
         self._sync_active_selector()
         self._update_footer()
         self._align_activity_notice()
@@ -1837,6 +1871,7 @@ class ChatApp(App[None]):
             self.call_after_refresh(self._scroll_transcript_end)
 
     def _return_to_landing(self) -> None:
+        self._set_control(False)
         if self._session().dirty:
             self._push_confirmation(self._after_landing_confirm)
             return
@@ -1886,12 +1921,14 @@ class ChatApp(App[None]):
         self.exit()
 
     def _push_confirmation(self, callback: Callable[[str | None], None]) -> None:
+        self._set_control(False)
         self._active_dialog = ActiveDialog(DialogKind.CONFIRM)
         self._update_confirmation_spacing()
         self._update_footer()
         self.push_screen(ConfirmModal(), callback)
 
     def _push_trace_name(self, callback: Callable[[str | None], None]) -> None:
+        self._set_control(False)
         self._active_dialog = ActiveDialog(DialogKind.TRACE_NAME)
         self._update_footer()
         self.push_screen(TraceNameModal(default_chat_title(self._session())), callback)
@@ -1943,6 +1980,22 @@ class ChatApp(App[None]):
             )
         else:
             self._active_selector = None
+
+    def _set_control(self, active: bool) -> None:
+        """Set CONTROL visibility and its composer prompt sigil."""
+        if not self.is_mounted or len(self.query("#control-sheet")) == 0:
+            self._control_active = active
+            return
+        composer = self.query_one(Composer)
+        sheet = self.query_one("#control-sheet", ControlSheet)
+        changed = self._control_active != active or sheet.display != active
+        self._control_active = active
+        composer.control_active = active
+        sheet.display = active
+        self.query_one("#composer-prompt", Static).update("?" if active else ">")
+        self._align_activity_notice()
+        if changed:
+            self.call_after_refresh(self._scroll_transcript_end)
 
     def _save_from_confirmation(self, title: str) -> bool:
         if self.store is None:
@@ -2090,10 +2143,13 @@ class ChatApp(App[None]):
         if not self.is_mounted or len(self.query("#activity-row")) == 0:
             return
         command_bar = self.query_one("#command-bar", CommandBar)
+        control_sheet = self.query_one("#control-sheet", ControlSheet)
         command_menu = self.query_one("#command-menu", CommandMenu)
         reference_menu = self.query_one("#reference-menu", ReferenceMenu)
         if command_bar.display:
             offset = 1
+        elif control_sheet.display:
+            offset = 8
         elif command_menu.display:
             offset = sum(
                 action.display for action in command_menu.query(".command-action")
@@ -2255,6 +2311,7 @@ class ChatApp(App[None]):
 
     def _open_sheet(self, page: SheetPage) -> None:
         """Open one sheet through the shared sheet component."""
+        self._set_control(False)
         self.query_one("#landing").display = False
         self.query_one("#chat").display = False
         self._active_sheet = page
@@ -2269,6 +2326,7 @@ class ChatApp(App[None]):
 
     def _show_registry(self) -> None:
         """Return from model details to the unchanged registry selection."""
+        self._set_control(False)
         self.query_one(InfoSheet).close()
         self.query_one("#landing").display = True
         self._active_sheet = None

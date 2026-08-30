@@ -11,9 +11,25 @@ It does not autosave.
 
 The composer keeps accepted prompts and commands in memory for the active chat.
 A loaded trace adds its recorded user messages to this history. When the
-composer is blank, use Up to open the history. Then use Up or Down to move
-through it. Moving down past the newest item restores the blank composer. Use
-Shift+Enter or Alt+Enter to insert a line break.
+composer is blank, type `?` to consume that discovery sigil and open CONTROL:
+
+```text
+CONTROL
+/    COMMAND
+@    REFERENCE
+?    CONTROL
+
+↵    TRANSMIT
+⇧↵   NEWLINE
+↑↓   HISTORY
+ESC  CANCEL
+```
+
+CONTROL closes when the user types, recalls history, inserts a line break, or
+presses Escape. The next typed character is inserted normally. Use Up to open
+the history. Then use Up or Down to move through it. Moving down past the newest
+item restores the blank composer. Use Shift+Enter or Alt+Enter to insert a line
+break.
 
 ## Install and open
 

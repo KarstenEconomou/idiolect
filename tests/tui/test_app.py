@@ -29,6 +29,7 @@ from idiolect.tui.specs import SpecsDocument
 from idiolect.tui.widgets import (
     CommandMenu,
     Composer,
+    ControlSheet,
     KeyboardButton,
     ReferenceBar,
     ReferenceMenu,
@@ -1153,6 +1154,177 @@ def test_composer_submits_and_inserts_line_breaks(tmp_path) -> None:
         asyncio.run(verify())
     finally:
         runtime.release_generation.set()
+
+
+def test_blank_question_mark_opens_static_composer_controls(tmp_path) -> None:
+    """Check CONTROL discovery, transitions, history, and literal punctuation."""
+    chat = ChatConfig(output=tmp_path)
+    generation = GenerationConfig(max_prompt_tokens=1000)
+    runtime = TranscriptRuntime(chat, generation)
+    app = ChatApp(
+        chat,
+        generation,
+        runtime_factory=cast(Callable[..., ChatRuntime], lambda *_args: runtime),
+        initial_assistant=_assistant(),
+    )
+
+    async def verify() -> None:
+        async with app.run_test(size=(60, 24)) as pilot:
+            await _wait_for_chat(app, pilot)
+            composer = app.query_one(Composer)
+            prompt = app.query_one("#composer-prompt", Static)
+            sheet = app.query_one("#control-sheet", ControlSheet)
+            footer = app.query_one("#footer", Static)
+            scroller = app.query_one("#transcript-scroll", VerticalScroll)
+            telemetry = str(footer.content)
+
+            scroller.scroll_home(animate=False)
+            await pilot.press("?")
+            await pilot.pause()
+
+            assert sheet.display
+            assert composer.text == ""
+            assert composer.has_focus
+            assert str(prompt.content) == "?"
+            assert str(footer.content) == telemetry
+            assert scroller.scroll_y == scroller.max_scroll_y
+            heading = sheet.query_one(".menu-heading", Static)
+            assert str(heading.content) == "CONTROL"
+            assert heading.styles.color.ansi == 7
+            assert heading.styles.text_style.bold
+            rows = tuple(
+                (
+                    str(row.query_one(".control-key", Static).content),
+                    str(row.query_one(".control-description", Static).content),
+                )
+                for row in sheet.query(".control-action")
+            )
+            assert rows == (
+                ("/", "COMMAND"),
+                ("@", "REFERENCE"),
+                ("?", "CONTROL"),
+                ("↵", "TRANSMIT"),
+                ("⇧↵", "NEWLINE"),
+                ("↑↓", "HISTORY"),
+                ("ESC", "CANCEL"),
+            )
+            assert all(row.region.height == 1 for row in sheet.query(".control-action"))
+            first_row = sheet.query(".control-action").first()
+            first_key = first_row.query_one(".control-key", Static)
+            first_description = first_row.query_one(".control-description", Static)
+            assert first_key.content_region.x - heading.content_region.x == 1
+            assert first_description.styles.color == footer.styles.color
+
+            await pilot.press("x")
+            await pilot.pause()
+            assert not sheet.display
+            assert str(prompt.content) == ">"
+            assert composer.text == "x"
+            await pilot.press("?")
+            assert composer.text == "x?"
+            assert not sheet.display
+
+            composer.clear()
+            await pilot.pause()
+            await pilot.press("?", "?")
+            await pilot.pause()
+            assert composer.text == "?"
+            assert not sheet.display
+
+            composer.clear()
+            await pilot.pause()
+            await pilot.press("?", "/")
+            await pilot.pause()
+            assert composer.text == "/"
+            assert app.query_one("#command-menu", CommandMenu).display
+            assert not sheet.display
+
+            composer.clear()
+            await pilot.pause()
+            await pilot.press("?", "@")
+            await pilot.pause()
+            assert composer.text == "@"
+            assert app.query_one("#reference-menu", ReferenceMenu).display
+            assert not sheet.display
+            await pilot.press("enter", "?")
+            await pilot.pause()
+            assert composer.reference_selected
+            assert composer.text == "?"
+            assert not sheet.display
+            await pilot.press("escape")
+
+            composer.clear()
+            await pilot.pause()
+            composer.insert("/echo")
+            await pilot.pause()
+            await pilot.press("enter", "?")
+            await pilot.pause()
+            assert composer.command_selected
+            assert composer.text == "?"
+            assert not sheet.display
+            await pilot.press("escape")
+
+            composer.clear()
+            await pilot.pause()
+            composer.set_history(("?recalled",))
+            await pilot.press("?", "up")
+            await pilot.pause()
+            assert composer.text == "?recalled"
+            assert not sheet.display
+            await pilot.press("?")
+            assert composer.text == "?recalled?"
+
+            composer.clear()
+            await pilot.pause()
+            await pilot.press("?", "shift+enter")
+            await pilot.pause()
+            assert composer.text == "\n"
+            assert not sheet.display
+            assert str(prompt.content) == ">"
+
+            composer.clear()
+            await pilot.pause()
+            await pilot.press("?", "escape")
+            await pilot.pause()
+            assert not sheet.display
+            assert composer.text == ""
+            assert str(prompt.content) == ">"
+
+    asyncio.run(verify())
+
+
+def test_control_escape_cancels_active_generation(tmp_path) -> None:
+    """Check CONTROL dismissal keeps the existing generation cancel action."""
+    chat = ChatConfig(output=tmp_path)
+    generation = GenerationConfig(max_prompt_tokens=100)
+    runtime = ProgressRuntime(chat, generation)
+    app = ChatApp(
+        chat,
+        generation,
+        runtime_factory=cast(Callable[..., ChatRuntime], lambda *_args: runtime),
+        initial_assistant=_assistant(),
+    )
+
+    async def verify() -> None:
+        async with app.run_test() as pilot:
+            await _wait_for_chat(app, pilot)
+            composer = app.query_one(Composer)
+            composer.insert("hold reply")
+            await pilot.press("enter")
+            assert await asyncio.to_thread(runtime.prefill_started.wait, 1)
+
+            await pilot.press("?", "escape")
+            assert await asyncio.to_thread(runtime.cancelled.wait, 1)
+            await pilot.pause()
+
+            assert not app.query_one("#control-sheet", ControlSheet).display
+            assert str(app.query_one("#composer-prompt", Static).content) == ">"
+            assert composer.text == ""
+
+    try:
+        asyncio.run(verify())
+    finally:
+        runtime.release_prefill.set()
 
 
 def test_blank_composer_recalls_accepted_submission_history(tmp_path) -> None:

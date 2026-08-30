@@ -144,9 +144,24 @@ idiolect eval var/data/DATASET_ID \
 idiolect chat
 ```
 
-In a blank composer, Up opens the active chat's prompt and command history,
-including user messages loaded from a trace. Shift+Enter or Alt+Enter inserts a
-line break. Use `/retry` to recover a cancelled reply or failed generation.
+In a blank composer, type `?` to open CONTROL and discover the composer grammar:
+
+```text
+CONTROL
+/    COMMAND
+@    REFERENCE
+?    CONTROL
+
+↵    TRANSMIT
+⇧↵   NEWLINE
+↑↓   HISTORY
+ESC  CANCEL
+```
+
+The first `?` is a discovery sigil and is not inserted. Up opens the active
+chat's prompt and command history, including user messages loaded from a trace.
+Shift+Enter or Alt+Enter inserts a line break. Use `/retry` to recover a
+cancelled reply or failed generation.
 
 See [docs/index.md](docs/index.md) for the complete procedures, required stop
 conditions, artifact descriptions, and interpretation rules.

@@ -134,6 +134,7 @@ class Composer(TextArea):
     reference_menu_escape_enabled = False
     reference_selected = False
     command_selected = False
+    control_active = False
     _reported_height: int | None = None
     _history: tuple[str, ...] = ()
     _history_index: int | None = None
@@ -221,6 +222,17 @@ class Composer(TextArea):
             self.selector = selector
             super().__init__()
 
+    class ControlRequested(Message):
+        """Request the composer CONTROL sheet."""
+
+    class ControlDismissed(Message):
+        """Request dismissal of the composer CONTROL sheet."""
+
+        def __init__(self, *, cancel_generation: bool = False) -> None:
+            """Set whether dismissal also cancels active generation."""
+            self.cancel_generation = cancel_generation
+            super().__init__()
+
     class CommandMoved(Message):
         """Request a new highlighted command."""
 
@@ -274,6 +286,37 @@ class Composer(TextArea):
             )
 
     async def _on_key(self, event: events.Key) -> None:
+        if (
+            not self.control_active
+            and event.character == "?"
+            and not self.text
+            and self._history_index is None
+            and not self.command_menu_active
+            and not self.reference_menu_active
+            and not self.command_selected
+            and not self.reference_selected
+        ):
+            event.prevent_default()
+            event.stop()
+            self.control_active = True
+            self.post_message(self.ControlRequested())
+            return
+        if self.control_active and event.key == "escape":
+            event.prevent_default()
+            event.stop()
+            self.control_active = False
+            self.post_message(self.ControlDismissed(cancel_generation=True))
+            return
+        if self.control_active and event.key in {"shift+enter", "alt+enter"}:
+            event.prevent_default()
+            event.stop()
+            self.control_active = False
+            self.post_message(self.ControlDismissed())
+            self.insert("\n")
+            return
+        if self.control_active and event.character is not None:
+            self.control_active = False
+            self.post_message(self.ControlDismissed())
         if self.command_menu_active and event.key in {"up", "down"}:
             event.prevent_default()
             event.stop()
@@ -347,6 +390,9 @@ class Composer(TextArea):
             if boundary and self._navigate_history(-1 if event.key == "up" else 1):
                 event.prevent_default()
                 event.stop()
+                if self.control_active and self.text:
+                    self.control_active = False
+                    self.post_message(self.ControlDismissed())
                 return
         elif self._history_index is not None:
             self._history_index = None
@@ -363,6 +409,38 @@ class Composer(TextArea):
             self.insert("\n")
             return
         await super()._on_key(event)
+
+
+class ControlSheet(Static):
+    """Show the static composer interaction grammar."""
+
+    ROWS: ClassVar[tuple[tuple[str, str] | None, ...]] = (
+        ("/", "COMMAND"),
+        ("@", "REFERENCE"),
+        ("?", "CONTROL"),
+        None,
+        ("↵", "TRANSMIT"),
+        ("⇧↵", "NEWLINE"),
+        ("↑↓", "HISTORY"),
+        ("ESC", "CANCEL"),
+    )
+
+    def compose(self) -> ComposeResult:
+        """Create the heading and all CONTROL rows."""
+        yield Static("CONTROL", markup=False, classes="menu-heading")
+        with Vertical(classes="control-actions"):
+            for row in self.ROWS:
+                if row is None:
+                    yield Static("", markup=False, classes="control-gap")
+                    continue
+                key, description = row
+                with Horizontal(classes="control-action"):
+                    yield Static(key, markup=False, classes="control-key")
+                    yield Static(
+                        description,
+                        markup=False,
+                        classes="control-description",
+                    )
 
 
 class CommandMenu(VerticalMenu):
