@@ -16,7 +16,14 @@ CONVERSATION_HEADER = "Conversation:"
 NEXT_RESPONSE_MARKER = "next response"
 MESSAGE_BOUNDARY = "[new message]"
 BUBBLE_DELIMITER = f"\n{MESSAGE_BOUNDARY}\n"
-_BOUNDARY_LINE = re.compile(rf"^\s*{re.escape(MESSAGE_BOUNDARY)}\s*$", re.MULTILINE)
+_BOUNDARY_LINE = re.compile(
+    rf"^[^\S\r\n]*{re.escape(MESSAGE_BOUNDARY)}[^\S\r\n]*\r?$",
+    re.MULTILINE,
+)
+_BOUNDARY_DELIMITER = re.compile(
+    rf"(?:\A|\r\n|\r|\n)[^\S\r\n]*{re.escape(MESSAGE_BOUNDARY)}"
+    rf"[^\S\r\n]*(?=\r\n|\r|\n|\Z)"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,8 +71,21 @@ def join_bubbles(texts: Sequence[str]) -> str:
 
 
 def split_bubbles(text: str) -> tuple[str, ...]:
-    """Split one serialized response episode into its message bubbles."""
-    return tuple(text.split(BUBBLE_DELIMITER))
+    """Split one response episode at standalone message boundary lines."""
+    segments = _BOUNDARY_DELIMITER.split(text)
+    return tuple(
+        segment if index == 0 else _remove_leading_line_end(segment)
+        for index, segment in enumerate(segments)
+    )
+
+
+def _remove_leading_line_end(text: str) -> str:
+    """Remove the line end that follows one message boundary."""
+    if text.startswith("\r\n"):
+        return text[2:]
+    if text.startswith(("\r", "\n")):
+        return text[1:]
+    return text
 
 
 def validate_bubbles(texts: Sequence[str]) -> None:

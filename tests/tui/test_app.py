@@ -1745,6 +1745,10 @@ def test_reference_menu_selects_bubble_and_escape_clears_reference(tmp_path) -> 
                 if "two" in app.query_one(Transcript).plain:
                     break
 
+            transcript = app.query_one(Transcript).plain
+            assert "[new message]" not in transcript
+            assert "DIXIE:\n one\n\nDIXIE:\n two" in transcript
+
             composer.insert("@")
             await pilot.pause()
 
@@ -2517,8 +2521,9 @@ class ReferenceRuntime(ImmediateRuntime):
         if self.session is None:
             raise RuntimeError("No fake chat session")
         self.session.begin_generation()
-        value = "one\n[new message]\ntwo"
-        yield value
+        pieces = ("one\r\n  [new", " message]\t\r\n", "two")
+        yield from pieces
+        value = "".join(pieces)
         self.session.finish_generation(
             value,
             "stop",

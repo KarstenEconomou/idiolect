@@ -57,6 +57,14 @@ def test_bubble_serialization_rejects_ambiguous_boundary_lines() -> None:
     assert split_bubbles("one two") == ("one two",)
 
 
+def test_bubble_splitting_accepts_standalone_generated_boundary_lines() -> None:
+    """Check whitespace variants split without treating inline text as a boundary."""
+    assert split_bubbles("one\r\n  [new message]\t\r\ntwo") == ("one", "two")
+    assert split_bubbles("one\n[new message]") == ("one", "")
+    assert split_bubbles("[new message]\ntwo") == ("", "two")
+    assert split_bubbles("one [new message] two") == ("one [new message] two",)
+
+
 def test_example_keeps_prefill_in_prompt_and_suffix_in_target() -> None:
     """Check that the generation boundary excludes only the target text."""
     example = format_example(

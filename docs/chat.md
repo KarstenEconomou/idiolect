@@ -64,9 +64,11 @@ verified artifacts. The selected TOML file supplies the live generation policy.
 
 ## Prompt and context rules
 
-Chat uses the same conversation grammar as dataset construction. Past assistant
-turns keep the `[new message]` boundary between message bubbles. One model call
-generates one response episode.
+Chat uses the same conversation grammar as dataset construction. One model call
+generates one response episode. The terminal renders each non-empty part after
+a standalone `[new message]` boundary line as a separate message. It does not
+show the boundary. Spaces around the boundary and different line endings do not
+change this behavior.
 
 For an adapter, the runtime first applies the dataset's recorded context-message
 limit. It then renders the complete model prompt. If the prompt is too long, it
@@ -74,9 +76,11 @@ removes the oldest whole messages. It does not divide a message. It does not
 remove the newest user message. It rejects a newest message that cannot fit by
 itself.
 
-A user can attach reply context to a stored chat bubble. Adapter prompts encode
-that context with the same reply-header grammar as dataset prompts. The base
-persona does not receive adapter-specific reply metadata.
+A user can attach reply context to a stored chat message. Each rendered message
+has its own stable reference number, including messages from one response
+episode. Adapter prompts encode that context with the same reply-header grammar
+as dataset prompts. The base persona does not receive adapter-specific reply
+metadata.
 
 ## Model worker
 

@@ -24,7 +24,10 @@ inference, or evaluation starts.
 
 The result is a small adapter, not a new full model. Idiolect loads this adapter
 with its recorded base model for local generation and private terminal chat. It
-compares each adapter policy with that same base model on held-out responses:
+renders a generated response episode as separate messages at standalone
+`[new message]` boundaries and gives each rendered message its own reply
+reference. It compares each adapter policy with that same base model on held-out
+responses:
 the fidelity eval suite pillars are Likelihood, Voice, Validity, Memorization,
 and Recognition. Source data, datasets, model files, adapters, predictions, chats,
 and evaluation results stay on the local computer unless an operator enables
