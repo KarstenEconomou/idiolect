@@ -144,6 +144,10 @@ idiolect eval var/data/DATASET_ID \
 idiolect chat
 ```
 
+In a blank composer, Up opens the active chat's prompt and command history,
+including user messages loaded from a trace. Shift+Enter or Alt+Enter inserts a
+line break.
+
 See [docs/index.md](docs/index.md) for the complete procedures, required stop
 conditions, artifact descriptions, and interpretation rules.
 

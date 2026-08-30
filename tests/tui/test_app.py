@@ -1057,6 +1057,11 @@ def test_loaded_trace_starts_at_the_bottom_of_chat_history(tmp_path) -> None:
 
             scroller.scroll_home(animate=False)
             composer = app.query_one(Composer)
+            await pilot.press("up")
+            assert composer.text == "User message 7"
+            await pilot.press("up")
+            assert composer.text == "User message 6"
+            composer.clear()
             composer.insert("/specs")
             await pilot.press("enter")
             await pilot.pause()
@@ -1148,6 +1153,52 @@ def test_composer_submits_and_inserts_line_breaks(tmp_path) -> None:
         asyncio.run(verify())
     finally:
         runtime.release_generation.set()
+
+
+def test_blank_composer_recalls_accepted_submission_history(tmp_path) -> None:
+    """Check bounded history navigation starts only from a blank composer."""
+    chat = ChatConfig(output=tmp_path)
+    generation = GenerationConfig(max_prompt_tokens=100)
+    runtime = ImmediateRuntime(chat, generation)
+    app = ChatApp(
+        chat,
+        generation,
+        runtime_factory=cast(Callable[..., ChatRuntime], lambda *_args: runtime),
+        initial_assistant=_assistant(),
+    )
+
+    async def verify() -> None:
+        async with app.run_test(size=(50, 18)) as pilot:
+            await _wait_for_chat(app, pilot)
+            composer = app.query_one(Composer)
+            transcript = app.query_one(Transcript)
+            for value, reply_count in (("first", 1), ("second", 2)):
+                composer.insert(value)
+                await pilot.press("enter")
+                for _ in range(20):
+                    await pilot.pause()
+                    if transcript.plain.count("Synthetic reply") == reply_count:
+                        break
+
+            composer.insert("draft")
+            await pilot.press("up")
+            assert composer.text == "draft"
+
+            composer.clear()
+            await pilot.press("up")
+            assert composer.text == "second"
+            await pilot.press("up")
+            assert composer.text == "first"
+            await pilot.press("up")
+            assert composer.text == "first"
+            await pilot.press("down")
+            assert composer.text == "second"
+            await pilot.press("down")
+            assert composer.text == ""
+            await pilot.press("down")
+            assert composer.text == ""
+
+    asyncio.run(verify())
 
 
 def test_transcript_link_opens_validated_web_destination(tmp_path, monkeypatch) -> None:

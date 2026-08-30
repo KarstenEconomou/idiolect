@@ -9,6 +9,12 @@ DuckDB. It does not use tools or send messages to another service.
 Chat keeps the transcript in memory until the user explicitly saves a snapshot.
 It does not autosave.
 
+The composer keeps accepted prompts and commands in memory for the active chat.
+A loaded trace adds its recorded user messages to this history. When the
+composer is blank, use Up to open the history. Then use Up or Down to move
+through it. Moving down past the newest item restores the blank composer. Use
+Shift+Enter or Alt+Enter to insert a line break.
+
 ## Install and open
 
 Install the model and terminal packages:

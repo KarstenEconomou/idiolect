@@ -126,7 +126,7 @@ KeyboardButton = MenuButton
 
 
 class Composer(TextArea):
-    """Submit text or insert an explicit line break."""
+    """Submit text, insert a line break, or recall submitted text."""
 
     command_menu_active = False
     command_menu_escape_enabled = False
@@ -135,6 +135,40 @@ class Composer(TextArea):
     reference_selected = False
     command_selected = False
     _reported_height: int | None = None
+    _history: tuple[str, ...] = ()
+    _history_index: int | None = None
+
+    def set_history(self, values: Sequence[str]) -> None:
+        """Replace history with values from the active chat."""
+        self._history = tuple(values)
+        self._history_index = None
+
+    def record_submission(self, value: str) -> None:
+        """Add one accepted value to the composer history."""
+        self._history = (*self._history, value)
+        self._history_index = None
+
+    def _navigate_history(self, offset: int) -> bool:
+        """Recall one history value without wrapping at either end."""
+        if not self._history or (self._history_index is None and self.text):
+            return False
+        if offset < 0:
+            if self._history_index is None:
+                self._history_index = len(self._history) - 1
+            elif self._history_index > 0:
+                self._history_index -= 1
+        else:
+            if self._history_index is None:
+                return False
+            if self._history_index < len(self._history) - 1:
+                self._history_index += 1
+            else:
+                self._history_index = None
+        value = "" if self._history_index is None else self._history[self._history_index]
+        self.load_text(value)
+        lines = value.split("\n")
+        self.move_cursor((len(lines) - 1, len(lines[-1])))
+        return True
 
     class Resized(Message):
         """Report a composer height change."""
@@ -303,6 +337,19 @@ class Composer(TextArea):
                 )
             )
             return
+        if event.key in {"up", "down"}:
+            line, _column = self.cursor_location
+            boundary = (
+                line == 0
+                if event.key == "up"
+                else line == self.document.line_count - 1
+            )
+            if boundary and self._navigate_history(-1 if event.key == "up" else 1):
+                event.prevent_default()
+                event.stop()
+                return
+        elif self._history_index is not None:
+            self._history_index = None
         if event.key == "enter":
             event.prevent_default()
             event.stop()

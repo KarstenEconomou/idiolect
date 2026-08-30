@@ -1082,6 +1082,9 @@ class ChatApp(App[None]):
                 if command is None:
                     return
                 self._command(command.name, command.arguments)
+                composer.record_submission(
+                    f"/{self._command_name}" + (f" {value}" if value else "")
+                )
                 composer.clear()
                 self._clear_command()
                 return
@@ -1093,6 +1096,7 @@ class ChatApp(App[None]):
                 self._clear_reference_selection()
                 composer.clear()
                 self._command(command.name, command.arguments)
+                composer.record_submission(value)
                 return
             if self._generating:
                 self._show_err("CONSTRUCT is generating")
@@ -1100,6 +1104,7 @@ class ChatApp(App[None]):
             session = self._session()
             reference = self._reference_index if self._reference_selected else None
             session.add_user(value, reference)
+            composer.record_submission(value)
             self._reference_selected = False
             self._reference_index = None
             composer.clear()
@@ -1928,6 +1933,7 @@ class ChatApp(App[None]):
     def _begin_select(self, assistant: Assistant) -> None:
         if not self._prepare_load():
             return
+        self.query_one(Composer).set_history(())
         self._active_trace = None
         self._link_id = _random_link_id()
         self.runtime.session = ChatSession(
@@ -1947,6 +1953,9 @@ class ChatApp(App[None]):
     ) -> None:
         if not self._prepare_load():
             return
+        self.query_one(Composer).set_history(
+            tuple(turn.content for turn in session.turns if turn.role == "user")
+        )
         self._active_trace = trace
         self._link_id = _random_link_id()
         self.runtime.session = session
