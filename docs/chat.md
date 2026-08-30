@@ -115,6 +115,10 @@ uses the next deterministic attempt seed. The command is unavailable after a
 completed reply. Return to the registry and start a new session if recovery
 fails.
 
+Use `/specs`, `/probe`, and `/buffer` to inspect the current model, runtime, and
+context window. In these information sheets, Up and Down move one field at a
+time. The first field in a section includes its section heading.
+
 ## Saved snapshots
 
 An explicit save creates this private artifact:

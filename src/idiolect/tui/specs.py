@@ -13,6 +13,8 @@ from rich.segment import Segment, Segments
 from rich.style import Style
 from rich.text import Text
 from textual.scrollbar import ScrollBarRender
+from textual.visual import visualize
+from textual.widget import Widget
 
 from idiolect.chat.discovery import Assistant
 from idiolect.chat.state import ChatBubble, ChatSession, PreparedPrompt, TurnTelemetry
@@ -67,6 +69,10 @@ class SheetDocument:
         """Create an empty specification document."""
         self._renderables: list[RenderableType] = []
         self._text = Text()
+        self._fields: list[tuple[str, str, int, int]] = []
+        self._section = ""
+        self._section_anchor: int | None = None
+        self._section_has_field = False
 
     def __bool__(self) -> bool:
         """Return true when the document contains a rendered line."""
@@ -90,8 +96,17 @@ class SheetDocument:
 
     def append_inset(self, label: Text, value: Text) -> None:
         """Append one label and a value with a one-cell render inset."""
+        anchor = (
+            len(self._renderables)
+            if self._section_has_field or self._section_anchor is None
+            else self._section_anchor
+        )
         self.append_line(label)
         self._renderables.append(Padding(value, (0, 0, 0, 1)))
+        self._fields.append(
+            (self._section, label.plain, anchor, len(self._renderables))
+        )
+        self._section_has_field = True
         for line in value.split("\n", allow_blank=True):
             self._text.append(" ")
             self._text.append_text(line)
@@ -121,6 +136,32 @@ class SheetDocument:
     def note(self, value: str) -> None:
         """Append one metadata-colored sheet note."""
         _note(self, value)
+
+    def mark_section(self, name: str) -> None:
+        """Mark the latest line as the anchor for the next field."""
+        self._section = name
+        self._section_anchor = len(self._renderables) - 1
+        self._section_has_field = False
+
+    def field_ranges(
+        self, widget: Widget, width: int
+    ) -> tuple[tuple[str, str, int, int], ...]:
+        """Return the rendered range of each field navigation block."""
+        boundaries = {
+            index for _, _, start, end in self._fields for index in (start, end)
+        }
+        rows: dict[int, int] = {}
+        row = 0
+        rules = widget.styles.get_rules()
+        for index, renderable in enumerate(self._renderables):
+            if index in boundaries:
+                rows[index] = row
+            row += visualize(widget, renderable, markup=False).get_height(rules, width)
+        rows[len(self._renderables)] = row
+        return tuple(
+            (section, field, rows[start], rows[end])
+            for section, field, start, end in self._fields
+        )
 
     def __rich_console__(
         self,
@@ -597,6 +638,7 @@ def _section(document: SheetDocument, name: str) -> None:
     if document:
         document.append_line()
     document.append_line(Text(name, style="bold white"))
+    document.mark_section(name)
 
 
 def _field(

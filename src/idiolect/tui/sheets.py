@@ -47,6 +47,11 @@ class SheetScroll(VerticalScroll):
 
     async def _on_key(self, event: events.Key) -> None:
         page = self.app.query_one(InfoSheet).page
+        if event.key in {"up", "down"}:
+            event.prevent_default()
+            event.stop()
+            self._scroll_field(-1 if event.key == "up" else 1)
+            return
         if event.key == "enter" and page is not None and page.connect:
             event.prevent_default()
             event.stop()
@@ -58,6 +63,37 @@ class SheetScroll(VerticalScroll):
             self.post_message(self.CycleRequested(-1 if event.key == "left" else 1))
             return
         await super()._on_key(event)
+
+    def _scroll_field(self, direction: int) -> None:
+        """Reveal the adjacent complete field navigation block."""
+        body = self.query_one("#specs-body", Static)
+        document = body.content
+        if not isinstance(document, SpecsDocument):
+            return
+        offset = body.virtual_region.y
+        fields = document.field_ranges(body, body.content_region.width)
+        viewport_height = self.scrollable_content_region.height
+        top = self.scroll_y - offset
+        bottom = top + viewport_height
+        if direction < 0:
+            target = next(
+                (
+                    start
+                    for _section, _field, start, _end in reversed(fields)
+                    if start < top
+                ),
+                top,
+            )
+        else:
+            target_end = next(
+                (end for _section, _field, _start, end in fields if end > bottom),
+                bottom,
+            )
+            target = target_end - viewport_height
+        self.scroll_to(
+            y=max(0, min(offset + target, self.max_scroll_y)),
+            animate=False,
+        )
 
 
 class InfoSheet(Widget):

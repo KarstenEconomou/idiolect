@@ -2610,6 +2610,46 @@ def test_probe_command_shows_live_details_and_restores_chat(tmp_path) -> None:
             assert "GENERATION\n" not in content.plain
             assert "FIDELITY\n" not in content.plain
 
+            scroller = app.query_one("#specs-scroll", VerticalScroll)
+            body = app.query_one("#specs-body", Static)
+            fields = content.field_ranges(body, body.content_region.width)
+            load_end = next(
+                end
+                for section, field, _start, end in fields
+                if section == "MODEL" and field == "LOAD TIME"
+            )
+            output_end = next(
+                end
+                for section, field, _start, end in fields
+                if section == "TELEMETRY" and field == "OUTPUT"
+            )
+            prefill_end = next(
+                end
+                for section, field, _start, end in fields
+                if section == "TELEMETRY" and field == "PREFILL THROUGHPUT"
+            )
+            height = scroller.scrollable_content_region.height
+            offset = body.virtual_region.y
+            scroller.scroll_to(y=offset + load_end - height, animate=False)
+            await pilot.pause()
+
+            await pilot.press("down")
+            await pilot.pause()
+            assert scroller.scroll_y == offset + output_end - height
+            visible_start = int(scroller.scroll_y - offset)
+            visible = {
+                body.render_line(row).text.rstrip()
+                for row in range(visible_start, output_end)
+            }
+            assert {"TELEMETRY", "OUTPUT", " 64 TOK"} <= visible
+
+            await pilot.press("down")
+            await pilot.pause()
+            assert scroller.scroll_y == offset + prefill_end - height
+            assert body.render_line(prefill_end - 2).text.rstrip() == (
+                "PREFILL THROUGHPUT"
+            )
+
             await pilot.press("escape")
             await pilot.pause()
 
