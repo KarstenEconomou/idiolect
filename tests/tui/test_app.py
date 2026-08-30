@@ -1508,6 +1508,14 @@ def test_blank_question_mark_opens_static_composer_controls(tmp_path) -> None:
                 ("⎋", "CANCEL"),
             )
             assert all(row.region.height == 1 for row in sheet.query(".control-action"))
+            columns = tuple(sheet.query(".control-column"))
+            assert len(columns) == 2
+            assert columns[0].region.y == columns[1].region.y == heading.region.bottom
+            assert columns[1].region.x - columns[0].region.x == 16
+            alert = app.query_one("#chat-alert", StatusLine)
+            assert alert.state == "SYS: ACK LINK established."
+            assert alert.region.y == columns[1].query(".control-action").last().region.y
+            assert sheet.region.right <= alert.region.x
             first_row = sheet.query(".control-action").first()
             first_key = first_row.query_one(".control-key", Static)
             first_description = first_row.query_one(".control-description", Static)
@@ -1596,6 +1604,47 @@ def test_blank_question_mark_opens_static_composer_controls(tmp_path) -> None:
             assert str(prompt.content) == ">"
 
     asyncio.run(verify())
+
+
+def test_link_notice_keeps_open_composer_controls(tmp_path) -> None:
+    """Check a new system notice does not close CONTROL."""
+    chat = ChatConfig(output=tmp_path)
+    generation = GenerationConfig()
+    runtime = BlockingRuntime(chat, generation)
+    app = ChatApp(
+        chat,
+        generation,
+        runtime_factory=cast(Callable[..., ChatRuntime], lambda *_args: runtime),
+        initial_assistant=_assistant(),
+    )
+
+    async def verify() -> None:
+        async with app.run_test(size=(60, 24)) as pilot:
+            assert await asyncio.to_thread(runtime.started.wait, 1)
+            await pilot.press("?")
+            await pilot.pause()
+
+            sheet = app.query_one("#control-sheet", ControlSheet)
+            composer = app.query_one(Composer)
+            prompt = app.query_one("#composer-prompt", Static)
+            assert sheet.display
+
+            runtime.release.set()
+            alert = app.query_one("#chat-alert", StatusLine)
+            for _ in range(20):
+                await pilot.pause()
+                if alert.state == "SYS: ACK LINK established.":
+                    break
+
+            assert alert.state == "SYS: ACK LINK established."
+            assert sheet.display
+            assert composer.control_active
+            assert str(prompt.content) == "?"
+
+    try:
+        asyncio.run(verify())
+    finally:
+        runtime.release.set()
 
 
 def test_control_escape_cancels_active_generation(tmp_path) -> None:

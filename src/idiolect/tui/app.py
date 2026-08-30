@@ -346,7 +346,8 @@ class ChatApp(App[None]):
     #command-menu { display: none; width: 100%; height: auto; max-height: 4; margin: 0 1; padding: 0 1; background: $terminal; }
     #control-sheet { display: none; width: 100%; height: auto; margin: 0 1; padding: 0 1; background: $terminal; }
     .control-actions { height: auto; }
-    .control-action, .control-gap { height: 1; }
+    .control-column { width: 16; height: auto; }
+    .control-action { height: 1; }
     .control-key { width: 5; height: 1; padding: 0 1; color: $terminal; }
     .control-description { width: 1fr; height: 1; color: $metadata; }
     .menu-heading { height: 1; color: ansi_white; text-style: bold; }
@@ -1330,8 +1331,9 @@ class ChatApp(App[None]):
     def _report_prefill(self, current: int, total: int) -> None:
         self.call_from_thread(self._set_status, f"prefill {current}/{total} TOK")
 
-    def _show_chat(self) -> None:
-        self._set_control(False)
+    def _show_chat(self, *, preserve_control: bool = False) -> None:
+        if not preserve_control:
+            self._set_control(False)
         session = self._session()
         self.chat_policy = session.chat
         self.generation = session.generation
@@ -2169,13 +2171,13 @@ class ChatApp(App[None]):
 
     def _load_done(self) -> None:
         self._set_loading(False)
-        self._show_chat()
+        self._show_chat(preserve_control=True)
         self._show_ack("LINK established")
 
     def _load_failed(self, message: str) -> None:
         self._set_loading(False)
         if self.runtime.session is not None:
-            self._show_chat()
+            self._show_chat(preserve_control=True)
         self._set_status(None)
         self._show_err(message)
 
@@ -2237,7 +2239,10 @@ class ChatApp(App[None]):
         if command_bar.display:
             offset = 1
         elif control_sheet.display:
-            offset = 8
+            offset = max(
+                sum(action.display for action in column.query(".control-action"))
+                for column in control_sheet.query(".control-column")
+            )
         elif command_menu.display:
             offset = sum(
                 action.display for action in command_menu.query(".command-action")

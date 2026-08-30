@@ -414,34 +414,35 @@ class Composer(TextArea):
 class ControlSheet(Static):
     """Show the static composer interaction grammar."""
 
-    ROWS: ClassVar[tuple[tuple[str, str] | None, ...]] = (
-        ("/", "COMMAND"),
-        ("@", "REFERENCE"),
-        ("?", "CONTROL"),
-        None,
-        ("↩", "TRANSMIT"),
-        ("⇧↩", "NEWLINE"),
-        ("↑↓", "HISTORY"),
-        ("⇞⇟", "SCROLL"),
-        ("⎋", "CANCEL"),
+    COLUMNS: ClassVar[tuple[tuple[tuple[str, str], ...], ...]] = (
+        (
+            ("/", "COMMAND"),
+            ("@", "REFERENCE"),
+            ("?", "CONTROL"),
+        ),
+        (
+            ("↩", "TRANSMIT"),
+            ("⇧↩", "NEWLINE"),
+            ("↑↓", "HISTORY"),
+            ("⇞⇟", "SCROLL"),
+            ("⎋", "CANCEL"),
+        ),
     )
 
     def compose(self) -> ComposeResult:
         """Create the heading and all CONTROL rows."""
         yield Static("CONTROL", markup=False, classes="menu-heading")
-        with Vertical(classes="control-actions"):
-            for row in self.ROWS:
-                if row is None:
-                    yield Static("", markup=False, classes="control-gap")
-                    continue
-                key, description = row
-                with Horizontal(classes="control-action"):
-                    yield Static(key, markup=False, classes="control-key")
-                    yield Static(
-                        description,
-                        markup=False,
-                        classes="control-description",
-                    )
+        with Horizontal(classes="control-actions"):
+            for column in self.COLUMNS:
+                with Vertical(classes="control-column"):
+                    for key, description in column:
+                        with Horizontal(classes="control-action"):
+                            yield Static(key, markup=False, classes="control-key")
+                            yield Static(
+                                description,
+                                markup=False,
+                                classes="control-description",
+                            )
 
 
 class CommandMenu(VerticalMenu):
