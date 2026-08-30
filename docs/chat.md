@@ -14,7 +14,8 @@ It does not autosave.
 Chat uses macOS keyboard symbols as the canonical notation in CONTROL, footers,
 catalog hints, dialogs, and SPECS navigation. `↩` means Return, `⇧` means Shift,
 `⌃` means Control, `⎋` means Escape, `⌫` means Backspace/Delete, and `⎵` means
-Space. Arrow glyphs such as `↑↓` and `←→` retain their usual meaning.
+Space. `⇞` and `⇟` mean Page Up and Page Down. Arrow glyphs such as `↑↓` and
+`←→` retain their usual meaning.
 
 ## Install and open
 

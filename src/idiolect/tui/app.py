@@ -420,14 +420,14 @@ class ChatApp(App[None]):
         Binding("escape", "stop", "Stop"),
         Binding("ctrl+c", "interrupt", "Stop or quit"),
         Binding(
-            "ctrl+up",
+            "pageup",
             "scroll_transcript_up",
             "Scroll chat up",
             show=False,
             priority=True,
         ),
         Binding(
-            "ctrl+down",
+            "pagedown",
             "scroll_transcript_down",
             "Scroll chat down",
             show=False,
@@ -1236,20 +1236,34 @@ class ChatApp(App[None]):
             self._request_quit()
 
     def action_scroll_transcript_up(self) -> None:
-        """Move the chat viewport up without leaving the composer."""
-        if self.query_one("#chat").display:
-            self.query_one("#transcript-scroll", VerticalScroll).scroll_relative(
-                y=-3,
-                animate=False,
-            )
+        """Move the chat viewport up by one bubble."""
+        self._scroll_transcript_bubble(-1)
 
     def action_scroll_transcript_down(self) -> None:
-        """Move the chat viewport down without leaving the composer."""
-        if self.query_one("#chat").display:
-            self.query_one("#transcript-scroll", VerticalScroll).scroll_relative(
-                y=3,
-                animate=False,
-            )
+        """Move the chat viewport down by one bubble."""
+        self._scroll_transcript_bubble(1)
+
+    def _scroll_transcript_bubble(self, direction: int) -> None:
+        """Move to the adjacent rendered bubble boundary."""
+        if not self.query_one("#chat").display:
+            return
+        scroller = self.query_one("#transcript-scroll", VerticalScroll)
+        transcript = self.query_one("#transcript", Transcript)
+        offset = transcript.virtual_region.y
+        stops = sorted(
+            {
+                min(offset + start, scroller.max_scroll_y)
+                for start in transcript.bubble_starts(transcript.content_region.width)
+            }
+            | {0, scroller.max_scroll_y}
+        )
+        current = scroller.scroll_y
+        candidates = (
+            (stop for stop in reversed(stops) if stop < current)
+            if direction < 0
+            else (stop for stop in stops if stop > current)
+        )
+        scroller.scroll_to(y=next(candidates, current), animate=False)
 
     def action_open_link(self, url: str) -> None:
         """Open one validated transcript link in the default browser."""

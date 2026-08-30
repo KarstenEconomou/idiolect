@@ -18,6 +18,7 @@ from textual.geometry import Region
 from textual.message import Message
 from textual.screen import ModalScreen
 from textual.strip import Strip
+from textual.visual import visualize
 from textual.widget import Widget
 from textual.widgets import Input, OptionList, Static, TextArea
 
@@ -421,6 +422,7 @@ class ControlSheet(Static):
         ("↩", "TRANSMIT"),
         ("⇧↩", "NEWLINE"),
         ("↑↓", "HISTORY"),
+        ("⇞⇟", "SCROLL"),
         ("⎋", "CANCEL"),
     )
 
@@ -659,6 +661,7 @@ class Transcript(Static):
     plain = ""
     _cached_turns: tuple[tuple[str, str, bool], ...] = ()
     _cached_messages: tuple[ChatMarkdown, ...] = ()
+    _bubble_renderables: tuple[Group, ...] = ()
     _accent = "green"
 
     def set_accent(self, color: str) -> None:
@@ -681,22 +684,41 @@ class Transcript(Static):
             else ChatMarkdown(turn[1])
             for index, turn in enumerate(current)
         )
-        renderables: list[Text | Padding] = []
+        bubbles: list[Group] = []
+        renderables: list[Text | Padding | Group] = []
         plain_blocks = []
         for index, ((name, message, dimmed), rendered) in enumerate(
             zip(current, messages)
         ):
             if index:
                 renderables.append(Text(""))
-            renderables.append(self._speaker_label(name, dimmed=dimmed))
             body = _Dimmed(rendered) if dimmed else rendered
-            renderables.append(Padding(body, (0, 0, 0, 1)))
+            bubble = Group(
+                self._speaker_label(name, dimmed=dimmed),
+                Padding(body, (0, 0, 0, 1)),
+            )
+            bubbles.append(bubble)
+            renderables.append(bubble)
             displayed = message.replace("\n", "\n ")
             plain_blocks.append(self._plain_block(name, displayed))
         self._cached_turns = current
         self._cached_messages = messages
+        self._bubble_renderables = tuple(bubbles)
         self.plain = "\n\n".join(plain_blocks)
         self.update(Group(*renderables))
+
+    def bubble_starts(self, width: int) -> tuple[int, ...]:
+        """Return the rendered start row of each chat bubble."""
+        starts = []
+        row = 0
+        for index, bubble in enumerate(self._bubble_renderables):
+            if index:
+                row += 1
+            starts.append(row)
+            row += visualize(self, bubble, markup=False).get_height(
+                self.styles.get_rules(), width
+            )
+        return tuple(starts)
 
     @staticmethod
     def _plain_block(name: str, displayed: str) -> str:

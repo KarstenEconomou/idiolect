@@ -1271,13 +1271,18 @@ def test_transcript_formats_markdown_and_remains_scrollable(tmp_path) -> None:
             assert scroller.scroll_y < bottom
 
             scroller.scroll_end(animate=False)
-            await pilot.press("ctrl+up")
+            await pilot.press("pageup")
             await pilot.pause()
             assert scroller.scroll_y < bottom
-            scrolled_up = scroller.scroll_y
-            await pilot.press("ctrl+down")
+            transcript_offset = transcript.virtual_region.y
+            bubble_stops = {
+                min(transcript_offset + start, scroller.max_scroll_y)
+                for start in transcript.bubble_starts(transcript.content_region.width)
+            }
+            assert scroller.scroll_y in bubble_stops
+            await pilot.press("pagedown")
             await pilot.pause()
-            assert scroller.scroll_y > scrolled_up
+            assert scroller.scroll_y == bottom
 
             scroller.scroll_home(animate=False)
             app.query_one(Composer).insert("/")
@@ -1499,6 +1504,7 @@ def test_blank_question_mark_opens_static_composer_controls(tmp_path) -> None:
                 ("↩", "TRANSMIT"),
                 ("⇧↩", "NEWLINE"),
                 ("↑↓", "HISTORY"),
+                ("⇞⇟", "SCROLL"),
                 ("⎋", "CANCEL"),
             )
             assert all(row.region.height == 1 for row in sheet.query(".control-action"))
