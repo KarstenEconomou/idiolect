@@ -680,7 +680,7 @@ def test_chat_divider_matches_the_page_gutter(tmp_path) -> None:
             assert divider.content_region.x == 2
             assert divider.content_region.width == app.size.width - 4
             assert re.fullmatch(r"LINK#[0-9A-F]{6}", str(link.content))
-            assert link.content_region.right == heading.content_region.right - 1
+            assert link.content_region.right == heading.content_region.right
             assert link.region.right == heading.content_region.right
             assert link.styles.color.hex == "#80FF00"
 

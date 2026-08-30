@@ -303,7 +303,7 @@ class ChatApp(App[None]):
     #specs { display: none; background: $terminal; }
     #specs-heading { height: auto; min-height: 1; margin-top: 0; padding: 0 2; }
     #specs-identity { width: 1fr; height: auto; min-height: 1; color: $accent; text-style: bold; }
-    .brand-link { width: 12; height: 1; padding-right: 1; color: $accent; text-align: right; text-style: bold; }
+    .brand-link { width: 12; height: 1; color: $accent; text-align: right; text-style: bold; }
     #specs-rule { height: 1; margin: 0; padding: 0 2; color: $metadata; }
     #specs-scroll { height: 1fr; padding: 0 2; background: $terminal; scrollbar-size-vertical: 1; scrollbar-color: $metadata; scrollbar-color-hover: $metadata; scrollbar-color-active: $metadata; scrollbar-background: $terminal; scrollbar-background-hover: $terminal; scrollbar-background-active: $terminal; }
     #specs-body { width: 100%; height: auto; color: $terminal; background: $terminal; }
