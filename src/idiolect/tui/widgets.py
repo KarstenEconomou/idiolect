@@ -65,7 +65,15 @@ class KeyboardOptionList(OptionList):
     class ChromaRequested(Message):
         """Request the interface accent theme menu."""
 
+    class FilterRequested(Message):
+        """Request the registry filter menu."""
+
     async def _on_key(self, event: events.Key) -> None:
+        if event.key in {"/", "slash"} or event.character == "/":
+            event.prevent_default()
+            event.stop()
+            self.post_message(self.FilterRequested())
+            return
         if event.key.lower() == "c":
             event.prevent_default()
             event.stop()

@@ -9,9 +9,16 @@ from typing import ClassVar, Literal
 from rich.cells import cell_len
 from textual import events
 from textual.app import ComposeResult
-from textual.containers import Horizontal, HorizontalScroll, Vertical
+from textual.containers import Horizontal, HorizontalScroll, Vertical, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Button, Static
+
+from idiolect.tui.catalog import (
+    REGISTRY_FILTER_FIELDS,
+    RegistryFacets,
+    RegistryFilter,
+    RegistryFilterField,
+)
 
 MenuVariant = Literal["default", "muted"]
 MenuAnchor = Literal["active", "chat", "registry"]
@@ -360,3 +367,182 @@ class HorizontalMenuModal(ModalScreen[str | None]):
         """Return the selected item identity."""
         identity = (event.button.id or "").removeprefix(self.button_prefix)
         self.dismiss(identity)
+
+
+class RegistryFilterModal(ModalScreen[RegistryFilter | None]):
+    """Show the keyboard-only registry filter menu."""
+
+    def __init__(
+        self,
+        facets: RegistryFacets,
+        applied: RegistryFilter,
+    ) -> None:
+        """Start draft selections from the applied registry filters."""
+        super().__init__()
+        self.facets = facets
+        self.applied = applied
+        self.draft = applied
+        self.active_field_index = 0
+        self._indexes = {
+            field: self.facets.values(field).index(applied.value(field))
+            for field in REGISTRY_FILTER_FIELDS
+        }
+
+    @property
+    def active_field(self) -> RegistryFilterField:
+        """Return the field that receives value navigation."""
+        return REGISTRY_FILTER_FIELDS[self.active_field_index]
+
+    def compose(self) -> ComposeResult:
+        """Create four independently scrolling filter columns."""
+        with Vertical(id="registry-filter-dialog", classes="-unplaced"):
+            yield Static("FILTER", markup=False, id="registry-filter-title")
+            with Horizontal(id="registry-filter-fields"):
+                for field in REGISTRY_FILTER_FIELDS:
+                    with Vertical(classes="registry-filter-column"):
+                        yield Static(
+                            field.upper(),
+                            markup=False,
+                            id=f"registry-filter-{field}-heading",
+                            classes="registry-filter-heading",
+                        )
+                        with VerticalScroll(
+                            id=f"registry-filter-{field}-values",
+                            classes="registry-filter-values",
+                        ):
+                            for index, _value in enumerate(self.facets.values(field)):
+                                with Horizontal(
+                                    id=f"registry-filter-{field}-{index}",
+                                    classes="registry-filter-row",
+                                ):
+                                    yield Static(
+                                        "",
+                                        markup=False,
+                                        classes="registry-filter-value",
+                                    )
+                                    yield Static(
+                                        "",
+                                        markup=False,
+                                        classes="registry-filter-count",
+                                    )
+
+    def on_mount(self) -> None:
+        """Place and render the filter menu."""
+        self.call_after_refresh(self._show_dialog)
+
+    def _show_dialog(self) -> None:
+        """Anchor the menu above the registry hints."""
+        self._place_dialog()
+        self.query_one("#registry-filter-dialog", Vertical).remove_class("-unplaced")
+        self._render_values()
+        self.call_after_refresh(self._reveal_active)
+
+    def on_resize(self, _event: events.Resize) -> None:
+        """Keep the menu bottom-anchored after a resize."""
+        self.call_after_refresh(self._resize_dialog)
+
+    def _resize_dialog(self) -> None:
+        """Place the resized menu and reveal the active value."""
+        self._place_dialog()
+        self.call_after_refresh(self._reveal_active)
+
+    def _place_dialog(self) -> None:
+        """Set the menu size from its content and available registry space."""
+        hints = self.app.query_one("#catalog-hints", Static)
+        dialog = self.query_one("#registry-filter-dialog", Vertical)
+        desired_height = 2 + max(
+            len(self.facets.values(field)) for field in REGISTRY_FILTER_FIELDS
+        )
+        height = min(desired_height, max(3, hints.region.y))
+        dialog.styles.width = max(4, hints.region.width - 2)
+        dialog.styles.height = height
+        dialog.styles.offset = (hints.region.x + 1, hints.region.y - height)
+
+    def _render_values(self) -> None:
+        """Render draft selections and current faceted counts."""
+        for field_index, field in enumerate(REGISTRY_FILTER_FIELDS):
+            counts = self.facets.counts(field, self.draft)
+            selected_index = self._indexes[field]
+            for index, (value, count) in enumerate(counts):
+                row = self.query_one(
+                    f"#registry-filter-{field}-{index}",
+                    Horizontal,
+                )
+                selected = index == selected_index
+                row.set_class(selected, "-selected")
+                row.set_class(
+                    selected and field_index == self.active_field_index,
+                    "-active",
+                )
+                row.query_one(".registry-filter-value", Static).update(value)
+                row.query_one(".registry-filter-count", Static).update(str(count))
+
+    def _reveal_active(self) -> None:
+        """Keep the active field's selected value visible."""
+        field = self.active_field
+        selected = self.query_one(
+            f"#registry-filter-{field}-{self._indexes[field]}",
+            Horizontal,
+        )
+        self.query_one(
+            f"#registry-filter-{field}-values",
+            VerticalScroll,
+        ).scroll_to_widget(selected, animate=False, immediate=True)
+
+    def on_key(self, event: events.Key) -> None:
+        """Navigate fields and values, apply, or cancel."""
+        if event.key == "escape":
+            self.dismiss(None)
+        elif event.key == "enter":
+            self.dismiss(self.draft)
+        elif event.key == "backspace" and self.applied != RegistryFilter():
+            self.dismiss(RegistryFilter())
+        elif event.key in {"left", "right"}:
+            offset = -1 if event.key == "left" else 1
+            self.active_field_index = (
+                self.active_field_index + offset
+            ) % len(REGISTRY_FILTER_FIELDS)
+            self._render_values()
+            self.call_after_refresh(self._reveal_active)
+        elif event.key in {"up", "down"}:
+            field = self.active_field
+            values = self.facets.values(field)
+            offset = -1 if event.key == "up" else 1
+            self._indexes[field] = (self._indexes[field] + offset) % len(values)
+            self.draft = self.draft.replace(field, values[self._indexes[field]])
+            self._render_values()
+            self.call_after_refresh(self._reveal_active)
+        else:
+            return
+        event.prevent_default()
+        event.stop()
+
+    @staticmethod
+    def _block_pointer(event: events.MouseEvent) -> None:
+        """Block pointer focus, activation, and scrolling."""
+        event.prevent_default()
+        event.stop()
+
+    async def _on_click(self, event: events.Click) -> None:
+        self._block_pointer(event)
+
+    async def _on_mouse_down(self, event: events.MouseDown) -> None:
+        self._block_pointer(event)
+
+    async def _on_mouse_up(self, event: events.MouseUp) -> None:
+        self._block_pointer(event)
+
+    def _on_mouse_move(self, event: events.MouseMove) -> None:
+        self._block_pointer(event)
+
+    def _on_mouse_scroll_down(self, event: events.MouseScrollDown) -> None:
+        self._block_pointer(event)
+
+    def _on_mouse_scroll_up(self, event: events.MouseScrollUp) -> None:
+        self._block_pointer(event)
+
+    def _on_mouse_scroll_right(self, event: events.MouseScrollRight) -> None:
+        self._block_pointer(event)
+
+    def _on_mouse_scroll_left(self, event: events.MouseScrollLeft) -> None:
+        self._block_pointer(event)

@@ -25,6 +25,7 @@ from idiolect.chat.worker import LoadProbe, RuntimeProbe, WorkerState
 from idiolect.config import ChatConfig, GenerationConfig, TrainDataConfig
 from idiolect.model import ModelSpec
 from idiolect.tui.app import ChatApp, _telemetry_footer
+from idiolect.tui.menus import RegistryFilterModal
 from idiolect.tui.specs import SpecsDocument
 from idiolect.tui.widgets import (
     CommandMenu,
@@ -84,7 +85,7 @@ def test_registry_opens_highlighted_assistant_from_keyboard(tmp_path) -> None:
             assert tagline_style.dim
             watermark_lines = watermark.plain.splitlines()
             assert watermark_lines[3].index("Someone, reconstructed.") == (
-                watermark_lines[2].index("IDIOLECT") + 1
+                watermark_lines[2].index("IDIOLECT")
             )
             assert str(app.query_one("#catalog-title", Static).content) == "REGISTRY"
             assert str(app.query_one("#catalog-description", Static).content) == (
@@ -102,9 +103,9 @@ def test_registry_opens_highlighted_assistant_from_keyboard(tmp_path) -> None:
             assert app.query_one("#landing").region.x == 0
             assert app.query_one("#landing-box").region.width == 80
             assert app.query_one("#catalog-heading").content_region.x == 2
-            assert app.query_one("#catalog-description").content_region.x == 3
+            assert app.query_one("#catalog-description").content_region.x == 2
             assert chooser.content_region.x == 2
-            assert chooser.get_component_styles("option-list--option").padding.left == 1
+            assert chooser.get_component_styles("option-list--option").padding.left == 0
             assert app.query_one("#catalog-hints", Static).content_region.x == 2
             assert chooser.highlighted == 1
             assert chooser.has_focus
@@ -114,7 +115,7 @@ def test_registry_opens_highlighted_assistant_from_keyboard(tmp_path) -> None:
             assert "M" in prompt.plain
             assert "READY" in prompt.plain
             assert str(app.query_one("#catalog-hints", Static).content) == (
-                "↑↓ MOVE  ↩ CONNECT  S SPECS  C CHROMA  ⌃C TERMINATE"
+                "↑↓ MOVE  ↩ CONNECT  S SPECS  / FILTER  C CHROMA  ⌃C TERMINATE"
             )
 
             await pilot.click(chooser, offset=(2, 1))
@@ -126,6 +127,260 @@ def test_registry_opens_highlighted_assistant_from_keyboard(tmp_path) -> None:
             await _wait_for_chat(app, pilot)
             assert runtime.session is not None
             assert runtime.session.assistant is assistant
+
+    asyncio.run(verify())
+
+
+def test_registry_filter_facets_apply_cancel_and_restore_focus(tmp_path) -> None:
+    """Check faceted menu navigation, application, and session state."""
+    chat = ChatConfig(output=tmp_path)
+    generation = GenerationConfig()
+    dixie = _assistant()
+    alpha = replace(
+        dixie,
+        name="IDIOLECT // ALPHA::BASE [M]",
+        target_name="ALPHA",
+    )
+    saved = SavedChat(
+        "a" * 64,
+        tmp_path / ("a" * 64),
+        datetime(2026, 8, 22, tzinfo=UTC),
+        "Night session",
+        None,
+        dixie,
+        chat,
+        generation,
+        (),
+    )
+    app = ChatApp(
+        chat,
+        generation,
+        assistants=(
+            DiscoveryItem("Unavailable assistant", "failed", None, None, "invalid"),
+            DiscoveryItem(dixie.name, "BASE", None, dixie),
+            DiscoveryItem(alpha.name, "BASE", None, alpha),
+        ),
+        store=cast(ChatStore, RegistryStore(saved)),
+        runtime_factory=cast(
+            Callable[..., ChatRuntime],
+            lambda *_args: ImmediateRuntime(chat, generation),
+        ),
+    )
+
+    async def verify() -> None:
+        async with app.run_test(size=(80, 24)) as pilot:
+            chooser = app.query_one("#chooser", OptionList)
+            assert "⌫ REMOVE" not in str(
+                app.query_one("#catalog-hints", Static).content
+            )
+            await pilot.press("down")
+            assert chooser.get_option_at_index(chooser.highlighted or 0).id == (
+                "assistant-2"
+            )
+
+            await pilot.press("/")
+            await pilot.pause()
+            assert isinstance(app.screen, RegistryFilterModal)
+            assert str(app.query_one("#catalog-hints", Static).content) == (
+                "←→ FIELD  ↑↓ VALUE  ↩ APPLY  ⎋ CANCEL"
+            )
+            await pilot.press("backspace")
+            assert isinstance(app.screen, RegistryFilterModal)
+            dialog = app.screen.query_one("#registry-filter-dialog", Vertical)
+            assert dialog.region.bottom == app.query_one("#catalog-hints").region.y
+            filter_title = app.screen.query_one("#registry-filter-title", Static)
+            target_heading = app.screen.query_one(
+                "#registry-filter-target-heading", Static
+            )
+            assert str(filter_title.content) == "FILTER"
+            assert filter_title.styles.text_style.bold
+            assert not target_heading.styles.text_style.bold
+            assert target_heading.content_region.x - filter_title.content_region.x == 1
+            assert [
+                str(heading.content)
+                for heading in app.screen.query(".registry-filter-heading")
+            ] == ["TARGET", "BASE", "TYPE", "STATUS"]
+            target_values = [
+                str(value.content)
+                for value in app.screen.query_one(
+                    "#registry-filter-target-values", VerticalScroll
+                ).query(".registry-filter-value")
+            ]
+            assert target_values == ["ALL", "—", "DIXIE", "ALPHA"]
+            unselected_value = app.screen.query_one(
+                "#registry-filter-target-2 .registry-filter-value", Static
+            )
+            assert unselected_value.styles.color.ansi == 8
+
+            target_all = app.screen.query_one(
+                "#registry-filter-target-0", Horizontal
+            )
+            active_value = target_all.query_one(".registry-filter-value", Static)
+            assert target_all.has_class("-active")
+            assert active_value.styles.color.hex == "#80FF00"
+            assert active_value.styles.text_style.bold
+            assert (
+                target_all.query_one(".registry-filter-count", Static).styles.color.ansi
+                == 8
+            )
+
+            await pilot.click(
+                app.screen.query_one(
+                    "#registry-filter-target-3 .registry-filter-value", Static
+                )
+            )
+            assert target_all.has_class("-active")
+
+            await pilot.press("right")
+            assert target_all.has_class("-selected")
+            assert not target_all.has_class("-active")
+            assert active_value.styles.text_style.dim
+            await pilot.press("down", "down")
+            target_counts = {
+                str(row.query_one(".registry-filter-value", Static).content): int(
+                    str(row.query_one(".registry-filter-count", Static).content)
+                )
+                for row in app.screen.query_one(
+                    "#registry-filter-target-values", VerticalScroll
+                ).query(".registry-filter-row")
+            }
+            assert target_counts == {"ALL": 3, "—": 0, "DIXIE": 2, "ALPHA": 1}
+            assert len(
+                {
+                    row.query_one(
+                        ".registry-filter-count", Static
+                    ).content_region.right
+                    for row in app.screen.query_one(
+                        "#registry-filter-target-values", VerticalScroll
+                    ).query(".registry-filter-row")
+                }
+            ) == 1
+
+            await pilot.press("right", "right", "down", "down", "enter")
+            await pilot.pause()
+            assert [option.id for option in chooser.options] == [
+                "assistant-1",
+                "assistant-2",
+                f"saved-{saved.id}",
+            ]
+            assert chooser.highlighted == 1
+            assert chooser.has_focus
+            assert "⌫ REMOVE" not in str(
+                app.query_one("#catalog-hints", Static).content
+            )
+
+            await pilot.press("/")
+            await pilot.pause()
+            assert "⌫ REMOVE" in str(
+                app.query_one("#catalog-hints", Static).content
+            )
+            assert app.screen.query_one(
+                "#registry-filter-base-2", Horizontal
+            ).has_class("-selected")
+            assert app.screen.query_one(
+                "#registry-filter-status-2", Horizontal
+            ).has_class("-selected")
+            await pilot.press("right", "right", "down", "down", "down", "enter")
+            await pilot.pause()
+            assert [option.id for option in chooser.options] == [f"saved-{saved.id}"]
+            hints = str(app.query_one("#catalog-hints", Static).content)
+            assert "⌫ REMOVE" not in hints
+            assert "⌫ MANAGE" in hints
+
+            await pilot.press("/", "down", "down", "down", "enter")
+            await pilot.pause()
+            assert len(chooser.options) == 0
+            assert chooser.highlighted is None
+
+            await pilot.resize_terminal(60, 24)
+            await pilot.pause()
+            assert len(chooser.options) == 0
+            await pilot.press("c")
+            await pilot.pause()
+            await pilot.press("escape")
+            await pilot.pause()
+            assert len(chooser.options) == 0
+
+            await pilot.press("/", "up", "escape")
+            await pilot.pause()
+            assert len(chooser.options) == 0
+            assert chooser.has_focus
+            await pilot.press("/")
+            assert app.screen.query_one(
+                "#registry-filter-target-3", Horizontal
+            ).has_class("-active")
+            assert "⌫ REMOVE" in str(
+                app.query_one("#catalog-hints", Static).content
+            )
+            await pilot.press("backspace")
+            await pilot.pause()
+            assert len(chooser.options) == 4
+            assert chooser.get_option_at_index(chooser.highlighted or 0).id == (
+                "assistant-1"
+            )
+            assert "⌫ REMOVE" not in str(
+                app.query_one("#catalog-hints", Static).content
+            )
+            await pilot.press("/")
+            assert app.screen.query_one(
+                "#registry-filter-target-0", Horizontal
+            ).has_class("-active")
+            assert app.screen.query_one(
+                "#registry-filter-base-0", Horizontal
+            ).has_class("-selected")
+            assert app.screen.query_one(
+                "#registry-filter-status-0", Horizontal
+            ).has_class("-selected")
+            await pilot.press("escape")
+
+    asyncio.run(verify())
+
+
+def test_registry_filter_scrolls_only_the_active_column(tmp_path) -> None:
+    """Check wrapping fields and independent overflowing value viewports."""
+    chat = ChatConfig(output=tmp_path)
+    generation = GenerationConfig()
+    assistants = tuple(
+        replace(
+            _assistant(),
+            name=f"IDIOLECT // TARGET{index:02d}::BASE [M]",
+            target_name=f"TARGET{index:02d}",
+        )
+        for index in range(18)
+    )
+    app = ChatApp(
+        chat,
+        generation,
+        assistants=tuple(
+            DiscoveryItem(assistant.name, "BASE", None, assistant)
+            for assistant in assistants
+        ),
+        runtime_factory=cast(
+            Callable[..., ChatRuntime],
+            lambda *_args: ImmediateRuntime(chat, generation),
+        ),
+    )
+
+    async def verify() -> None:
+        async with app.run_test(size=(60, 16)) as pilot:
+            await pilot.press("/")
+            target = app.screen.query_one(
+                "#registry-filter-target-values", VerticalScroll
+            )
+            base = app.screen.query_one("#registry-filter-base-values", VerticalScroll)
+            await pilot.press(*(tuple("down" for _index in range(16))))
+            await pilot.pause()
+            assert target.scroll_y > 0
+            assert base.scroll_y == 0
+            await pilot.press("left")
+            assert app.screen.query_one(
+                "#registry-filter-status-0", Horizontal
+            ).has_class("-active")
+            await pilot.press("right")
+            assert app.screen.query_one(
+                "#registry-filter-target-16", Horizontal
+            ).has_class("-active")
+            await pilot.press("escape")
 
     asyncio.run(verify())
 
@@ -249,7 +504,7 @@ def test_registry_chroma_menu_previews_all_themes_and_persists(tmp_path) -> None
                 "SYS: ACK HACKER equipped."
             )
             assert str(app.query_one("#catalog-hints", Static).content) == (
-                "↑↓ MOVE  ↩ CONNECT  S SPECS  C CHROMA  ⌃C TERMINATE"
+                "↑↓ MOVE  ↩ CONNECT  S SPECS  / FILTER  C CHROMA  ⌃C TERMINATE"
             )
             await pilot.press("s")
             await pilot.pause()
@@ -729,7 +984,7 @@ def test_registry_shows_trace_names_and_manage_hint(tmp_path) -> None:
             assert isinstance(second_trace, Text)
             assert "Morning session" in second_trace.plain
             assert str(app.query_one("#catalog-hints", Static).content) == (
-                "↑↓ MOVE  ↩ CONNECT  S SPECS  C CHROMA  ⌃C TERMINATE"
+                "↑↓ MOVE  ↩ CONNECT  S SPECS  / FILTER  C CHROMA  ⌃C TERMINATE"
             )
             assert "⌫ MANAGE" not in str(
                 app.query_one("#catalog-hints", Static).content
@@ -756,7 +1011,7 @@ def test_registry_shows_trace_names_and_manage_hint(tmp_path) -> None:
             assert selected_name.color is None
             assert selected_name.dim
             assert str(app.query_one("#catalog-hints", Static).content) == (
-                "↑↓ MOVE  ↩ CONNECT  S SPECS  C CHROMA  ⌫ MANAGE  ⌃C TERMINATE"
+                "↑↓ MOVE  ↩ CONNECT  S SPECS  / FILTER  C CHROMA  ⌫ MANAGE  ⌃C TERMINATE"
             )
             assert "⌫ MANAGE" in str(
                 app.query_one("#catalog-hints", Static).content

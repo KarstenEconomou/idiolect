@@ -3,7 +3,45 @@
 from rich.cells import cell_len
 from rich.console import Console
 
-from idiolect.tui.catalog import CatalogLayout
+from idiolect.tui.catalog import (
+    CatalogLayout,
+    RegistryFacetRow,
+    RegistryFacets,
+    RegistryFilter,
+)
+
+
+def test_registry_facets_keep_order_and_ignore_the_counted_field() -> None:
+    """Check stable options, AND matching, and faceted zero counts."""
+    rows = (
+        RegistryFacetRow("fault", "—", "—", "—", "FAULT"),
+        RegistryFacetRow("base", "DIXIE", "M", "BASE", "READY"),
+        RegistryFacetRow("construct", "DIXIE", "N", "CONSTRUCT", "READY"),
+        RegistryFacetRow("trace", "DIXIE", "M", "TRACE", "READY"),
+        RegistryFacetRow("other", "ALPHA", "M", "BASE", "READY"),
+    )
+    facets = RegistryFacets(rows)
+    selected = RegistryFilter(base="M", type="TRACE")
+
+    assert facets.values("target") == ("ALL", "—", "DIXIE", "ALPHA")
+    assert facets.values("type") == ("ALL", "—", "BASE", "CONSTRUCT", "TRACE")
+    assert dict(facets.counts("target", selected)) == {
+        "ALL": 1,
+        "—": 0,
+        "DIXIE": 1,
+        "ALPHA": 0,
+    }
+    assert dict(facets.counts("type", selected)) == {
+        "ALL": 3,
+        "—": 0,
+        "BASE": 2,
+        "CONSTRUCT": 0,
+        "TRACE": 1,
+    }
+    assert [row.key for row in rows if selected.matches(row)] == ["trace"]
+    assert not any(
+        RegistryFilter(base="N", type="TRACE").matches(row) for row in rows
+    )
 
 
 def test_catalog_columns_follow_terminal_width() -> None:

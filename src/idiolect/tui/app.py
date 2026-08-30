@@ -38,7 +38,13 @@ from idiolect.chat.storage import (
 from idiolect.chat.worker import WorkerError, WorkerState
 from idiolect.config import ChatConfig, GenerationConfig
 from idiolect.prompt import split_bubbles
-from idiolect.tui.catalog import CatalogLayout
+from idiolect.tui.catalog import (
+    REGISTRY_FILTER_UNAVAILABLE,
+    CatalogLayout,
+    RegistryFacetRow,
+    RegistryFacets,
+    RegistryFilter,
+)
 from idiolect.tui.commands import (
     COMMAND_ARGUMENTS,
     COMMAND_DESCRIPTIONS,
@@ -47,6 +53,7 @@ from idiolect.tui.commands import (
     parse_command,
 )
 from idiolect.tui.markdown import is_web_link
+from idiolect.tui.menus import RegistryFilterModal
 from idiolect.tui.sheets import InfoSheet, SheetPage, SheetScroll
 from idiolect.tui.specs import (
     HalfCellScrollBarRender,
@@ -74,7 +81,7 @@ from idiolect.tui.widgets import (
 _WATERMARK_SOURCE = """     ╭─╮
   ╭──╯ ╰──╮
   │  · ·  │    IDIOLECT
-  ╰──╮ ╭──╯     Someone, reconstructed.
+  ╰──╮ ╭──╯    Someone, reconstructed.
      ╰─╯"""
 _TAGLINE = "Someone, reconstructed."
 _UNSAVED_LINK_ID = "------"
@@ -106,6 +113,7 @@ class DialogKind(Enum):
     """Identify the active modal dialog."""
 
     CHROMA = "chroma"
+    FILTER = "filter"
     CONFIRM = "confirm"
     TRACE_NAME = "trace-name"
     TRACE_MANAGE = "trace-manage"
@@ -198,6 +206,8 @@ def _accent_theme_css(
         "#trace-actions Button.-active",
         "#chroma-actions Button:focus",
         "#chroma-actions Button.-active",
+        ".registry-filter-row.-selected .registry-filter-value",
+        ".registry-filter-row.-active .registry-filter-value",
     )
     button_selectors = (
         "Button:hover",
@@ -288,17 +298,29 @@ class ChatApp(App[None]):
     #catalog-heading { height: 1; margin-top: 1; padding: 0 2; }
     #catalog-title { text-style: bold; }
     #catalog-subtitle { height: 1; padding: 0 2; color: $metadata; }
-    #catalog-description { width: 1fr; padding: 0 0 0 1; }
+    #catalog-description { width: 1fr; padding: 0; }
     #catalog-rule { height: 1; margin: 0; padding: 0 2; color: $metadata; }
     #catalog-columns { height: 1; padding: 0 2; color: ansi_white; text-style: bold; }
     #load-status { display: none; height: 1; padding: 0 2; color: $metadata; }
     #chooser { height: 1fr; padding: 0 2; border: none; color: $terminal; background: $terminal; background-tint: transparent; scrollbar-color: $metadata; scrollbar-background: $terminal; }
-    OptionList > .option-list--option { padding: 0 0 0 1; color: $terminal; background: $terminal; }
+    OptionList > .option-list--option { padding: 0; color: $terminal; background: $terminal; }
     OptionList > .option-list--option-highlighted, OptionList:focus > .option-list--option-highlighted { color: $accent; background: $terminal; text-style: bold; }
     OptionList > .option-list--option-disabled { color: $metadata; text-style: dim; }
     OptionList > .option-list--option-hover { color: $accent; background: $terminal; text-style: bold; }
     #catalog-hints { height: 1; color: $metadata; background: $terminal; padding: 0 2; }
     #catalog-alert { display: none; height: 1; color: $accent; background: $terminal; padding: 0 2; text-align: right; text-style: none; }
+    #registry-filter-dialog { width: 100%; height: auto; padding: 0; background: $terminal; }
+    #registry-filter-dialog.-unplaced { visibility: hidden; }
+    #registry-filter-title { height: 1; color: ansi_white; text-style: bold; }
+    #registry-filter-fields { width: 100%; height: 1fr; background: $terminal; }
+    .registry-filter-column { width: 1fr; min-width: 0; height: 100%; padding: 0 1; background: $terminal; }
+    .registry-filter-heading { height: 1; color: ansi_white; text-style: none; }
+    .registry-filter-values { height: 1fr; overflow-x: hidden; overflow-y: auto; scrollbar-size: 0 0; background: $terminal; }
+    .registry-filter-row { width: 100%; height: 1; background: $terminal; }
+    .registry-filter-value { width: 1fr; min-width: 0; height: 1; color: $metadata; text-overflow: ellipsis; }
+    .registry-filter-count { width: auto; min-width: 1; height: 1; color: $metadata; text-align: right; }
+    .registry-filter-row.-selected .registry-filter-value { color: $accent; text-style: dim; }
+    .registry-filter-row.-active .registry-filter-value { color: $accent; text-style: bold; }
     #footer { height: 1; color: $metadata; background: $terminal; padding: 0 2; }
     #specs { display: none; background: $terminal; }
     #specs-heading { height: auto; min-height: 1; margin-top: 0; padding: 0 2; }
@@ -461,6 +483,8 @@ class ChatApp(App[None]):
         self._loading_timer: Timer | None = None
         self._notice_timer: Timer | None = None
         self._selected_catalog_key: str | None = None
+        self._registry_filter = RegistryFilter()
+        self._registry_facets = RegistryFacets(())
         self._specs_key: str | None = None
         self._active_sheet: SheetPage | None = None
         self._active_trace: SavedChat | None = None
@@ -630,6 +654,32 @@ class ChatApp(App[None]):
         if self._loading or self._active_dialog is not None:
             return
         self._open_chroma()
+
+    def on_keyboard_option_list_filter_requested(
+        self,
+        event: KeyboardOptionList.FilterRequested,
+    ) -> None:
+        """Open the registry filter menu."""
+        del event
+        if self._loading or self._active_dialog is not None:
+            return
+        self._active_dialog = ActiveDialog(DialogKind.FILTER)
+        self._update_catalog_hints()
+        self.push_screen(
+            RegistryFilterModal(self._registry_facets, self._registry_filter),
+            self._after_registry_filter,
+        )
+
+    def _after_registry_filter(self, selected: RegistryFilter | None) -> None:
+        """Apply draft registry filters or discard them."""
+        if selected is not None:
+            self._registry_filter = selected
+        self._active_dialog = None
+        if selected is None:
+            self._update_catalog_hints()
+            self.query_one("#chooser", OptionList).focus()
+            return
+        self._fill_chooser()
 
     def _open_chroma(self) -> None:
         """Open the accent theme menu from the active screen."""
@@ -2227,11 +2277,11 @@ class ChatApp(App[None]):
         self._catalog_width = self.size.width
         chooser = self.query_one("#chooser", OptionList)
         assert isinstance(chooser, KeyboardOptionList)
-        chooser.selection_changed = self._refresh_catalog_prompts
-        self._selected_catalog_key = None
+        selected_key = self._selected_catalog_key
+        chooser.selection_changed = None
         chooser.clear_options()
         self._rows.clear()
-        options = []
+        declared: list[tuple[Option, RegistryFacetRow]] = []
         saved_chats = () if self.store is None else self.store.leaves()
         layout = CatalogLayout.for_terminal(self.size.width)
         self.query_one("#catalog-columns", Static).update(
@@ -2250,6 +2300,13 @@ class ChatApp(App[None]):
                     kind,
                     "READY",
                 )
+                facet = RegistryFacetRow(
+                    f"assistant-{index}",
+                    assistant.target_name,
+                    assistant.model_basename,
+                    kind,
+                    "READY",
+                )
             else:
                 text = layout.text(
                     row.label,
@@ -2258,9 +2315,16 @@ class ChatApp(App[None]):
                     "FAULT",
                     failed=True,
                 )
+                facet = RegistryFacetRow(
+                    f"assistant-{index}",
+                    REGISTRY_FILTER_UNAVAILABLE,
+                    REGISTRY_FILTER_UNAVAILABLE,
+                    REGISTRY_FILTER_UNAVAILABLE,
+                    "FAULT",
+                )
             key = f"assistant-{index}"
             self._rows[key] = row
-            options.append(Option(text, id=key, disabled=not row.available))
+            declared.append((Option(text, id=key, disabled=not row.available), facet))
         for saved in saved_chats:
             text = layout.text(
                 saved.assistant.target_run,
@@ -2271,13 +2335,49 @@ class ChatApp(App[None]):
             )
             key = f"saved-{saved.id}"
             self._rows[key] = saved
-            options.append(Option(text, id=key))
-        chooser.add_options(options)
-        for option_index, option in enumerate(chooser.options):
-            if not option.disabled:
-                chooser.highlighted = option_index
-                chooser.focus()
-                break
+            declared.append(
+                (
+                    Option(text, id=key),
+                    RegistryFacetRow(
+                        key,
+                        saved.assistant.target_name,
+                        saved.assistant.model_basename,
+                        "TRACE",
+                        "READY",
+                    ),
+                )
+            )
+        self._registry_facets = RegistryFacets(
+            tuple(facet for _option, facet in declared),
+            self._registry_filter,
+        )
+        visible = [
+            (option, facet)
+            for option, facet in declared
+            if self._registry_filter.matches(facet)
+        ]
+        chooser.add_options(option for option, _facet in visible)
+        available = [
+            (index, facet.key)
+            for index, (option, facet) in enumerate(visible)
+            if not option.disabled
+        ]
+        chosen = next(
+            (
+                (index, key)
+                for index, key in available
+                if key == selected_key
+            ),
+            available[0] if available else None,
+        )
+        chooser.selection_changed = self._refresh_catalog_prompts
+        if chosen is None:
+            chooser.highlighted = None
+            self._selected_catalog_key = None
+        else:
+            chooser.highlighted, self._selected_catalog_key = chosen
+            self._refresh_catalog_prompts(self._selected_catalog_key)
+        chooser.focus()
         self._update_catalog_hints()
 
     def _show_specs(self, key: str) -> None:
@@ -2490,6 +2590,17 @@ class ChatApp(App[None]):
                 "←→ MOVE  ↩ EQUIP  ⎋ CANCEL"
             )
             return
+        if (
+            self._active_dialog is not None
+            and self._active_dialog.kind is DialogKind.FILTER
+        ):
+            remove = (
+                "  ⌫ REMOVE" if self._registry_filter != RegistryFilter() else ""
+            )
+            self.query_one("#catalog-hints", Static).update(
+                f"←→ FIELD  ↑↓ VALUE  ↩ APPLY  ⎋ CANCEL{remove}"
+            )
+            return
         if self._active_dialog is not None and self._active_dialog.trace_id is not None:
             self.query_one("#catalog-hints", Static).update(
                 "↩ NAME  ⎋ RETAIN"
@@ -2501,7 +2612,7 @@ class ChatApp(App[None]):
             self._rows.get(self._selected_catalog_key or ""),
             SavedChat,
         )
-        fields = ["↑↓ MOVE", "↩ CONNECT", "S SPECS", "C CHROMA"]
+        fields = ["↑↓ MOVE", "↩ CONNECT", "S SPECS", "/ FILTER", "C CHROMA"]
         if selected_trace:
             fields.append("⌫ MANAGE")
         fields.append("⌃C TERMINATE")
@@ -2510,6 +2621,7 @@ class ChatApp(App[None]):
         for removable in (
             "⌃C TERMINATE",
             "C CHROMA",
+            "/ FILTER",
             "↑↓ MOVE",
         ):
             if len(gap.join(fields)) <= available:

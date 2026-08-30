@@ -1,6 +1,7 @@
-"""Format rows for the assistant registry."""
+"""Format and filter rows for the assistant registry."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from typing import ClassVar, Literal
 
 from rich.cells import cell_len, set_cell_size
 from rich.style import Style
@@ -9,6 +10,103 @@ from rich.text import Text
 _DESCRIPTION = Style(color="bright_black", bold=False)
 _SELECTED_DESCRIPTION = Style(dim=True, bold=False)
 _UNAVAILABLE = Style(color="bright_black", dim=True, bold=False)
+
+RegistryFilterField = Literal["target", "base", "type", "status"]
+REGISTRY_FILTER_FIELDS: tuple[RegistryFilterField, ...] = (
+    "target",
+    "base",
+    "type",
+    "status",
+)
+REGISTRY_FILTER_ALL = "ALL"
+REGISTRY_FILTER_UNAVAILABLE = "—"
+
+
+@dataclass(frozen=True, slots=True)
+class RegistryFacetRow:
+    """Keep the filter values for one registry row."""
+
+    key: str
+    target: str
+    base: str
+    type: str
+    status: str
+
+    def value(self, field: RegistryFilterField) -> str:
+        """Return this row's value for one filter field."""
+        return getattr(self, field)
+
+
+@dataclass(frozen=True, slots=True)
+class RegistryFilter:
+    """Keep the applied registry filter values."""
+
+    target: str = REGISTRY_FILTER_ALL
+    base: str = REGISTRY_FILTER_ALL
+    type: str = REGISTRY_FILTER_ALL
+    status: str = REGISTRY_FILTER_ALL
+
+    fields: ClassVar[tuple[RegistryFilterField, ...]] = REGISTRY_FILTER_FIELDS
+
+    def value(self, field: RegistryFilterField) -> str:
+        """Return the selected value for one filter field."""
+        return getattr(self, field)
+
+    def replace(self, field: RegistryFilterField, value: str) -> RegistryFilter:
+        """Return a filter with one replacement value."""
+        return replace(self, **{field: value})
+
+    def matches(
+        self,
+        row: RegistryFacetRow,
+        *,
+        ignore: RegistryFilterField | None = None,
+    ) -> bool:
+        """Return true when one row matches the selected values."""
+        return all(
+            field == ignore
+            or self.value(field) == REGISTRY_FILTER_ALL
+            or row.value(field) == self.value(field)
+            for field in self.fields
+        )
+
+
+class RegistryFacets:
+    """Derive stable filter options and faceted counts."""
+
+    def __init__(
+        self,
+        rows: tuple[RegistryFacetRow, ...],
+        retained: RegistryFilter | None = None,
+    ) -> None:
+        """Keep registry rows in their stable display order."""
+        self.rows = rows
+        self.retained = retained
+
+    def values(self, field: RegistryFilterField) -> tuple[str, ...]:
+        """Return ALL and unique values in stable registry order."""
+        unique = dict.fromkeys(row.value(field) for row in self.rows)
+        retained = None if self.retained is None else self.retained.value(field)
+        if retained not in {None, REGISTRY_FILTER_ALL}:
+            unique.setdefault(retained, None)
+        return (REGISTRY_FILTER_ALL, *unique)
+
+    def counts(
+        self,
+        field: RegistryFilterField,
+        selected: RegistryFilter,
+    ) -> tuple[tuple[str, int], ...]:
+        """Return counts that ignore this field's selected value."""
+        eligible = tuple(row for row in self.rows if selected.matches(row, ignore=field))
+        return tuple(
+            (
+                value,
+                len(eligible)
+                if value == REGISTRY_FILTER_ALL
+                else sum(row.value(field) == value for row in eligible),
+            )
+            for value in self.values(field)
+        )
 
 
 @dataclass(frozen=True, slots=True)

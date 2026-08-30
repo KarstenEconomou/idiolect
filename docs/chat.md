@@ -34,6 +34,14 @@ The registry lists the configured base model, verified run-and-dataset pairs,
 and verified saved snapshots. Registry discovery does not load a model. The
 model worker resolves and loads the selected model after the session starts.
 
+Press `/` in the registry to filter its visible rows by `TARGET`, `BASE`,
+`TYPE`, and `STATUS`. Use Left and Right to move between fields and Up and Down
+to select a value. The arrow keys wrap. Press Return to apply all four fields
+with AND logic, or Escape to discard the draft. Applied filters remain active
+until the application closes, including after registry refreshes. When a filter
+is active, reopen the filter menu and press Backspace to reset all four fields
+to `ALL`.
+
 Open one run and dataset pair directly:
 
 ```console
