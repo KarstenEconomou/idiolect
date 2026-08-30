@@ -17,7 +17,7 @@ from textual.scrollbar import ScrollBarRender
 from idiolect.chat.discovery import Assistant
 from idiolect.chat.state import ChatBubble, ChatSession, PreparedPrompt, TurnTelemetry
 from idiolect.chat.storage import SavedChat
-from idiolect.chat.worker import LoadProbe, RuntimeProbe
+from idiolect.chat.worker import LoadProbe, RuntimeProbe, WorkerState
 from idiolect.config import GenerationConfig
 from idiolect.types import Split
 
@@ -40,15 +40,18 @@ _PROBE_LABELS = {
     "architecture": "architecture",
     "device_name": "name",
     "memory_size": "memory",
-    "max_recommended_working_set_size": "working_set_limit",
+    "max_recommended_working_set_size": "rec_working_set",
+    "max_buffer_length": "max_buffer_size",
 }
 _PROBE_PROPERTY_ORDER = (
     "device_name",
     "architecture",
     "memory_size",
+    "active_memory",
+    "cache_memory",
     "max_recommended_working_set_size",
+    "max_buffer_size",
     "max_buffer_length",
-    "resource_limit",
 )
 _DEFAULT_SCROLL_BACK = Color.parse("#555555")
 _DEFAULT_SCROLL_BAR = Color.parse("bright_magenta")
@@ -331,20 +334,17 @@ def render_probe(
     runtime: RuntimeProbe | None,
     load: LoadProbe | None,
     telemetry: TurnTelemetry | None,
+    state: WorkerState | str | None = None,
 ) -> SheetDocument:
     """Return one runtime, model-load, and generation probe document."""
     document = SheetDocument()
-    _section(document, "STACK")
-    _field(document, "MLX VERSION", None if runtime is None else runtime.mlx_version)
+    _section(document, "RUNTIME")
+    _field(document, "STATE", _probe_state(state))
+    _field(document, "MLX", None if runtime is None else runtime.mlx_version)
     _field(
         document,
-        "MLX-LM VERSION",
+        "MLX-LM",
         None if runtime is None else runtime.mlx_lm_version,
-    )
-    _field(
-        document,
-        "DEVICE TYPE",
-        None if runtime is None else _device_type(runtime.device),
     )
     _field(
         document,
@@ -352,8 +352,9 @@ def render_probe(
         None if runtime is None else runtime.architecture,
     )
 
-    if runtime is not None and runtime.device_properties:
+    if runtime is not None:
         _section(document, "DEVICE")
+        _field(document, "TYPE", _device_type(runtime.device))
         for name, value in _ordered_device_properties(runtime.device_properties):
             displayed = _format_device_property(name, value)
             _field(document, _PROBE_LABELS.get(name, name), displayed)
@@ -427,6 +428,13 @@ def _device_type(value: str) -> str:
     if normalized.casefold().startswith("device(") and normalized.endswith(")"):
         normalized = normalized[7:-1].split(",", 1)[0].strip()
     return normalized.upper()
+
+
+def _probe_state(value: WorkerState | str | None) -> str | None:
+    """Return one uppercase worker state for the probe sheet."""
+    if value is None:
+        return None
+    return value.value.upper() if isinstance(value, WorkerState) else value.upper()
 
 
 def render_buffer(
@@ -519,7 +527,7 @@ def _ordered_device_properties(
     rank = {name: index for index, name in enumerate(_PROBE_PROPERTY_ORDER)}
     return tuple(
         sorted(
-            properties,
+            (item for item in properties if item[0].casefold() != "resource_limit"),
             key=lambda item: (rank.get(item[0], len(rank)), item[0]),
         )
     )

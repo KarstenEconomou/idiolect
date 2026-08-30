@@ -354,6 +354,7 @@ def worker_main(commands: Any, events: Any, cancel: Any) -> None:
                             )
                         )
                     )
+                    events.put(ProbeEvent(_probe()))
                     events.put(StateEvent(WorkerState.READY))
                     continue
                 if isinstance(command, UnloadCommand):
@@ -530,7 +531,12 @@ def _probe() -> RuntimeProbe:
 
     import mlx.core as mx
 
-    info = tuple(sorted(mx.device_info().items()))
+    properties = {
+        **mx.device_info(),
+        "active_memory": mx.get_active_memory(),
+        "cache_memory": mx.get_cache_memory(),
+    }
+    info = tuple(sorted(properties.items()))
     return RuntimeProbe(
         mlx_version=version("mlx"),
         mlx_lm_version=version("mlx-lm"),

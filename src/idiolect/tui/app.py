@@ -2315,6 +2315,7 @@ class ChatApp(App[None]):
                     self.runtime.runtime_probe,
                     self.runtime.load_probe,
                     self._latest_telemetry(),
+                    self.runtime.state,
                 ),
                 "chat",
                 _link_label(self._link_id),

@@ -2289,10 +2289,11 @@ def test_probe_command_shows_live_details_and_restores_chat(tmp_path) -> None:
             )
             content = app.query_one("#specs-body", Static).content
             assert isinstance(content, SpecsDocument)
-            assert "STACK\n" in content.plain
-            assert "DEVICE TYPE\n GPU\n" in content.plain
+            assert "RUNTIME\nSTATE\n READY\nMLX\n 0.32.1\n" in content.plain
+            assert "STACK\n" not in content.plain
+            assert "DEVICE\nTYPE\n GPU\n" in content.plain
             assert "MODEL\n" in content.plain
-            assert "MLX VERSION\n 0.32.1\n" in content.plain
+            assert "MLX VERSION\n" not in content.plain
             assert "SIZE\n 8.00 GiB\n" in content.plain
             assert "DIGEST\n" not in content.plain
             assert "ADAPTER SIZE\n" not in content.plain

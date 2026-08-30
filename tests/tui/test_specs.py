@@ -9,7 +9,7 @@ from rich.console import Console
 from idiolect.chat.discovery import Assistant
 from idiolect.chat.state import ChatSession, ChatTurn, TurnTelemetry, prepare_prompt
 from idiolect.chat.storage import SavedChat
-from idiolect.chat.worker import LoadProbe, RuntimeProbe
+from idiolect.chat.worker import LoadProbe, RuntimeProbe, WorkerState
 from idiolect.config import ChatConfig, GenerationConfig, TrainDataConfig
 from idiolect.data.local import BuildResult
 from idiolect.model import ModelSpec
@@ -35,9 +35,11 @@ def test_probe_shows_runtime_load_and_latest_generation_telemetry() -> None:
             (
                 ("architecture", "applegpu_g16g"),
                 ("device_name", "Apple M4 Max"),
-                ("max_buffer_length", 5 * 1024**3),
+                ("max_buffer_size", 5 * 1024**3),
                 ("max_recommended_working_set_size", 4 * 1024**3),
                 ("memory_size", 16 * 1024**3),
+                ("active_memory", 3 * 1024**3),
+                ("cache_memory", 1 * 1024**3),
                 ("resource_limit", 499_000),
                 ("unified_memory", True),
             ),
@@ -52,26 +54,30 @@ def test_probe_shows_runtime_load_and_latest_generation_telemetry() -> None:
             generation_time=5.25,
             peak_memory=3.75,
         ),
+        WorkerState.READY,
     )
 
-    assert "STACK\n" in document.plain
-    assert "MLX VERSION\n 0.32.1\n" in document.plain
-    assert "MLX-LM VERSION\n 0.31.3\n" in document.plain
-    assert "DEVICE TYPE\n GPU\n" in document.plain
+    assert "RUNTIME\nSTATE\n READY\nMLX\n 0.32.1\nMLX-LM\n 0.31.3\n" in document.plain
+    assert "STACK\n" not in document.plain
+    assert "MLX VERSION\n" not in document.plain
+    assert "MLX-LM VERSION\n" not in document.plain
     assert document.plain.count("DEVICE\n") == 1
-    assert "DEVICE\nNAME\n Apple M4 Max\nARCHITECTURE\n" in document.plain
+    assert "DEVICE\nTYPE\n GPU\nNAME\n Apple M4 Max\nARCHITECTURE\n" in document.plain
     assert "HOST ARCHITECTURE\n arm64\n" in document.plain
     assert "ARCHITECTURE\n applegpu_g16g\n" in document.plain
     assert "HOST\n" not in document.plain
-    assert "MAX BUFFER LENGTH\n 5.00 GiB\n" in document.plain
-    assert "WORKING SET LIMIT\n 4.00 GiB\n" in document.plain
+    assert "MAX BUFFER SIZE\n 5.00 GiB\n" in document.plain
+    assert "MAX BUFFER LENGTH\n" not in document.plain
+    assert "REC WORKING SET\n 4.00 GiB\n" in document.plain
+    assert "WORKING SET LIMIT\n" not in document.plain
     assert "MEMORY\n 16.00 GiB\n" in document.plain
-    assert "RESOURCE LIMIT\n 499,000 BUFFERS\n" in document.plain
+    assert "ACTIVE MEMORY\n 3.00 GiB\n" in document.plain
+    assert "CACHE MEMORY\n 1.00 GiB\n" in document.plain
+    assert "RESOURCE LIMIT\n" not in document.plain
     assert "MODEL\n" in document.plain
-    assert "SIZE\n 8.00 GiB\n" in document.plain
+    assert "MODEL\nSIZE\n 8.00 GiB\nADAPTER SIZE\n 64.00 MiB\n" in document.plain
     assert "DIGEST\n" not in document.plain
     assert "MODEL SIZE\n" not in document.plain
-    assert "ADAPTER SIZE\n 64.00 MiB\n" in document.plain
     assert "LOAD TIME\n 2.346 S\n" in document.plain
     assert "TELEMETRY\n" in document.plain
     assert "OUTPUT\n 64 TOK\n" in document.plain
