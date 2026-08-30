@@ -4,7 +4,7 @@
      ╭─╮
   ╭──╯ ╰──╮
   │  · ·  │    IDIOLECT
-  ╰──╮ ╭──╯     Someone, reconstructed.
+  ╰──╮ ╭──╯    Someone, reconstructed.
      ╰─╯
 ```
 
