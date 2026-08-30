@@ -34,6 +34,12 @@ block above the composer starts with the selected identity and does not repeat
 the sigil. Escape removes a selected mode. Backspace also removes it when the
 composer is empty. Use Shift+Enter or Alt+Enter to insert a line break.
 
+`/probe` shows the runtime stack, device, loaded model, and latest generation
+telemetry. It reports output tokens, prefill throughput, decode throughput,
+time to first token, inference latency, and peak memory. Inference latency
+includes prefill and decoding. It does not show prompt context. Use `/buffer`
+for prompt tokens, context utilization, active turns, and resident references.
+
 ## Install and open
 
 Install the model and terminal packages:

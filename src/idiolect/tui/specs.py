@@ -15,7 +15,7 @@ from rich.text import Text
 from textual.scrollbar import ScrollBarRender
 
 from idiolect.chat.discovery import Assistant
-from idiolect.chat.state import ChatBubble, ChatSession, PreparedPrompt
+from idiolect.chat.state import ChatBubble, ChatSession, PreparedPrompt, TurnTelemetry
 from idiolect.chat.storage import SavedChat
 from idiolect.chat.worker import LoadProbe, RuntimeProbe
 from idiolect.config import GenerationConfig
@@ -330,8 +330,9 @@ def _render_sampling_policy(
 def render_probe(
     runtime: RuntimeProbe | None,
     load: LoadProbe | None,
+    telemetry: TurnTelemetry | None,
 ) -> SheetDocument:
-    """Return one hardware and model-load probe document."""
+    """Return one runtime, model-load, and generation probe document."""
     document = SheetDocument()
     _section(document, "STACK")
     _field(document, "MLX VERSION", None if runtime is None else runtime.mlx_version)
@@ -357,15 +358,10 @@ def render_probe(
             displayed = _format_device_property(name, value)
             _field(document, _PROBE_LABELS.get(name, name), displayed)
 
-    _section(document, "PAYLOAD")
+    _section(document, "MODEL")
     _field(
         document,
-        "MODEL DIGEST",
-        None if load is None else _upper_hex(load.model_digest),
-    )
-    _field(
-        document,
-        "MODEL SIZE",
+        "SIZE",
         None if load is None else _format_bytes(load.model_size),
     )
     if load is None or load.adapter_size is not None:
@@ -378,6 +374,49 @@ def render_probe(
         document,
         "LOAD TIME",
         None if load is None else f"{load.load_duration:.3f} S",
+    )
+
+    _section(document, "TELEMETRY")
+    _field(
+        document,
+        "OUTPUT",
+        None if telemetry is None else f"{telemetry.generated_tokens:,} TOK",
+    )
+    _field(
+        document,
+        "PREFILL THROUGHPUT",
+        None
+        if telemetry is None or telemetry.prompt_throughput is None
+        else f"{telemetry.prompt_throughput:.1f} TOK/S",
+    )
+    _field(
+        document,
+        "DECODE THROUGHPUT",
+        None
+        if telemetry is None or telemetry.generation_throughput is None
+        else f"{telemetry.generation_throughput:.1f} TOK/S",
+    )
+    _field(
+        document,
+        "TIME TO FIRST TOKEN",
+        None
+        if telemetry is None or telemetry.time_to_first_token is None
+        else f"{telemetry.time_to_first_token:.3f} S",
+    )
+    _field(
+        document,
+        "INFERENCE LATENCY",
+        None
+        if telemetry is None or telemetry.generation_time is None
+        else f"{telemetry.generation_time:.3f} S",
+        abbreviate=False,
+    )
+    _field(
+        document,
+        "PEAK MEMORY",
+        None
+        if telemetry is None or telemetry.peak_memory is None
+        else f"{telemetry.peak_memory:.2f} GB",
     )
     return document
 

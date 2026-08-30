@@ -24,8 +24,8 @@ _ADAPTER_DIGEST = "b" * 64
 _TRACE_PARENT_ID = "p" * 64
 
 
-def test_probe_shows_only_live_hardware_runtime_and_load_details() -> None:
-    """Check probe values without model policy or lineage content."""
+def test_probe_shows_runtime_load_and_latest_generation_telemetry() -> None:
+    """Check probe measurements without context, model policy, or lineage."""
     document = render_probe(
         RuntimeProbe(
             "0.32.1",
@@ -43,6 +43,15 @@ def test_probe_shows_only_live_hardware_runtime_and_load_details() -> None:
             ),
         ),
         LoadProbe("a" * 64, 8 * 1024**3, 64 * 1024**2, 2.3456),
+        TurnTelemetry(
+            512,
+            64,
+            prompt_throughput=120.5,
+            generation_throughput=12.3,
+            time_to_first_token=0.42,
+            generation_time=5.25,
+            peak_memory=3.75,
+        ),
     )
 
     assert "STACK\n" in document.plain
@@ -58,11 +67,22 @@ def test_probe_shows_only_live_hardware_runtime_and_load_details() -> None:
     assert "WORKING SET LIMIT\n 4.00 GiB\n" in document.plain
     assert "MEMORY\n 16.00 GiB\n" in document.plain
     assert "RESOURCE LIMIT\n 499,000 BUFFERS\n" in document.plain
-    assert "PAYLOAD\n" in document.plain
-    assert "MODEL SIZE\n 8.00 GiB\n" in document.plain
+    assert "MODEL\n" in document.plain
+    assert "SIZE\n 8.00 GiB\n" in document.plain
+    assert "DIGEST\n" not in document.plain
+    assert "MODEL SIZE\n" not in document.plain
     assert "ADAPTER SIZE\n 64.00 MiB\n" in document.plain
     assert "LOAD TIME\n 2.346 S\n" in document.plain
-    assert ("a" * 64).upper() in document.plain
+    assert "TELEMETRY\n" in document.plain
+    assert "OUTPUT\n 64 TOK\n" in document.plain
+    assert "PREFILL THROUGHPUT\n 120.5 TOK/S\n" in document.plain
+    assert "DECODE THROUGHPUT\n 12.3 TOK/S\n" in document.plain
+    assert "TIME TO FIRST TOKEN\n 0.420 S\n" in document.plain
+    assert "INFERENCE LATENCY\n 5.250 S\n" in document.plain
+    assert "PEAK MEMORY\n 3.75 GB\n" in document.plain
+    assert "PROMPT TOKENS\n" not in document.plain
+    assert "UTILIZATION\n" not in document.plain
+    assert "RESIDENT\n" not in document.plain
     assert "IDENTITY\n" not in document.plain
     assert "GENERATION\n" not in document.plain
     assert "LINEAGE\n" not in document.plain
@@ -71,11 +91,12 @@ def test_probe_shows_only_live_hardware_runtime_and_load_details() -> None:
 
 def test_probe_omits_structurally_absent_device_and_base_adapter() -> None:
     """Check that a base load omits sections and fields that do not apply."""
-    document = render_probe(None, LoadProbe("a" * 64, 512, None, 0.5))
+    document = render_probe(None, LoadProbe("a" * 64, 512, None, 0.5), None)
 
-    assert "MODEL SIZE\n 512 B\n" in document.plain
+    assert "SIZE\n 512 B\n" in document.plain
     assert "ADAPTER SIZE\n" not in document.plain
     assert "DEVICE\n" not in document.plain
+    assert "TELEMETRY\nOUTPUT\n —\n" in document.plain
 
 
 def test_buffer_shows_context_measurements_and_active_references(

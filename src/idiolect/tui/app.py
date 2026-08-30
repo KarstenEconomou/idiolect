@@ -1680,18 +1680,30 @@ class ChatApp(App[None]):
         ):
             self._set_footer("↑↓ MOVE    ENTER COMMAND    ESC CLOSE")
             return
-        session = self._session()
-        last = next((turn for turn in reversed(session.turns) if turn.telemetry), None)
-        if last is None or last.telemetry is None:
+        telemetry = self._latest_telemetry()
+        if telemetry is None:
             value = ""
         else:
-            telemetry = last.telemetry
             value = _telemetry_footer(
                 telemetry,
                 self.generation.max_prompt_tokens,
                 max(0, self.size.width - 4),
             )
         self._set_footer(value)
+
+    def _latest_telemetry(self) -> TurnTelemetry | None:
+        """Return the newest measured assistant-turn telemetry."""
+        session = self.runtime.session
+        if session is None:
+            return None
+        return next(
+            (
+                turn.telemetry
+                for turn in reversed(session.turns)
+                if turn.telemetry is not None
+            ),
+            None,
+        )
 
     def _set_footer(self, value: str) -> None:
         value = value.upper()
@@ -2302,6 +2314,7 @@ class ChatApp(App[None]):
                 lambda: render_probe(
                     self.runtime.runtime_probe,
                     self.runtime.load_probe,
+                    self._latest_telemetry(),
                 ),
                 "chat",
                 _link_label(self._link_id),

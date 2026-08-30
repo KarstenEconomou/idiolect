@@ -166,7 +166,8 @@ becomes `/` or `@`; the block above starts with its identity without repeating
 the sigil. Escape removes a selected mode. Backspace does the same when the
 composer is empty.
 Shift+Enter or Alt+Enter inserts a line break. Use `/retry` to recover a
-cancelled reply or failed generation.
+cancelled reply or failed generation. `/probe` shows runtime, model-load, and
+latest inference telemetry. Prompt context remains in `/buffer`.
 
 See [docs/index.md](docs/index.md) for the complete procedures, required stop
 conditions, artifact descriptions, and interpretation rules.

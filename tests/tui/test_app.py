@@ -2261,10 +2261,10 @@ def test_specs_command_restores_the_unchanged_trace_chat(tmp_path) -> None:
 
 
 def test_probe_command_shows_live_details_and_restores_chat(tmp_path) -> None:
-    """Check the hardware sheet does not expose SPECS or change the session."""
+    """Check the live probe adds telemetry without context or session changes."""
     chat = ChatConfig(output=tmp_path)
     generation = GenerationConfig(temperature=0.3)
-    runtime = ImmediateRuntime(chat, generation)
+    runtime = TranscriptRuntime(chat, generation)
     app = ChatApp(
         chat,
         generation,
@@ -2291,10 +2291,21 @@ def test_probe_command_shows_live_details_and_restores_chat(tmp_path) -> None:
             assert isinstance(content, SpecsDocument)
             assert "STACK\n" in content.plain
             assert "DEVICE TYPE\n GPU\n" in content.plain
-            assert "PAYLOAD\n" in content.plain
+            assert "MODEL\n" in content.plain
             assert "MLX VERSION\n 0.32.1\n" in content.plain
-            assert "MODEL SIZE\n 8.00 GiB\n" in content.plain
+            assert "SIZE\n 8.00 GiB\n" in content.plain
+            assert "DIGEST\n" not in content.plain
             assert "ADAPTER SIZE\n" not in content.plain
+            assert "TELEMETRY\n" in content.plain
+            assert "OUTPUT\n 64 TOK\n" in content.plain
+            assert "PREFILL THROUGHPUT\n —\n" in content.plain
+            assert "DECODE THROUGHPUT\n 12.3 TOK/S\n" in content.plain
+            assert "TIME TO FIRST TOKEN\n 0.420 S\n" in content.plain
+            assert "INFERENCE LATENCY\n —\n" in content.plain
+            assert "PEAK MEMORY\n 3.25 GB\n" in content.plain
+            assert "PROMPT TOKENS\n" not in content.plain
+            assert "UTILIZATION\n" not in content.plain
+            assert "RESIDENT\n" not in content.plain
             assert "IDENTITY\n" not in content.plain
             assert "GENERATION\n" not in content.plain
             assert "FIDELITY\n" not in content.plain
