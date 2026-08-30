@@ -1543,12 +1543,14 @@ class ChatApp(App[None]):
         active = self._command_selected and self._command_name is not None
         if not active:
             bar.display = False
+            self._update_composer_prompt()
             self._align_activity_notice()
             return
         assert self._command_name is not None
         command = f"/{self._command_name}"
         bar.set_command(self._command_name, COMMAND_DESCRIPTIONS[command])
         bar.display = True
+        self._update_composer_prompt()
         self._align_activity_notice()
 
     def _render_reference(self) -> None:
@@ -1561,10 +1563,12 @@ class ChatApp(App[None]):
         )
         if bubble is None:
             bar.display = False
+            self._update_composer_prompt()
             return
         name = self._reference_name(bubble)
         bar.set_reference(name, bubble.index, self._reference_preview(bubble.content))
         bar.display = True
+        self._update_composer_prompt()
 
     def _update_reference_menu(self) -> None:
         """Refresh the leading-@ reference selector."""
@@ -1992,10 +1996,23 @@ class ChatApp(App[None]):
         self._control_active = active
         composer.control_active = active
         sheet.display = active
-        self.query_one("#composer-prompt", Static).update("?" if active else ">")
+        self._update_composer_prompt()
         self._align_activity_notice()
         if changed:
             self.call_after_refresh(self._scroll_transcript_end)
+
+    def _update_composer_prompt(self) -> None:
+        """Show the sigil for the active composer mode."""
+        sigil = (
+            "?"
+            if self._control_active
+            else "/"
+            if self._command_selected
+            else "@"
+            if self._reference_selected
+            else ">"
+        )
+        self.query_one("#composer-prompt", Static).update(sigil)
 
     def _save_from_confirmation(self, title: str) -> bool:
         if self.store is None:

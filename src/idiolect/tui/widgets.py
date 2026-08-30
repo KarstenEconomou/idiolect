@@ -265,12 +265,15 @@ class Composer(TextArea):
         """Request removal of the selected reference."""
 
     def on_key(self, event: events.Key) -> None:
-        """Handle Escape when TextArea key bindings run first."""
+        """Handle mode dismissal when TextArea key bindings run first."""
         if (
             (self.command_selected or self.reference_selected)
             and not self.command_menu_active
             and not self.reference_menu_active
-            and event.key == "escape"
+            and (
+                event.key == "escape"
+                or (event.key == "backspace" and not self.text)
+            )
         ):
             event.prevent_default()
             event.stop()
@@ -301,7 +304,7 @@ class Composer(TextArea):
             self.control_active = True
             self.post_message(self.ControlRequested())
             return
-        if self.control_active and event.key == "escape":
+        if self.control_active and event.key in {"escape", "backspace"}:
             event.prevent_default()
             event.stop()
             self.control_active = False
@@ -365,7 +368,10 @@ class Composer(TextArea):
             (self.command_selected or self.reference_selected)
             and not self.command_menu_active
             and not self.reference_menu_active
-            and event.key == "escape"
+            and (
+                event.key == "escape"
+                or (event.key == "backspace" and not self.text)
+            )
         ):
             event.prevent_default()
             event.stop()
@@ -575,7 +581,7 @@ class CommandBar(SelectionBar):
         self._command = (name, description)
         self.update(
             Text.assemble(
-                (f"/ {name.upper()}", f"dim {self._accent}"),
+                (name.upper(), f"dim {self._accent}"),
                 (f" {description}", "bright_black"),
             )
         )
@@ -648,7 +654,6 @@ class ReferenceBar(SelectionBar):
         """Show one selected reference with its fixed ANSI roles."""
         self._reference = (name, index, preview)
         value = Text.assemble(
-            ("@ ", f"dim {self._accent}"),
             (f"{name}:{index:02d}", f"dim {self._accent}"),
             (f" {preview}", "bright_black"),
         )

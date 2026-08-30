@@ -1290,6 +1290,12 @@ def test_blank_question_mark_opens_static_composer_controls(tmp_path) -> None:
             assert composer.text == ""
             assert str(prompt.content) == ">"
 
+            await pilot.press("?", "backspace")
+            await pilot.pause()
+            assert not sheet.display
+            assert composer.text == ""
+            assert str(prompt.content) == ">"
+
     asyncio.run(verify())
 
 
@@ -1801,7 +1807,8 @@ def test_echo_command_uses_an_env_turn_and_argument_bar(tmp_path) -> None:
             assert composer.command_selected
             assert command_bar.display
             assert isinstance(command_bar.content, Text)
-            assert command_bar.content.plain == "/ ECHO SYS echo."
+            assert command_bar.content.plain == "ECHO SYS echo."
+            assert str(app.query_one("#composer-prompt", Static).content) == "/"
             command_style = command_bar.content.get_style_at_offset(Console(), 0)
             description_style = command_bar.content.get_style_at_offset(
                 Console(), command_bar.content.plain.index("SYS")
@@ -1812,6 +1819,18 @@ def test_echo_command_uses_an_env_turn_and_argument_bar(tmp_path) -> None:
             assert description_style.color is not None
             assert description_style.color.name == "bright_black"
             assert composer.text == ""
+
+            await pilot.press("backspace")
+            await pilot.pause()
+            assert not composer.command_selected
+            assert not command_bar.display
+            assert str(app.query_one("#composer-prompt", Static).content) == ">"
+
+            composer.insert("/echo")
+            await pilot.pause()
+            await pilot.press("enter")
+            await pilot.pause()
+            assert composer.command_selected
             composer.insert("@")
             await pilot.pause()
             assert not app.query_one("#reference-menu", ReferenceMenu).display
@@ -1821,6 +1840,7 @@ def test_echo_command_uses_an_env_turn_and_argument_bar(tmp_path) -> None:
             await pilot.pause()
 
             assert not command_bar.display
+            assert str(app.query_one("#composer-prompt", Static).content) == ">"
             assert runtime.session is not None
             assert runtime.session.turns[-1].role == "env"
             assert runtime.session.turns[-1].content == "@hello"
@@ -2007,7 +2027,8 @@ def test_reference_menu_selects_bubble_and_escape_clears_reference(tmp_path) -> 
             bar = app.query_one("#reference-bar", ReferenceBar)
             assert bar.display
             assert isinstance(bar.content, Text)
-            assert "@ DIXIE:01" in bar.content.plain
+            assert bar.content.plain.startswith("DIXIE:01 ")
+            assert str(app.query_one("#composer-prompt", Static).content) == "@"
             at_style = bar.content.get_style_at_offset(Console(), 0)
             assert at_style.dim
             assert at_style.color is not None
@@ -2026,7 +2047,7 @@ def test_reference_menu_selects_bubble_and_escape_clears_reference(tmp_path) -> 
             assert bottom_border_style.color.get_truecolor() == _HACKER_RGB
             assert bar.get_style_at(0, 1).dim
             assert composer.text == ""
-            reference_style = bar.content.get_style_at_offset(Console(), 2)
+            reference_style = bar.content.get_style_at_offset(Console(), 0)
             assert reference_style.dim
             assert reference_style.color is not None
             assert reference_style.color.get_truecolor() == _HACKER_RGB
@@ -2038,6 +2059,19 @@ def test_reference_menu_selects_bubble_and_escape_clears_reference(tmp_path) -> 
                 composer_bar.styles.border_top,
             ) == before_geometry
 
+            await pilot.press("backspace")
+            await pilot.pause()
+            assert not composer.reference_selected
+            assert not bar.display
+            assert str(app.query_one("#composer-prompt", Static).content) == ">"
+
+            composer.insert("@")
+            await pilot.pause()
+            await pilot.press("up", "enter")
+            await pilot.pause()
+            assert composer.reference_selected
+            assert str(app.query_one("#composer-prompt", Static).content) == "@"
+
             composer.insert("follow-up")
             await pilot.pause()
             assert composer.reference_selected
@@ -2048,6 +2082,7 @@ def test_reference_menu_selects_bubble_and_escape_clears_reference(tmp_path) -> 
             await pilot.pause()
             assert not bar.display
             assert composer.text == "follow-up"
+            assert str(app.query_one("#composer-prompt", Static).content) == ">"
 
             composer.clear()
             composer.insert("@D")
@@ -2077,7 +2112,8 @@ def test_reference_menu_selects_bubble_and_escape_clears_reference(tmp_path) -> 
             await pilot.press("enter")
             await pilot.pause()
             assert composer.text == "prompt"
-            assert "@ OP:00" in bar.content.plain
+            assert bar.content.plain.startswith("OP:00 ")
+            assert str(app.query_one("#composer-prompt", Static).content) == "@"
 
             composer.clear()
             composer.insert("@first")

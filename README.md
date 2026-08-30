@@ -158,8 +158,13 @@ CONTROL
 ESC  CANCEL
 ```
 
-The first `?` is a discovery sigil and is not inserted. Up opens the active
-chat's prompt and command history, including user messages loaded from a trace.
+The first `?` is a discovery sigil and is not inserted. Escape or Backspace
+closes CONTROL. Up opens the active chat's prompt and command history, including
+user messages loaded from a trace.
+When an argument command or message reference is selected, the composer sigil
+becomes `/` or `@`; the block above starts with its identity without repeating
+the sigil. Escape removes a selected mode. Backspace does the same when the
+composer is empty.
 Shift+Enter or Alt+Enter inserts a line break. Use `/retry` to recover a
 cancelled reply or failed generation.
 

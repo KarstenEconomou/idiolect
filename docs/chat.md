@@ -26,10 +26,13 @@ ESC  CANCEL
 ```
 
 CONTROL closes when the user types, recalls history, inserts a line break, or
-presses Escape. The next typed character is inserted normally. Use Up to open
-the history. Then use Up or Down to move through it. Moving down past the newest
-item restores the blank composer. Use Shift+Enter or Alt+Enter to insert a line
-break.
+presses Escape or Backspace. The next typed character is inserted normally. Use
+Up to open the history. Then use Up or Down to move through it. Moving down past
+the newest item restores the blank composer. A selected argument command changes
+the composer sigil to `/`, and a selected message reference changes it to `@`. The
+block above the composer starts with the selected identity and does not repeat
+the sigil. Escape removes a selected mode. Backspace also removes it when the
+composer is empty. Use Shift+Enter or Alt+Enter to insert a line break.
 
 ## Install and open
 
