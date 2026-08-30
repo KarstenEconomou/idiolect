@@ -24,7 +24,7 @@ from idiolect.chat.storage import ChatStorageError, ChatStore, SavedChat
 from idiolect.chat.worker import LoadProbe, RuntimeProbe, WorkerState
 from idiolect.config import ChatConfig, GenerationConfig, TrainDataConfig
 from idiolect.model import ModelSpec
-from idiolect.tui.app import ChatApp
+from idiolect.tui.app import ChatApp, _telemetry_footer
 from idiolect.tui.specs import SpecsDocument
 from idiolect.tui.widgets import (
     CommandMenu,
@@ -114,7 +114,7 @@ def test_registry_opens_highlighted_assistant_from_keyboard(tmp_path) -> None:
             assert "M" in prompt.plain
             assert "READY" in prompt.plain
             assert str(app.query_one("#catalog-hints", Static).content) == (
-                "↑↓ MOVE    ↩ CONNECT    S SPECS    C CHROMA    ⌃C TERMINATE"
+                "↑↓ MOVE  ↩ CONNECT  S SPECS  C CHROMA  ⌃C TERMINATE"
             )
 
             await pilot.click(chooser, offset=(2, 1))
@@ -183,7 +183,7 @@ def test_registry_chroma_menu_previews_all_themes_and_persists(tmp_path) -> None
                 <= dialog.content_region.right
             )
             assert str(app.query_one("#catalog-hints", Static).content) == (
-                "←→ MOVE    ↩ EQUIP    ⎋ CANCEL"
+                "←→ MOVE  ↩ EQUIP  ⎋ CANCEL"
             )
 
             await pilot.press("up", "down")
@@ -242,14 +242,14 @@ def test_registry_chroma_menu_previews_all_themes_and_persists(tmp_path) -> None
                 assert (truecolor.red, truecolor.green, truecolor.blue) == expected
 
             hints = str(app.query_one("#catalog-hints", Static).content)
-            assert hints == "←→ MOVE    ↩ EQUIP    ⎋ CANCEL"
+            assert hints == "←→ MOVE  ↩ EQUIP  ⎋ CANCEL"
             await pilot.press("enter")
             await pilot.pause()
             assert app.query_one("#catalog-alert", StatusLine).state == (
                 "SYS: ACK HACKER equipped."
             )
             assert str(app.query_one("#catalog-hints", Static).content) == (
-                "↑↓ MOVE    ↩ CONNECT    S SPECS    C CHROMA    ⌃C TERMINATE"
+                "↑↓ MOVE  ↩ CONNECT  S SPECS  C CHROMA  ⌃C TERMINATE"
             )
             await pilot.press("s")
             await pilot.pause()
@@ -321,7 +321,7 @@ def test_chroma_command_opens_menu_in_chat(tmp_path) -> None:
             assert app.focused is not None
             assert app.focused.id == "chroma-green"
             assert str(app.query_one("#footer", Static).content) == (
-                "←→ MOVE    ↩ EQUIP    ⎋ CANCEL"
+                "←→ MOVE  ↩ EQUIP  ⎋ CANCEL"
             )
             assert (
                 app.query_one(
@@ -519,7 +519,7 @@ def test_specs_side_arrows_cycle_available_registry_rows(tmp_path) -> None:
             assert specs.has_focus
             assert str(app.query_one("#specs-identity", Static).content) == first.name
             assert str(app.query_one("#specs-hints", Static).content) == (
-                "↑↓ SCROLL    ←→ CONSTRUCT    ↩ CONNECT    ⎋ REGISTRY    ⌃C TERMINATE"
+                "↑↓ SCROLL  ←→ CONSTRUCT  ↩ CONNECT  ⎋ REGISTRY  ⌃C TERMINATE"
             )
 
             await pilot.press("right")
@@ -841,7 +841,7 @@ def test_registry_confirms_trace_erasure(tmp_path) -> None:
                 == 0
             )
             assert str(app.query_one("#catalog-hints", Static).content) == (
-                "←→ MOVE    ↩ SELECT    ⎋ RETAIN"
+                "←→ MOVE  ↩ SELECT  ⎋ RETAIN"
             )
             chooser = app.query_one("#chooser", OptionList)
             subject = chooser.get_option_at_index(1).prompt
@@ -900,7 +900,7 @@ def test_registry_renames_trace_with_current_name_as_default(tmp_path) -> None:
             )
             assert name.content_region.x - trace_name_message.content_region.x == 1
             assert str(app.query_one("#catalog-hints", Static).content) == (
-                "↩ NAME    ⎋ RETAIN"
+                "↩ NAME  ⎋ RETAIN"
             )
             name.value = "Morning session"
             await pilot.press("enter")
@@ -971,7 +971,7 @@ def test_transcript_formats_markdown_and_remains_scrollable(tmp_path) -> None:
                 "IDIOLECT // DIXIE::BASE [M]"
             )
             assert str(app.query_one("#footer", Static).content) == (
-                "CTX 500/1,000 (50%)    GEN 64 TOK @ 12.3 TOK/S"
+                "OUT 64 TOK  DECODE 12.3 TOK/S  CTX 50%"
             )
             footer = app.query_one("#footer", Static)
             assert footer.styles.color.ansi == 8
@@ -1077,6 +1077,25 @@ def test_loaded_trace_starts_at_the_bottom_of_chat_history(tmp_path) -> None:
     asyncio.run(verify())
 
 
+def test_telemetry_footer_formats_complete_and_compact_context() -> None:
+    """Check the complete footer and its first responsive compression."""
+    telemetry = TurnTelemetry(
+        prompt_tokens=1842,
+        generated_tokens=54,
+        generation_throughput=37.9,
+        time_to_first_token=2.15,
+        generation_time=3.59,
+    )
+
+    assert _telemetry_footer(telemetry, 32768, 100) == (
+        "OUT 54 TOK  DECODE 37.9 TOK/S  TTFT 2.15 S  LAT 3.59 S  "
+        "CTX 1,842/32,768 TOK 6%"
+    )
+    assert _telemetry_footer(telemetry, 32768, 78) == (
+        "OUT 54 TOK  DECODE 37.9 TOK/S  TTFT 2.15 S  LAT 3.59 S  CTX 6%"
+    )
+
+
 def test_footer_discloses_secondary_telemetry_when_space_allows(tmp_path) -> None:
     """Check telemetry priority and responsive disclosure."""
     chat = ChatConfig(output=tmp_path)
@@ -1094,24 +1113,24 @@ def test_footer_discloses_secondary_telemetry_when_space_allows(tmp_path) -> Non
             await _wait_for_chat(app, pilot)
             footer = app.query_one("#footer", Static)
             assert str(footer.content) == (
-                "CTX 500/1,000 (50%)    GEN 64 TOK @ 12.3 TOK/S"
+                "OUT 64 TOK  DECODE 12.3 TOK/S  CTX 50%"
             )
 
             await pilot.resize_terminal(20, 18)
             await pilot.pause()
-            assert str(footer.content) == "CTX 50%"
+            assert str(footer.content) == "OUT 64 TOK"
 
             await pilot.resize_terminal(65, 18)
             await pilot.pause()
             assert str(footer.content) == (
-                "CTX 500/1,000 (50%)    GEN 64 TOK @ 12.3 TOK/S    TTFT 0.42 S"
+                "OUT 64 TOK  DECODE 12.3 TOK/S  TTFT 0.42 S  CTX 50%"
             )
 
             await pilot.resize_terminal(80, 18)
             await pilot.pause()
             assert str(footer.content) == (
-                "CTX 500/1,000 (50%)    GEN 64 TOK @ 12.3 TOK/S"
-                "    TTFT 0.42 S    MEM 3.25 GB"
+                "OUT 64 TOK  DECODE 12.3 TOK/S  TTFT 0.42 S  "
+                "CTX 500/1,000 TOK 50%"
             )
 
     asyncio.run(verify())
@@ -1559,7 +1578,7 @@ def test_failed_confirmation_save_keeps_memory_only_chat(tmp_path) -> None:
             await pilot.pause()
             assert app.screen.query_one("#trace-name", Input).has_focus
             assert str(app.query_one("#footer", Static).content) == (
-                "↩ TRACE    ⎋ RESUME"
+                "↩ TRACE  ⎋ RESUME"
             )
             await pilot.press("enter")
             await pilot.pause()
@@ -1699,7 +1718,7 @@ def test_command_menu_filters_navigates_and_returns_to_registry(tmp_path) -> Non
             assert not selected_description.styles.text_style.bold
             assert composer.has_focus
             assert str(app.query_one("#footer", Static).content) == (
-                "↑↓ MOVE    ↩ COMMAND    ⎋ CLOSE"
+                "↑↓ MOVE  ↩ COMMAND  ⎋ CLOSE"
             )
             await pilot.press("down")
             assert chroma_button.has_class("-selected")
@@ -2013,7 +2032,7 @@ def test_reference_menu_selects_bubble_and_escape_clears_reference(tmp_path) -> 
             )
             assert menu.query_one("#reference-2").has_class("-selected")
             assert str(app.query_one("#footer", Static).content) == (
-                "↑↓ MOVE    ↩ REF    ⎋ CLOSE"
+                "↑↓ MOVE  ↩ REF  ⎋ CLOSE"
             )
             composer_bar = app.query_one("#composer-bar", Horizontal)
             before_geometry = (
@@ -2231,7 +2250,7 @@ def test_specs_command_restores_the_unchanged_trace_chat(tmp_path) -> None:
             assert app.query_one("#chat").display is False
             assert app.query_one("#specs").display
             assert str(app.query_one("#specs-hints", Static).content) == (
-                "↑↓ SCROLL    ⎋ LINK    ⌃C TERMINATE"
+                "↑↓ SCROLL  ⎋ LINK  ⌃C TERMINATE"
             )
             content = app.query_one("#specs-body", Static).content
             assert isinstance(content, SpecsDocument)
@@ -2557,7 +2576,7 @@ def test_dirty_slash_commands_open_connection_confirmation(tmp_path) -> None:
             assert app.focused is not None
             assert app.focused.id == "discard"
             assert str(app.query_one("#footer", Static).content) == (
-                "←→ MOVE    ↩ SELECT    ⎋ RESUME"
+                "←→ MOVE  ↩ SELECT  ⎋ RESUME"
             )
             assert (
                 app.query_one(

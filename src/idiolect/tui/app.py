@@ -220,7 +220,7 @@ def _accent_theme_css(
 
 WATERMARK = _watermark()
 
-_FOOTER_GAP = "    "
+_FOOTER_GAP = "  "
 
 
 def _episode_segments(
@@ -246,26 +246,32 @@ def _telemetry_footer(
     """Format the measured values that fit in the footer."""
     max_prompt_tokens = max(1, max_prompt_tokens)
     pressure = 100 * telemetry.prompt_tokens / max_prompt_tokens
-    context = f"CTX {telemetry.prompt_tokens:,}/{max_prompt_tokens:,} ({pressure:.0f}%)"
-    if len(context) > available_width:
-        compact_context = f"CTX {pressure:.0f}%"
-        return compact_context if len(compact_context) <= available_width else ""
-    generation = f"GEN {telemetry.generated_tokens:,} TOK"
+    output = f"OUT {telemetry.generated_tokens:,} TOK"
+    secondary = []
     if telemetry.generation_throughput is not None:
-        generation += f" @ {telemetry.generation_throughput:.1f} TOK/S"
-    fields = [context, generation]
+        secondary.append(f"DECODE {telemetry.generation_throughput:.1f} TOK/S")
     if telemetry.time_to_first_token is not None:
-        fields.append(f"TTFT {telemetry.time_to_first_token:.2f} S")
-    if telemetry.peak_memory is not None:
-        fields.append(f"MEM {telemetry.peak_memory:.2f} GB")
+        secondary.append(f"TTFT {telemetry.time_to_first_token:.2f} S")
+    if telemetry.generation_time is not None:
+        secondary.append(f"LAT {telemetry.generation_time:.2f} S")
+    context = (
+        f"CTX {telemetry.prompt_tokens:,}/{max_prompt_tokens:,} TOK {pressure:.0f}%"
+    )
+    full = _FOOTER_GAP.join((output, *secondary, context))
+    if len(full) <= available_width:
+        return full
 
-    visible = [fields[0]]
-    for field in fields[1:]:
-        candidate = _FOOTER_GAP.join((*visible, field))
-        if len(candidate) > available_width:
+    compact_context = f"CTX {pressure:.0f}%"
+    while True:
+        compact = _FOOTER_GAP.join((output, *secondary, compact_context))
+        if len(compact) <= available_width:
+            return compact
+        if not secondary:
             break
-        visible.append(field)
-    return _FOOTER_GAP.join(visible)
+        secondary.pop()
+    if len(output) <= available_width:
+        return output
+    return compact_context if len(compact_context) <= available_width else ""
 
 
 class ChatApp(App[None]):
@@ -484,7 +490,7 @@ class ChatApp(App[None]):
             yield KeyboardOptionList(id="chooser")
             yield StatusLine(id="catalog-alert")
             yield Static(
-                "↑↓ MOVE    ↩ CONNECT    ⌃C TERMINATE",
+                "↑↓ MOVE  ↩ CONNECT  ⌃C TERMINATE",
                 markup=False,
                 id="catalog-hints",
             )
@@ -1654,16 +1660,16 @@ class ChatApp(App[None]):
             self._active_dialog is not None
             and self._active_dialog.kind is DialogKind.CHROMA
         ):
-            self._set_footer("←→ MOVE    ↩ EQUIP    ⎋ CANCEL")
+            self._set_footer("←→ MOVE  ↩ EQUIP  ⎋ CANCEL")
             return
         if self._active_dialog is not None and self._active_dialog.kind in {
             DialogKind.CONFIRM,
             DialogKind.TRACE_NAME,
         }:
             self._set_footer(
-                "↩ TRACE    ⎋ RESUME"
+                "↩ TRACE  ⎋ RESUME"
                 if self._active_dialog.kind is DialogKind.TRACE_NAME
-                else "←→ MOVE    ↩ SELECT    ⎋ RESUME"
+                else "←→ MOVE  ↩ SELECT  ⎋ RESUME"
             )
             return
         if (
@@ -1671,14 +1677,14 @@ class ChatApp(App[None]):
             and self._active_selector.kind is SelectorKind.REFERENCE
             and self._active_selector.menu_open
         ):
-            self._set_footer("↑↓ MOVE    ↩ REF    ⎋ CLOSE")
+            self._set_footer("↑↓ MOVE  ↩ REF  ⎋ CLOSE")
             return
         if (
             self._active_selector is not None
             and self._active_selector.kind is SelectorKind.COMMAND
             and self._active_selector.menu_open
         ):
-            self._set_footer("↑↓ MOVE    ↩ COMMAND    ⎋ CLOSE")
+            self._set_footer("↑↓ MOVE  ↩ COMMAND  ⎋ CLOSE")
             return
         telemetry = self._latest_telemetry()
         if telemetry is None:
@@ -2300,7 +2306,7 @@ class ChatApp(App[None]):
                 self._render_chat_specs_document,
                 "chat",
                 _link_label(self._link_id),
-                "↑↓ SCROLL    ⎋ LINK    ⌃C TERMINATE",
+                "↑↓ SCROLL  ⎋ LINK  ⌃C TERMINATE",
             )
         )
 
@@ -2319,7 +2325,7 @@ class ChatApp(App[None]):
                 ),
                 "chat",
                 _link_label(self._link_id),
-                "↑↓ SCROLL    ⎋ LINK    ⌃C TERMINATE",
+                "↑↓ SCROLL  ⎋ LINK  ⌃C TERMINATE",
             )
         )
 
@@ -2336,7 +2342,7 @@ class ChatApp(App[None]):
                 ),
                 "chat",
                 _link_label(self._link_id),
-                "↑↓ SCROLL    ⎋ LINK    ⌃C TERMINATE",
+                "↑↓ SCROLL  ⎋ LINK  ⌃C TERMINATE",
             )
         )
 
@@ -2397,7 +2403,7 @@ class ChatApp(App[None]):
             self._render_registry_specs_document,
             "registry",
             None,
-            "↑↓ SCROLL    ←→ CONSTRUCT    ↩ CONNECT    ⎋ REGISTRY    ⌃C TERMINATE",
+            "↑↓ SCROLL  ←→ CONSTRUCT  ↩ CONNECT  ⎋ REGISTRY  ⌃C TERMINATE",
             cycle=True,
             connect=True,
         )
@@ -2497,14 +2503,14 @@ class ChatApp(App[None]):
             and self._active_dialog.kind is DialogKind.CHROMA
         ):
             self.query_one("#catalog-hints", Static).update(
-                "←→ MOVE    ↩ EQUIP    ⎋ CANCEL"
+                "←→ MOVE  ↩ EQUIP  ⎋ CANCEL"
             )
             return
         if self._active_dialog is not None and self._active_dialog.trace_id is not None:
             self.query_one("#catalog-hints", Static).update(
-                "↩ NAME    ⎋ RETAIN"
+                "↩ NAME  ⎋ RETAIN"
                 if self._active_dialog.kind is DialogKind.TRACE_RENAME
-                else "←→ MOVE    ↩ SELECT    ⎋ RETAIN"
+                else "←→ MOVE  ↩ SELECT  ⎋ RETAIN"
             )
             return
         has_traces = any(isinstance(row, SavedChat) for row in self._rows.values())
@@ -2519,7 +2525,7 @@ class ChatApp(App[None]):
             fields.append("⌫ MANAGE")
         fields.append("⌃C TERMINATE")
         available = max(20, self.size.width - 4)
-        gap = "    " if available >= 60 else "  "
+        gap = "  "
         for removable in (
             "⌃C TERMINATE",
             "C CHROMA",
