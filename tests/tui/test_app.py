@@ -2324,7 +2324,7 @@ def test_probe_command_shows_live_details_and_restores_chat(tmp_path) -> None:
 
 
 def test_buffer_command_shows_fitted_context_and_restores_chat(tmp_path) -> None:
-    """Check the context sheet lists active references without changing chat."""
+    """Check the context sheet reports the fitted range without changing chat."""
     chat = ChatConfig(
         output=tmp_path,
         context_policy="recorded-window-drop-oldest",
@@ -2369,17 +2369,15 @@ def test_buffer_command_shows_fitted_context_and_restores_chat(tmp_path) -> None
             )
             content = app.query_one("#specs-body", Static).content
             assert isinstance(content, SpecsDocument)
-            assert "PROMPT\n" in content.plain
-            assert "TOKENS\nPROMPT\n 2 TOK\n" in content.plain
-            assert "LIMIT\n 100 TOK\n" in content.plain
-            assert "UTILIZATION\n 2.0%\n" in content.plain
-            assert "TURNS\nACTIVE\n 1\n" in content.plain
-            assert "CAPACITY\n 32\n" in content.plain
-            assert "EVICTED\n 0\n" in content.plain
-            assert "HEAD\n @OP:00\n" in content.plain
-            assert "RESIDENT\n" in content.plain
-            assert "REFS\n @OP:00\n" in content.plain
-            assert "@OP:00\n" in content.plain
+            assert "CAPACITY\nCONTEXT WINDOW\n 100 TOK\n" in content.plain
+            assert "USED\n 2 TOK\n 2.0%\n" in content.plain
+            assert "COMPOSITION\nSYSTEM\n 2 TOK\n" in content.plain
+            assert "HISTORY\n 0 TOK\nINPUT\n 0 TOK\n" in content.plain
+            assert "HISTORY\nTURNS\n 1 / 32\n" in content.plain
+            assert "EVICTED\n 0 TURNS\n 0 TOK\n" in content.plain
+            assert "ACTIVE REF RANGE\n —\n" in content.plain
+            assert "RESIDENT\n" not in content.plain
+            assert "@OP:00\n" not in content.plain
             assert "Keep this context" not in content.plain
 
             await pilot.press("escape")

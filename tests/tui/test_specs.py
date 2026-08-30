@@ -105,10 +105,10 @@ def test_probe_omits_structurally_absent_device_and_base_adapter() -> None:
     assert "TELEMETRY\nOUTPUT\n —\n" in document.plain
 
 
-def test_buffer_shows_context_measurements_and_active_references(
+def test_buffer_shows_capacity_composition_and_active_history_range(
     tmp_path: Path,
 ) -> None:
-    """Check BUFFER reports fitted context and complete active bubble text."""
+    """Check BUFFER reports token use, composition, eviction, and active range."""
     assistant = _base(tmp_path)
     assert assistant.base_data is not None
     assistant = Assistant(
@@ -144,35 +144,43 @@ def test_buffer_shows_context_measurements_and_active_references(
             ChatTurn("user", "active question"),
         ),
     )
-    prepared = prepare_prompt(session, lambda _value: 25, 0)
+    prepared = replace(
+        prepare_prompt(session, lambda _value: 25, 0),
+        dropped_messages=4,
+        system_tokens=5,
+        history_tokens=17,
+        input_tokens=3,
+        evicted_tokens=927,
+    )
 
     document = render_buffer(session, prepared)
 
-    assert "PROMPT\n" in document.plain
-    assert "POLICY\n" not in document.plain
-    assert "PROMPT\nDIGEST\n" in document.plain
-    assert "TOKENS\n" in document.plain
-    assert "TOKENS\nPROMPT\n 25 TOK\n" in document.plain
-    assert "LIMIT\n 100 TOK\n" in document.plain
-    assert "UTILIZATION\n 25.0%\n" in document.plain
-    assert "TURNS\n" in document.plain
-    assert "TURNS\nACTIVE\n 3\n" in document.plain
-    assert "CAPACITY\n 32\n" in document.plain
-    assert "EVICTED\n 0\n" in document.plain
-    assert "RESIDENT\n" in document.plain
-    assert "HEAD\n @OP:03\n" in document.plain
-    assert "REFS\n @OP:00\n @DIXIE:01\n @DIXIE:02\n @OP:03\n" in document.plain
-    assert "@OP:00\n" in document.plain
-    assert "@DIXIE:01\n" in document.plain
-    assert "@DIXIE:02\n" in document.plain
-    assert "@OP:03\n" in document.plain
+    assert document.plain.startswith(
+        "CAPACITY\n"
+        "CONTEXT WINDOW\n 100 TOK\n"
+        "USED\n 25 TOK\n 25.0%\n\n"
+        "COMPOSITION\n"
+        "SYSTEM\n 5 TOK\n"
+        "HISTORY\n 17 TOK\n"
+        "INPUT\n 3 TOK\n\n"
+        "HISTORY\n"
+        "TURNS\n 3 / 32\n"
+        "EVICTED\n 4 TURNS\n 927 TOK\n"
+        "ACTIVE REF RANGE\n @OP:00\n @DIXIE:02\n"
+    )
+    assert "DIGEST\n" not in document.plain
+    assert "RESIDENT\n" not in document.plain
+    assert "@DIXIE:01\n" not in document.plain
+    assert "@OP:03\n" not in document.plain
     assert "active question" not in document.plain
 
     empty = render_buffer(session, None)
-    assert "TOKENS\nPROMPT\n —\nLIMIT\n 100 TOK\nUTILIZATION\n —\n" in empty.plain
-    assert "TURNS\nACTIVE\n —\nCAPACITY\n 32\nEVICTED\n —\n" in empty.plain
-    assert "RESIDENT\nHEAD\n —\nREFS\n —\n" in empty.plain
-    assert "No references are resident." not in empty.plain
+    assert "CAPACITY\nCONTEXT WINDOW\n 100 TOK\nUSED\n —\n" in empty.plain
+    assert "COMPOSITION\nSYSTEM\n —\nHISTORY\n —\nINPUT\n —\n" in empty.plain
+    assert (
+        "HISTORY\nTURNS\n — / 32\nEVICTED\n —\nACTIVE REF RANGE\n —\n"
+        in empty.plain
+    )
 
 
 def test_construct_specs_show_verified_lineage_and_no_invented_evaluation(

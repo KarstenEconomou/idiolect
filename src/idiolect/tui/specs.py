@@ -441,64 +441,84 @@ def render_buffer(
     session: ChatSession,
     prepared: PreparedPrompt | None,
 ) -> SheetDocument:
-    """Return context use and resident reference details."""
+    """Return context capacity, composition, and history details."""
     document = SheetDocument()
-    _section(document, "PROMPT")
+    _section(document, "CAPACITY")
     _field(
         document,
-        "DIGEST",
-        None if prepared is None else _upper_hex(prepared.prompt_digest),
-    )
-
-    _section(document, "TOKENS")
-    _field(
-        document,
-        "PROMPT",
-        None if prepared is None else f"{prepared.prompt_tokens:,} TOK",
-    )
-    _field(
-        document,
-        "LIMIT",
+        "CONTEXT WINDOW",
         f"{session.generation.max_prompt_tokens:,} TOK",
+        abbreviate=False,
     )
     _field(
         document,
-        "UTILIZATION",
+        "USED",
         None
         if prepared is None
         else (
+            f"{prepared.prompt_tokens:,} TOK\n"
             f"{100 * prepared.prompt_tokens / session.generation.max_prompt_tokens:.1f}%"
         ),
     )
 
-    _section(document, "TURNS")
+    _section(document, "COMPOSITION")
     _field(
         document,
-        "ACTIVE",
-        None if prepared is None else prepared.active_turns,
+        "SYSTEM",
+        None if prepared is None else f"{prepared.system_tokens:,} TOK",
     )
-    _field(document, "CAPACITY", session.assistant.context_messages)
+    _field(
+        document,
+        "HISTORY",
+        None if prepared is None else f"{prepared.history_tokens:,} TOK",
+    )
+    _field(
+        document,
+        "INPUT",
+        None if prepared is None else f"{prepared.input_tokens:,} TOK",
+    )
+
+    _section(document, "HISTORY")
+    _field(
+        document,
+        "TURNS",
+        (
+            f"— / {session.assistant.context_messages:,}"
+            if prepared is None
+            else f"{prepared.active_turns:,} / {session.assistant.context_messages:,}"
+        ),
+    )
     _field(
         document,
         "EVICTED",
-        None if prepared is None else prepared.dropped_messages,
-    )
-
-    _section(document, "RESIDENT")
-    references = () if prepared is None else prepared.active_references
-    _field(
-        document,
-        "HEAD",
-        None if not references else _buffer_reference_name(session, references[-1]),
-    )
-    _field(
-        document,
-        "REFS",
         None
-        if not references
-        else "\n".join(_buffer_reference_name(session, ref) for ref in references),
+        if prepared is None
+        else (
+            f"{prepared.dropped_messages:,} TURNS\n"
+            f"{prepared.evicted_tokens:,} TOK"
+        ),
+    )
+    references = () if prepared is None else prepared.active_references
+    if references and references[-1].role == "user":
+        references = references[:-1]
+    _field(
+        document,
+        "ACTIVE REF RANGE",
+        _buffer_active_range(session, references),
     )
     return document
+
+
+def _buffer_active_range(
+    session: ChatSession,
+    references: tuple[ChatBubble, ...],
+) -> str | None:
+    """Return the first and last active BUFFER references."""
+    if not references:
+        return None
+    first = _buffer_reference_name(session, references[0])
+    last = _buffer_reference_name(session, references[-1])
+    return first if len(references) == 1 else f"{first}\n{last}"
 
 
 def _buffer_reference_name(session: ChatSession, reference: ChatBubble) -> str:

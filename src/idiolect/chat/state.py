@@ -70,6 +70,10 @@ class PreparedPrompt:
     dropped_messages: int
     active_turns: int
     active_references: tuple[ChatBubble, ...]
+    system_tokens: int = 0
+    history_tokens: int = 0
+    input_tokens: int = 0
+    evicted_tokens: int = 0
 
 
 class ChatSession:
@@ -206,31 +210,36 @@ def prepare_prompt(
     model_turns = tuple(turn for turn in state.turns if turn.role != "env")
     selected = model_turns[-limit:]
     dropped = len(model_turns) - len(selected)
+    bubbles = {bubble.index: bubble for bubble in enumerate_bubbles(state.turns)}
     while selected:
-        bubbles = {bubble.index: bubble for bubble in enumerate_bubbles(state.turns)}
-        prompt = render_conversation(
-            state.assistant.target_name,
-            tuple(
-                ConversationEntry(
-                    _entry_header(state, turn, bubbles),
-                    turn.content,
-                )
-                for turn in selected
-            ),
-        )
-        model_input = format_prompt(prompt, state.assistant.data)
+        prompt, model_input = _prompt_for_turns(state, selected, bubbles)
         token_count = tokenizer(model_input)
         if token_count <= state.generation.max_prompt_tokens:
             digest = _model_input_digest(model_input)
-            return PreparedPrompt(
-                model_input,
-                prompt,
-                digest,
+            _, system_input = _prompt_for_turns(state, (), bubbles)
+            _, history_input = _prompt_for_turns(state, selected[:-1], bubbles)
+            system_tokens = min(tokenizer(system_input), token_count)
+            system_history_tokens = min(
+                max(tokenizer(history_input), system_tokens),
                 token_count,
-                derive_seed(state.chat.seed, digest, attempt),
-                dropped,
-                len(selected),
-                _active_references(state.turns, dropped),
+            )
+            evicted_tokens = 0
+            if dropped:
+                _, untrimmed_input = _prompt_for_turns(state, model_turns, bubbles)
+                evicted_tokens = max(0, tokenizer(untrimmed_input) - token_count)
+            return PreparedPrompt(
+                value=model_input,
+                prompt=prompt,
+                prompt_digest=digest,
+                prompt_tokens=token_count,
+                seed=derive_seed(state.chat.seed, digest, attempt),
+                dropped_messages=dropped,
+                active_turns=len(selected),
+                active_references=_active_references(state.turns, dropped),
+                system_tokens=system_tokens,
+                history_tokens=system_history_tokens - system_tokens,
+                input_tokens=token_count - system_history_tokens,
+                evicted_tokens=evicted_tokens,
             )
         if len(selected) == 1:
             raise ChatStateError(
@@ -239,6 +248,25 @@ def prepare_prompt(
         selected = selected[1:]
         dropped += 1
     raise ChatStateError("A prompt requires a newest user message")
+
+
+def _prompt_for_turns(
+    state: ChatSession,
+    turns: tuple[ChatTurn, ...],
+    bubbles: dict[int, ChatBubble],
+) -> tuple[str, ModelInput]:
+    """Return one formatted prompt for the specified model turns."""
+    prompt = render_conversation(
+        state.assistant.target_name,
+        tuple(
+            ConversationEntry(
+                _entry_header(state, turn, bubbles),
+                turn.content,
+            )
+            for turn in turns
+        ),
+    )
+    return prompt, format_prompt(prompt, state.assistant.data)
 
 
 def derive_seed(chat_seed: int, prompt_digest: str, attempt: int) -> int:

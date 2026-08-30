@@ -61,9 +61,21 @@ def test_prompt_records_stable_references_in_the_fitted_context_window() -> None
     )
     state.add_user("newest")
 
-    prepared = prepare_prompt(state, lambda _value: 10, 0)
+    prepared = prepare_prompt(
+        state,
+        lambda value: sum(len(turn.content) for turn in value.turns),
+        0,
+    )
 
     assert prepared.dropped_messages == 1
+    assert prepared.evicted_tokens > 0
+    assert prepared.system_tokens > 0
+    assert prepared.history_tokens > 0
+    assert prepared.input_tokens > 0
+    assert (
+        prepared.system_tokens + prepared.history_tokens + prepared.input_tokens
+        == prepared.prompt_tokens
+    )
     assert prepared.active_turns == 2
     assert [
         (reference.index, reference.role, reference.content)
