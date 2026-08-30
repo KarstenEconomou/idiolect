@@ -655,6 +655,14 @@ def test_registry_opens_specs_and_returns_to_the_same_row(tmp_path) -> None:
             specs_link = app.query_one("#specs-link", Static)
             assert specs_heading.region.y == chat_heading.region.y
             assert specs_link.display is False
+            assert str(app.query_one("#specs-hints", Static).content) == (
+                "↑↓ SCROLL  ↩ CONNECT  ⎋ REGISTRY  ⌃C TERMINATE"
+            )
+
+            await pilot.press("left", "right")
+            assert str(app.query_one("#specs-identity", Static).content) == (
+                assistant.name
+            )
 
             await pilot.press("escape")
             await pilot.pause()
@@ -692,6 +700,34 @@ def test_specs_connects_to_the_selected_registry_entry(tmp_path) -> None:
             assert app.query_one("#chat").display
             assert runtime.session is not None
             assert runtime.session.assistant is assistant
+
+    asyncio.run(verify())
+
+
+def test_specs_construct_nav_counts_visible_fault_rows(tmp_path) -> None:
+    """Check a FAULT row keeps multi-construct navigation visible."""
+    assistant = _assistant()
+    app = ChatApp(
+        ChatConfig(output=tmp_path),
+        GenerationConfig(),
+        assistants=(
+            DiscoveryItem("Unavailable assistant", "failed", None, None, "invalid"),
+            DiscoveryItem(assistant.name, "BASE", None, assistant),
+        ),
+        runtime_factory=cast(
+            Callable[..., ChatRuntime],
+            lambda chat, generation: ImmediateRuntime(chat, generation),
+        ),
+    )
+
+    async def verify() -> None:
+        async with app.run_test(size=(80, 24)) as pilot:
+            await pilot.press("s")
+            await pilot.pause()
+
+            assert str(app.query_one("#specs-hints", Static).content) == (
+                "↑↓ SCROLL  ←→ CONSTRUCT  ↩ CONNECT  ⎋ REGISTRY  ⌃C TERMINATE"
+            )
 
     asyncio.run(verify())
 

@@ -2487,13 +2487,19 @@ class ChatApp(App[None]):
             title = row.assistant.name
         else:
             title = "SPECS"
+        chooser = self.query_one("#chooser", OptionList)
+        cycle = sum(option.id is not None for option in chooser.options) > 1
+        hints = ["↑↓ SCROLL"]
+        if cycle:
+            hints.append("←→ CONSTRUCT")
+        hints.extend(("↩ CONNECT", "⎋ REGISTRY", "⌃C TERMINATE"))
         return SheetPage(
             title,
             self._render_registry_specs_document,
             "registry",
             None,
-            "↑↓ SCROLL  ←→ CONSTRUCT  ↩ CONNECT  ⎋ REGISTRY  ⌃C TERMINATE",
-            cycle=True,
+            "  ".join(hints),
+            cycle=cycle,
             connect=True,
         )
 
