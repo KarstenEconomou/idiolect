@@ -26,5 +26,6 @@ These instructions apply to `src/idiolect/eval/`.
   comparison, `idiolect eval rate` for one private blind rating session,
   and `idiolect eval panel` to summarize judgments. These are operational,
   not verification commands.
-- Update `docs/eval.md` when metrics, eligibility, ballots, panels,
-  interpretation, or artifact formats change.
+- Review `docs/eval.md` when operator-visible metrics, eligibility, commands,
+  ballots, panels, interpretation, or artifact formats change. Do not document
+  internal scoring decomposition or every validation branch.

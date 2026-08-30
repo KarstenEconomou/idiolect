@@ -142,4 +142,4 @@ phone history. Signal does not guarantee an unlimited queue period.
 Use only one process with a `signal-cli` data directory. Use only one DuckDB
 writer. Stop continuous collection before `reindex` or dataset construction.
 
-For continuous collection, use the [macOS LaunchAgent procedure](launchd.md).
+For continuous collection, use [docs/launchd.md](launchd.md).

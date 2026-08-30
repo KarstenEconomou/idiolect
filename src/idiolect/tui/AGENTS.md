@@ -150,4 +150,6 @@ TUI tests.
   Use the trace name as the rename-field default. Keep the name field hidden
   until its chat or registry anchoring is complete. Blink the subject trace
   name while either menu is open.
-- Update `docs/chat.md` and `README.md` when visible behavior or controls change.
+- Review `docs/chat.md` when operator-visible controls or behavior change. Edit
+  `README.md` only when the concise project entry point or happy-path chat
+  workflow changes; keep detailed controls in the chat procedure.

@@ -19,5 +19,7 @@ These instructions apply to `src/idiolect/ingest/`.
 - Use `idiolect signal status`, `idiolect signal start`, and `idiolect signal stop` only
   for user-requested collector operations. Follow `docs/signal.md` and
   `docs/launchd.md`; do not install or operate the LaunchAgent during code work.
-- Update `docs/signal.md` when collection requirements, parsing, normalization,
-  filtering, or operation changes.
+- Review `docs/signal.md` when operator-visible collection requirements,
+  configuration, commands, guarantees, limits, or recovery changes. Put stored
+  record meaning in `docs/data.md` and shared model-text meaning in
+  `docs/context.md`; do not document parser internals.

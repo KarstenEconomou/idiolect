@@ -46,5 +46,7 @@ These instructions apply to `src/idiolect/chat/`. Read
   `idiolect chat --run <run> --dataset <dataset>` for a verified assistant, and
   `idiolect chat --resume <chat>` for a verified snapshot. Chat commands read
   private state; do not run them for code verification.
-- Update `docs/chat.md` when chat policy, identity, worker lifecycle, context,
-  commands, snapshots, or recovery behavior changes.
+- Review `docs/chat.md` when its operator-visible policy, identity, commands,
+  context behavior, snapshots, operational limits, or recovery steps change.
+  Edit only the affected procedure or contract; internal worker changes alone
+  do not require documentation.

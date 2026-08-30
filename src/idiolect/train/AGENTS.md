@@ -19,4 +19,6 @@ These instructions apply to `src/idiolect/train/`.
 - Use `just setup-train` for optional packages and `idiolect train <dataset>` for a
   configured run. Training commands keep the Mac awake and are operational, not
   verification steps.
-- Update `docs/train.md` when setup, policy, execution, or run artifacts change.
+- Review `docs/train.md` when operator-visible setup, policy decisions,
+  preflight behavior, commands, run operation, or artifacts change. Do not add
+  backend command construction or other implementation detail.

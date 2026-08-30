@@ -137,5 +137,5 @@ Do not publish it.
   evaluation.
 - Chat does not contact Signal, DuckDB, or a remote inference service.
 
-For model selection evidence, use the [evaluation procedure](eval.md). For
-artifact handling rules, use the [security procedure](security.md).
+For model selection evidence, use [docs/eval.md](eval.md). For artifact handling
+rules, use [docs/security.md](security.md).

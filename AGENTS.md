@@ -62,10 +62,20 @@ Run focused checks while working. Run `just check` before handoff.
   unknown, or incompatible settings at the boundary that uses them.
 - Keep dataset, run, inference, chat snapshot, evaluation, judgment, and panel
   artifacts immutable and content-addressed.
-- Update `README.md` and the applicable procedure when behavior, setup,
-  configuration, operation, or data flow changes. Document only the current
-  implementation. Git history is the change record; do not write migration or
-  historical narratives into current documentation.
+
+## Documentation
+
+Documentation is the current public contract, not a work log.
+
+- Keep `README.md` as a concise project entry point and `docs/` as focused
+  procedures and contract explanations. Read `docs/AGENTS.md` before editing it.
+- Update only documents whose audience-visible contract changed, and make the
+  smallest change that restores accuracy.
+- Keep one canonical explanation and link to it instead of copying details.
+- Document implemented behavior only. Exclude internals, plans, test summaries,
+  migration narratives, and changelogs.
+- Display every docs link as its literal repository path:
+  `[docs/whatever.md](...)`. Never use a title or descriptive alias.
 
 ## Data and security
 

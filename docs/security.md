@@ -22,7 +22,7 @@ are not valid public TOML settings.
 
 Keep secrets and Signal identifiers in `.env` or a system secret store. The
 supported Signal environment values are documented in
-[Signal collection](signal.md).
+[docs/signal.md](signal.md).
 
 Set the file mode before adding values:
 

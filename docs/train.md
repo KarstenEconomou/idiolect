@@ -144,4 +144,4 @@ manifest, or log.
 5. Use all evaluation pillars before model selection.
 
 A small successful run verifies the system. It does not establish model
-quality. Use the [evaluation procedure](eval.md) for selection.
+quality. Use [docs/eval.md](eval.md) for selection.

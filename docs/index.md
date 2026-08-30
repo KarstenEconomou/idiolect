@@ -5,36 +5,36 @@ root.
 
 ## First setup
 
-1. Read [security](security.md) before creating private state.
-2. Use [Signal collection](signal.md) to link the local device and configure the
+1. Read [docs/security.md](security.md) before creating private state.
+2. Use [docs/signal.md](signal.md) to link the local device and configure the
    whitelist.
-3. Use the [macOS LaunchAgent](launchd.md) only for continuous collection.
+3. Use [docs/launchd.md](launchd.md) only for continuous collection.
 
 ## Data and model pipeline
 
 Follow these procedures in order:
 
-1. [Data store](data.md) explains private paths, stored records, and writer
+1. [docs/data.md](data.md) explains private paths, stored records, and writer
    restrictions.
-2. [Conversation context](context.md) defines identity, mention, reply, and
+2. [docs/context.md](context.md) defines identity, mention, reply, and
    response-episode meaning.
-3. [Dataset build](dataset.md) defines causal selection, split isolation, and
+3. [docs/dataset.md](dataset.md) defines causal selection, split isolation, and
    artifact contents.
-4. [Adapter training](train.md) defines complete experiment policies and local
+4. [docs/train.md](train.md) defines complete experiment policies and local
    MLX-LM runs.
-5. [Local inference](inference.md) defines target selection and immutable
+5. [docs/inference.md](inference.md) defines target selection and immutable
    prediction artifacts.
-6. [Model evaluation](eval.md) defines the evidence, gates, and familiar-rater
+6. [docs/eval.md](eval.md) defines the evidence, gates, and familiar-rater
    procedure.
 
 ## Local chat
 
-Use [local chat](chat.md) to open the configured base model, a verified adapter,
+Use [docs/chat.md](chat.md) to open the configured base model, a verified adapter,
 or a saved snapshot. Chat does not read Signal or DuckDB.
 
 ## Development
 
-Use [development and verification](development.md) for package boundaries,
+Use [docs/development.md](development.md) for package boundaries,
 test isolation, and required checks.
 
 ## Process restrictions

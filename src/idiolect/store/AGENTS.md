@@ -16,3 +16,7 @@ These instructions apply to `src/idiolect/store/`.
   databases and must create all schema and data they need.
 - Keep reserved adapters explicit. Do not add placeholder behavior to a protocol
   or to `files.py` before a real storage contract exists.
+- Review `docs/data.md` when operator-visible runtime paths, stored-record
+  meaning, writer rules, inspection, or repair change. Put model conversation
+  meaning in `docs/context.md`; do not document schema or adapter internals that
+  an operator does not need.

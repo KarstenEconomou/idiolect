@@ -20,5 +20,6 @@ These instructions apply to `src/idiolect/inference/`.
 - Use `idiolect infer --base`, `idiolect infer <run> --base`, or
   `idiolect infer <run>` for configured generation. Batch inference keeps the
   Mac awake and is operational, not a verification step.
-- Update `docs/inference.md` when target selection, generation policy, or
-  prediction artifacts change.
+- Review `docs/inference.md` when operator-visible target selection, commands,
+  generation policy, output, or prediction artifacts change. Do not copy shared
+  prompt or security contracts into this procedure.

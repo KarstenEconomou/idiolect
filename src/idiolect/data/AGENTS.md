@@ -26,5 +26,6 @@ These instructions apply to `src/idiolect/data/`.
 - Use `idiolect data people` to list normalized authors and
   `idiolect data build <name>` to build the linked user's dataset. These are private
   operational commands; do not run them for code verification.
-- Update `docs/dataset.md` when transformation, splitting, identity, or output
-  behavior changes.
+- Review `docs/context.md` or `docs/dataset.md` when the model-text contract or
+  operator-visible dataset policy, identity, build, or artifact behavior
+  changes. Put shared conversation meaning only in `docs/context.md`.
