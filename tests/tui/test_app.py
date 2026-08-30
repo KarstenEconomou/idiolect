@@ -2462,6 +2462,117 @@ def test_message_during_generation_reports_error_and_retains_text(tmp_path) -> N
         runtime.release_prefill.set()
 
 
+def test_retry_replaces_a_cancelled_reply(tmp_path) -> None:
+    """Check retry removes a cancelled reply and advances its attempt."""
+    chat = ChatConfig(output=tmp_path)
+    generation = GenerationConfig(max_prompt_tokens=100)
+    turns = (
+        ChatTurn("user", "Recover this"),
+        ChatTurn(
+            "assistant",
+            "Partial reply",
+            attempt=0,
+            finish_reason="cancelled",
+            seed=101,
+            telemetry=TurnTelemetry(2, 1),
+        ),
+    )
+    trace = SavedChat(
+        "d" * 64,
+        tmp_path / ("d" * 64),
+        datetime(2026, 8, 29, tzinfo=UTC),
+        "Cancelled trace",
+        None,
+        _assistant(),
+        chat,
+        generation,
+        turns,
+    )
+    runtime = ImmediateRuntime(chat, generation)
+    app = ChatApp(
+        chat,
+        generation,
+        runtime_factory=cast(Callable[..., ChatRuntime], lambda *_args: runtime),
+        initial_chat=trace,
+    )
+
+    async def verify() -> None:
+        async with app.run_test() as pilot:
+            await _wait_for_chat(app, pilot)
+            composer = app.query_one(Composer)
+            composer.insert("/retry")
+            await pilot.press("enter")
+            for _ in range(20):
+                await pilot.pause()
+                if "Synthetic reply" in app.query_one(Transcript).plain:
+                    break
+
+            session = runtime.session
+            assert session is not None
+            assert [turn.content for turn in session.turns] == [
+                "Recover this",
+                "Synthetic reply",
+            ]
+            assert session.turns[-1].attempt == 1
+
+            composer.insert("/retry")
+            await pilot.press("enter")
+            await pilot.pause()
+            assert app.query_one("#chat-alert", StatusLine).state == (
+                "SYS: ERR GENERATION not retryable."
+            )
+            assert [turn.content for turn in session.turns] == [
+                "Recover this",
+                "Synthetic reply",
+            ]
+
+    asyncio.run(verify())
+
+
+def test_retry_reloads_after_a_failed_generation(tmp_path) -> None:
+    """Check retry reloads a failed worker and regenerates the pending turn."""
+    chat = ChatConfig(output=tmp_path)
+    generation = GenerationConfig(max_prompt_tokens=100)
+    runtime = FailureThenRetryRuntime(chat, generation)
+    app = ChatApp(
+        chat,
+        generation,
+        runtime_factory=cast(Callable[..., ChatRuntime], lambda *_args: runtime),
+        initial_assistant=_assistant(),
+    )
+
+    async def verify() -> None:
+        async with app.run_test() as pilot:
+            await _wait_for_chat(app, pilot)
+            composer = app.query_one(Composer)
+            composer.insert("Recover this")
+            await pilot.press("enter")
+            for _ in range(20):
+                await pilot.pause()
+                if app.query_one("#chat-alert", StatusLine).state.endswith(
+                    "Synthetic generation failure."
+                ):
+                    break
+
+            composer.insert("/retry")
+            await pilot.press("enter")
+            for _ in range(20):
+                await pilot.pause()
+                if "Recovered reply" in app.query_one(Transcript).plain:
+                    break
+
+            session = runtime.session
+            assert session is not None
+            assert runtime.reloads == 1
+            assert runtime.attempts == [0, 1]
+            assert [turn.content for turn in session.turns] == [
+                "Recover this",
+                "Recovered reply",
+            ]
+
+    asyncio.run(verify())
+
+
 async def _wait_for_chat(app: ChatApp, pilot: Pilot[None]) -> None:
     for _ in range(20):
         await pilot.pause()
@@ -2549,7 +2660,8 @@ class ImmediateRuntime(BlockingRuntime):
         """Commit one synthetic assistant reply."""
         if self.session is None:
             raise RuntimeError("No fake chat session")
-        self.session.begin_generation()
+        if not self.session.generating:
+            self.session.begin_generation()
         yield "Synthetic reply"
         self.session.finish_generation(
             "Synthetic reply",
@@ -2562,6 +2674,46 @@ class ImmediateRuntime(BlockingRuntime):
     def close(self) -> None:
         """Record fake runtime shutdown."""
         self.closed = True
+
+
+class FailureThenRetryRuntime(ImmediateRuntime):
+    """Fail one generation and recover after a synthetic reload."""
+
+    def __init__(self, chat: ChatConfig, generation: GenerationConfig) -> None:
+        """Create retry records."""
+        super().__init__(chat, generation)
+        self.attempts: list[int] = []
+        self.reloads = 0
+
+    def reload(self) -> None:
+        """Record one successful worker reload."""
+        self.reloads += 1
+        self.state = WorkerState.READY
+
+    def generate(
+        self,
+        attempt: int = 0,
+        prompt_progress: Callable[[int, int], None] | None = None,
+    ) -> Iterator[str]:
+        """Fail the first attempt and complete the second attempt."""
+        del prompt_progress
+        if self.session is None:
+            raise RuntimeError("No fake chat session")
+        self.attempts.append(attempt)
+        if len(self.attempts) == 1:
+            self.session.begin_generation()
+            self.session.generating = False
+            self.state = WorkerState.FAILED
+            raise RuntimeError("Synthetic generation failure")
+        self.session.begin_generation()
+        yield "Recovered reply"
+        self.session.finish_generation(
+            "Recovered reply",
+            "stop",
+            101 + attempt,
+            TurnTelemetry(2, 2),
+            attempt=attempt,
+        )
 
 
 class ReferenceRuntime(ImmediateRuntime):

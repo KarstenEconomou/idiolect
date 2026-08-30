@@ -12,6 +12,7 @@ from idiolect.tui.commands import CommandError, completions, parse_command
         "/chroma",
         "/disconnect",
         "/probe",
+        "/retry",
         "/specs",
         "/terminate",
         "/trace",
@@ -40,7 +41,6 @@ def test_echo_command_keeps_its_argument_text() -> None:
     ("value", "message"),
     [
         ("/quit", "COMMAND unknown"),
-        ("/retry", "COMMAND unknown"),
         ("/terminate now", "COMMAND argument unexpected"),
         ("/registry", "COMMAND unknown"),
     ],
@@ -62,6 +62,7 @@ def test_command_completion_requires_one_command_prefix() -> None:
         "/disconnect",
         "/echo",
         "/probe",
+        "/retry",
         "/specs",
         "/terminate",
         "/trace",
@@ -70,6 +71,7 @@ def test_command_completion_requires_one_command_prefix() -> None:
     assert completions("/tr") == ("/trace",)
     assert completions("/sp") == ("/specs",)
     assert completions("/pr") == ("/probe",)
+    assert completions("/re") == ("/retry",)
     assert completions("/bu") == ("/buffer",)
     assert completions("/ch") == ("/chroma",)
     assert completions("/ec") == ("/echo",)

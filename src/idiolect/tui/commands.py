@@ -8,6 +8,7 @@ COMMAND_DESCRIPTIONS = {
     "/disconnect": "Disconnect active LINK.",
     "/echo": "SYS echo.",
     "/probe": "View active LINK.",
+    "/retry": "Retry cancelled or failed GENERATION.",
     "/specs": "View CONSTRUCT specifications.",
     "/terminate": "Terminate IDIOLECT.",
     "/trace": "Save current TRACE.",

@@ -99,8 +99,11 @@ memory to the terminal application. Cancellation stops generation at a token
 boundary. A cancelled partial reply remains in the in-memory transcript. A
 worker failure does not save the transcript.
 
-Return to the registry after a worker failure. Start a new session to load the
-model again.
+After a worker failure, use `/retry` to reload it and retry the pending
+generation. The command also replaces the latest cancelled reply. Each retry
+uses the next deterministic attempt seed. The command is unavailable after a
+completed reply. Return to the registry and start a new session if recovery
+fails.
 
 ## Saved snapshots
 

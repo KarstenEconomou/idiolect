@@ -403,6 +403,7 @@ class CommandMenu(VerticalMenu):
         selected: str | None,
         *,
         registry_enabled: bool,
+        retry_enabled: bool,
         trace_enabled: bool,
     ) -> None:
         """Set visible commands and the highlighted command."""
@@ -413,6 +414,7 @@ class CommandMenu(VerticalMenu):
                 COMMAND_DESCRIPTIONS[command],
                 disabled=(
                     (command == "/disconnect" and not registry_enabled)
+                    or (command == "/retry" and not retry_enabled)
                     or (command == "/trace" and not trace_enabled)
                 ),
             )
@@ -424,8 +426,10 @@ class CommandMenu(VerticalMenu):
         for command in COMMANDS:
             action = self.query_one(f"#command-{command[1:]}", Horizontal)
             action.display = command in preview
-            disabled = (command == "/disconnect" and not registry_enabled) or (
-                command == "/trace" and not trace_enabled
+            disabled = (
+                (command == "/disconnect" and not registry_enabled)
+                or (command == "/retry" and not retry_enabled)
+                or (command == "/trace" and not trace_enabled)
             )
             action.set_class(command == selected and not disabled, "-selected")
             action.set_class(disabled, "-disabled")

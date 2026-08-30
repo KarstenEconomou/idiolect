@@ -35,7 +35,7 @@ from idiolect.chat.storage import (
     SavedChat,
     default_chat_title,
 )
-from idiolect.chat.worker import WorkerError
+from idiolect.chat.worker import WorkerError, WorkerState
 from idiolect.config import ChatConfig, GenerationConfig
 from idiolect.prompt import split_bubbles
 from idiolect.tui.catalog import CatalogLayout
@@ -422,6 +422,7 @@ class ChatApp(App[None]):
         self._rows: dict[str, DiscoveryItem | SavedChat] = {}
         self._trace_details_expanded = True
         self._generating = False
+        self._generation_attempt = 0
         self._loading = False
         self._stream_lock = threading.Lock()
         self._streaming_text = ""
@@ -1182,17 +1183,20 @@ class ChatApp(App[None]):
         if is_web_link(url):
             self.open_url(url)
 
-    def _start_generation(self, attempt: int) -> None:
+    def _start_generation(self, attempt: int, *, reload_worker: bool = False) -> None:
         self._generating = True
+        self._generation_attempt = attempt
         self._stream_reset()
         self._set_status("generating")
         self._update_command_menu()
-        self._generate_thread(attempt)
+        self._generate_thread(attempt, reload_worker)
 
     @work(thread=True, exclusive=True, group="generation")
-    def _generate_thread(self, attempt: int) -> None:
+    def _generate_thread(self, attempt: int, reload_worker: bool = False) -> None:
         last_render = 0.0
         try:
+            if reload_worker:
+                self.runtime.reload()
             for delta in self.runtime.generate(attempt, self._report_prefill):
                 if self._stream_append(delta):
                     self.call_from_thread(self._set_status, "generating")
@@ -1698,6 +1702,8 @@ class ChatApp(App[None]):
             self._show_chat_specs()
         elif name == "probe":
             self._show_chat_probe()
+        elif name == "retry":
+            self._retry_generation()
         elif name == "buffer":
             self._show_chat_buffer()
         elif name == "chroma":
@@ -1725,6 +1731,19 @@ class ChatApp(App[None]):
                     self._after_checkpoint_name,
                 )
 
+    def _retry_generation(self) -> None:
+        """Retry one cancelled reply or failed generation."""
+        if not self._retry_enabled():
+            raise CommandError("GENERATION not retryable")
+        session = self._session()
+        last = session.turns[-1]
+        if last.role == "assistant":
+            attempt = session.retry()
+            self._render_transcript()
+            self._start_generation(attempt)
+            return
+        self._start_generation(self._generation_attempt + 1, reload_worker=True)
+
     def _after_checkpoint_name(self, title: str | None) -> None:
         self._close_confirmation()
         if title is not None:
@@ -1739,11 +1758,22 @@ class ChatApp(App[None]):
             and not self._generating
         )
 
+    def _retry_enabled(self) -> bool:
+        """Return whether the latest generation can be retried."""
+        session = self.runtime.session
+        if self._generating or self._loading or session is None or not session.turns:
+            return False
+        last = session.turns[-1]
+        return (
+            last.role == "assistant" and last.finish_reason == "cancelled"
+        ) or (last.role == "user" and self.runtime.state is WorkerState.FAILED)
+
     def _enabled_command_indexes(self) -> tuple[int, ...]:
         return tuple(
             index
             for index, command in enumerate(self._command_matches)
             if (command != "/disconnect" or not self._generating)
+            and (command != "/retry" or self._retry_enabled())
             and (command != "/trace" or self._trace_enabled())
         )
 
@@ -1793,6 +1823,7 @@ class ChatApp(App[None]):
             visible_matches,
             selected,
             registry_enabled=not self._generating,
+            retry_enabled=self._retry_enabled(),
             trace_enabled=self._trace_enabled(),
         )
         composer.command_menu_active = bool(visible_matches)
