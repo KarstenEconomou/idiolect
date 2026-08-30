@@ -46,14 +46,6 @@ class KeyboardOptionList(OptionList):
         Binding("enter", "select", "Select", show=False),
     ]
 
-    class DetailsToggled(Message):
-        """Request a registry-wide details toggle."""
-
-        def __init__(self, key: str) -> None:
-            """Set the highlighted option key."""
-            self.key = key
-            super().__init__()
-
     class EraseRequested(Message):
         """Request erasure for one highlighted option."""
 
@@ -92,13 +84,6 @@ class KeyboardOptionList(OptionList):
                 event.prevent_default()
                 event.stop()
                 self.post_message(self.EraseRequested(option.id))
-                return
-        if event.key == "space" and self.highlighted is not None:
-            option = self.get_option_at_index(self.highlighted)
-            if option.id is not None:
-                event.prevent_default()
-                event.stop()
-                self.post_message(self.DetailsToggled(option.id))
                 return
         await super()._on_key(event)
 

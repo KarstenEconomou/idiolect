@@ -687,8 +687,8 @@ def test_chat_divider_matches_the_page_gutter(tmp_path) -> None:
     asyncio.run(verify())
 
 
-def test_registry_expands_and_collapses_trace_names(tmp_path) -> None:
-    """Check trace hierarchy, entry emphasis, hints, and Space disclosure."""
+def test_registry_shows_trace_names_and_manage_hint(tmp_path) -> None:
+    """Check trace hierarchy, entry emphasis, and selected-row actions."""
     chat = ChatConfig(output=tmp_path)
     generation = GenerationConfig()
     assistant = _assistant()
@@ -728,8 +728,8 @@ def test_registry_expands_and_collapses_trace_names(tmp_path) -> None:
             second_trace = chooser.get_option_at_index(2).prompt
             assert isinstance(second_trace, Text)
             assert "Morning session" in second_trace.plain
-            assert "⎵ DETAILS" in str(
-                app.query_one("#catalog-hints", Static).content
+            assert str(app.query_one("#catalog-hints", Static).content) == (
+                "↑↓ MOVE  ↩ CONNECT  S SPECS  C CHROMA  ⌃C TERMINATE"
             )
             assert "⌫ MANAGE" not in str(
                 app.query_one("#catalog-hints", Static).content
@@ -740,27 +740,6 @@ def test_registry_expands_and_collapses_trace_names(tmp_path) -> None:
             assert unselected_entry.color is not None
             assert unselected_entry.color.number == 8
             assert not unselected_entry.dim
-
-            await pilot.press("space")
-            await pilot.pause()
-            collapsed_first = chooser.get_option_at_index(1).prompt
-            collapsed_second = chooser.get_option_at_index(2).prompt
-            assert isinstance(collapsed_first, Text)
-            assert isinstance(collapsed_second, Text)
-            assert "session" not in collapsed_first.plain
-            assert "session" not in collapsed_second.plain
-            assert "\n" not in collapsed_first.plain
-            assert "\n" not in collapsed_second.plain
-            assert runtime.session is None
-
-            await pilot.press("space")
-            await pilot.pause()
-            expanded_first = chooser.get_option_at_index(1).prompt
-            expanded_second = chooser.get_option_at_index(2).prompt
-            assert isinstance(expanded_first, Text)
-            assert isinstance(expanded_second, Text)
-            assert "Night session" in expanded_first.plain
-            assert "Morning session" in expanded_second.plain
 
             await pilot.press("down")
             await pilot.pause()
@@ -776,8 +755,8 @@ def test_registry_expands_and_collapses_trace_names(tmp_path) -> None:
             assert selected_entry.dim
             assert selected_name.color is None
             assert selected_name.dim
-            assert "⎵ DETAILS" in str(
-                app.query_one("#catalog-hints", Static).content
+            assert str(app.query_one("#catalog-hints", Static).content) == (
+                "↑↓ MOVE  ↩ CONNECT  S SPECS  C CHROMA  ⌫ MANAGE  ⌃C TERMINATE"
             )
             assert "⌫ MANAGE" in str(
                 app.query_one("#catalog-hints", Static).content

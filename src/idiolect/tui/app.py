@@ -432,7 +432,6 @@ class ChatApp(App[None]):
         self.initial_assistant = initial_assistant
         self.initial_chat = initial_chat
         self._rows: dict[str, DiscoveryItem | SavedChat] = {}
-        self._trace_details_expanded = True
         self._generating = False
         self._generation_attempt = 0
         self._loading = False
@@ -592,16 +591,6 @@ class ChatApp(App[None]):
         if self._loading:
             return
         self._open_row(str(event.option.id))
-
-    def on_keyboard_option_list_details_toggled(
-        self,
-        event: KeyboardOptionList.DetailsToggled,
-    ) -> None:
-        """Expand or collapse all trace names in the registry."""
-        if not any(isinstance(row, SavedChat) for row in self._rows.values()):
-            return
-        self._trace_details_expanded = not self._trace_details_expanded
-        self._refresh_catalog_prompts(event.key)
 
     def on_keyboard_option_list_erase_requested(
         self,
@@ -2278,7 +2267,7 @@ class ChatApp(App[None]):
                 saved.assistant.model_basename,
                 "TRACE",
                 "READY",
-                trace_name=(saved.title if self._trace_details_expanded else None),
+                trace_name=saved.title,
             )
             key = f"saved-{saved.id}"
             self._rows[key] = saved
@@ -2478,12 +2467,7 @@ class ChatApp(App[None]):
                     "TRACE",
                     "READY",
                     selected=option.id == selected_key,
-                    trace_name=(
-                        None
-                        if not self._trace_details_expanded
-                        and row.id != managed_trace_id
-                        else row.title
-                    ),
+                    trace_name=row.title,
                     trace_active=row.id == managed_trace_id,
                     trace_visible=(
                         self._trace_blink_visible
@@ -2513,14 +2497,11 @@ class ChatApp(App[None]):
                 else "←→ MOVE  ↩ SELECT  ⎋ RETAIN"
             )
             return
-        has_traces = any(isinstance(row, SavedChat) for row in self._rows.values())
         selected_trace = isinstance(
             self._rows.get(self._selected_catalog_key or ""),
             SavedChat,
         )
         fields = ["↑↓ MOVE", "↩ CONNECT", "S SPECS", "C CHROMA"]
-        if has_traces:
-            fields.append("⎵ DETAILS")
         if selected_trace:
             fields.append("⌫ MANAGE")
         fields.append("⌃C TERMINATE")
@@ -2529,7 +2510,6 @@ class ChatApp(App[None]):
         for removable in (
             "⌃C TERMINATE",
             "C CHROMA",
-            "⎵ DETAILS",
             "↑↓ MOVE",
         ):
             if len(gap.join(fields)) <= available:
