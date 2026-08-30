@@ -823,6 +823,14 @@ class ChatApp(App[None]):
         self._render_command()
         self._render_reference()
 
+    def on_composer_resized(self, event: Composer.Resized) -> None:
+        """Preserve bottom-follow when the composer makes the viewport shorter."""
+        if event.height_delta <= 0:
+            return
+        scroller = self.query_one("#transcript-scroll", VerticalScroll)
+        if scroller.scroll_y >= scroller.max_scroll_y - event.height_delta - 1:
+            scroller.scroll_end(animate=False)
+
     def on_text_area_selection_changed(
         self,
         event: TextArea.SelectionChanged,

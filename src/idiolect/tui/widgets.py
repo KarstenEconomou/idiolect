@@ -134,6 +134,15 @@ class Composer(TextArea):
     reference_menu_escape_enabled = False
     reference_selected = False
     command_selected = False
+    _reported_height: int | None = None
+
+    class Resized(Message):
+        """Report a composer height change."""
+
+        def __init__(self, height_delta: int) -> None:
+            """Set the signed height difference."""
+            self.height_delta = height_delta
+            super().__init__()
 
     class Submitted(Message):
         """Report one submitted composer value."""
@@ -141,6 +150,13 @@ class Composer(TextArea):
         def __init__(self, value: str) -> None:
             self.value = value
             super().__init__()
+
+    def on_resize(self, event: events.Resize) -> None:
+        """Report composer height changes after layout."""
+        previous = self._reported_height
+        self._reported_height = event.size.height
+        if previous is not None and previous != event.size.height:
+            self.post_message(self.Resized(event.size.height - previous))
 
     class SelectorMoved(Message):
         """Report generic selector movement."""

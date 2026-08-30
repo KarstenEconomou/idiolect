@@ -1108,10 +1108,10 @@ def test_footer_discloses_secondary_telemetry_when_space_allows(tmp_path) -> Non
 
 
 def test_composer_submits_and_inserts_line_breaks(tmp_path) -> None:
-    """Check composer submission and multiline input."""
+    """Check multiline submission keeps a followed transcript at the bottom."""
     chat = ChatConfig(output=tmp_path)
     generation = GenerationConfig(max_prompt_tokens=100)
-    runtime = ImmediateRuntime(chat, generation)
+    runtime = MultilineRuntime(chat, generation)
     app = ChatApp(
         chat,
         generation,
@@ -1120,29 +1120,34 @@ def test_composer_submits_and_inserts_line_breaks(tmp_path) -> None:
     )
 
     async def verify() -> None:
-        async with app.run_test(size=(80, 24)) as pilot:
+        async with app.run_test(size=(50, 18)) as pilot:
             await _wait_for_chat(app, pilot)
             composer = app.query_one(Composer)
             prompt = app.query_one("#composer-prompt", Static)
+            scroller = app.query_one("#transcript-scroll", VerticalScroll)
             assert str(prompt.content) == ">"
             assert prompt.region.x < composer.region.x
-            composer.insert("first")
-            await pilot.press("shift+enter")
-            composer.insert("second")
-            assert composer.text == "first\nsecond"
+            assert scroller.max_scroll_y > 0
+            assert scroller.scroll_y == scroller.max_scroll_y
+            lines = tuple(f"line {index}" for index in range(8))
+            composer.insert("\n".join(lines))
+            await pilot.pause()
+            assert composer.text == "\n".join(lines)
             assert prompt.region.y == composer.region.y
+            assert scroller.scroll_y == scroller.max_scroll_y
 
             await pilot.press("enter")
-            for _ in range(20):
-                await pilot.pause()
-                if "Synthetic reply" in app.query_one(Transcript).plain:
-                    break
+            assert await asyncio.to_thread(runtime.generation_started.wait, 1)
+            await pilot.pause()
             transcript = app.query_one(Transcript).plain
-            assert "OP:\n first\n second" in transcript
-            assert "DIXIE:\n Synthetic reply" in transcript
+            assert "OP:\n line 0\n line 1" in transcript
             assert composer.text == ""
+            assert scroller.scroll_y == scroller.max_scroll_y
 
-    asyncio.run(verify())
+    try:
+        asyncio.run(verify())
+    finally:
+        runtime.release_generation.set()
 
 
 def test_transcript_link_opens_validated_web_destination(tmp_path, monkeypatch) -> None:
@@ -2583,6 +2588,38 @@ class TranscriptRuntime(ImmediateRuntime):
         self.session = ChatSession(assistant, self.chat, self.generation, turns)
         self.state = WorkerState.READY
         return self.session
+
+
+class MultilineRuntime(TranscriptRuntime):
+    """Hold generation after one multiline user message is stored."""
+
+    def __init__(self, chat: ChatConfig, generation: GenerationConfig) -> None:
+        """Create generation synchronization points."""
+        super().__init__(chat, generation)
+        self.generation_started = threading.Event()
+        self.release_generation = threading.Event()
+
+    def generate(
+        self,
+        attempt: int = 0,
+        prompt_progress: Callable[[int, int], None] | None = None,
+    ) -> Iterator[str]:
+        """Wait with one pending multiline user message."""
+        del prompt_progress
+        if self.session is None:
+            raise RuntimeError("No fake chat session")
+        self.session.begin_generation()
+        self.generation_started.set()
+        if not self.release_generation.wait(2):
+            raise RuntimeError("Synthetic generation timed out")
+        yield "Synthetic reply"
+        self.session.finish_generation(
+            "Synthetic reply",
+            "length",
+            101 + attempt,
+            TurnTelemetry(2, 2),
+            attempt=attempt,
+        )
 
 
 class ProgressRuntime(ImmediateRuntime):
