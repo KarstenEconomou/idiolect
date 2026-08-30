@@ -9,36 +9,12 @@ DuckDB. It does not use tools or send messages to another service.
 Chat keeps the transcript in memory until the user explicitly saves a snapshot.
 It does not autosave.
 
-The composer keeps accepted prompts and commands in memory for the active chat.
-A loaded trace adds its recorded user messages to this history. When the
-composer is blank, type `?` to consume that discovery sigil and open CONTROL:
+## Keyboard shortcut notation
 
-```text
-CONTROL
-/    COMMAND
-@    REFERENCE
-?    CONTROL
-
-↵    TRANSMIT
-⇧↵   NEWLINE
-↑↓   HISTORY
-ESC  CANCEL
-```
-
-CONTROL closes when the user types, recalls history, inserts a line break, or
-presses Escape or Backspace. The next typed character is inserted normally. Use
-Up to open the history. Then use Up or Down to move through it. Moving down past
-the newest item restores the blank composer. A selected argument command changes
-the composer sigil to `/`, and a selected message reference changes it to `@`. The
-block above the composer starts with the selected identity and does not repeat
-the sigil. Escape removes a selected mode. Backspace also removes it when the
-composer is empty. Use Shift+Enter or Alt+Enter to insert a line break.
-
-`/probe` shows the runtime stack, device, loaded model, and latest generation
-telemetry. It reports output tokens, prefill throughput, decode throughput,
-time to first token, inference latency, and peak memory. Inference latency
-includes prefill and decoding. It does not show prompt context. Use `/buffer`
-for prompt tokens, context utilization, active turns, and resident references.
+Chat uses macOS keyboard symbols as the canonical notation in CONTROL, footers,
+catalog hints, dialogs, and SPECS navigation. `↩` means Return, `⇧` means Shift,
+`⌃` means Control, `⎋` means Escape, `⌫` means Backspace/Delete, and `⎵` means
+Space. Arrow glyphs such as `↑↓` and `←→` retain their usual meaning.
 
 ## Install and open
 

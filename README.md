@@ -144,31 +144,6 @@ idiolect eval var/data/DATASET_ID \
 idiolect chat
 ```
 
-In a blank composer, type `?` to open CONTROL and discover the composer grammar:
-
-```text
-CONTROL
-/    COMMAND
-@    REFERENCE
-?    CONTROL
-
-↵    TRANSMIT
-⇧↵   NEWLINE
-↑↓   HISTORY
-ESC  CANCEL
-```
-
-The first `?` is a discovery sigil and is not inserted. Escape or Backspace
-closes CONTROL. Up opens the active chat's prompt and command history, including
-user messages loaded from a trace.
-When an argument command or message reference is selected, the composer sigil
-becomes `/` or `@`; the block above starts with its identity without repeating
-the sigil. Escape removes a selected mode. Backspace does the same when the
-composer is empty.
-Shift+Enter or Alt+Enter inserts a line break. Use `/retry` to recover a
-cancelled reply or failed generation. `/probe` shows runtime, model-load, and
-latest inference telemetry. Prompt context remains in `/buffer`.
-
 See [docs/index.md](docs/index.md) for the complete procedures, required stop
 conditions, artifact descriptions, and interpretation rules.
 

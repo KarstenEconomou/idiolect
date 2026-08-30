@@ -484,7 +484,7 @@ class ChatApp(App[None]):
             yield KeyboardOptionList(id="chooser")
             yield StatusLine(id="catalog-alert")
             yield Static(
-                "↑↓ MOVE    ENTER CONNECT    CTRL+C TERMINATE",
+                "↑↓ MOVE    ↩ CONNECT    ⌃C TERMINATE",
                 markup=False,
                 id="catalog-hints",
             )
@@ -1654,16 +1654,16 @@ class ChatApp(App[None]):
             self._active_dialog is not None
             and self._active_dialog.kind is DialogKind.CHROMA
         ):
-            self._set_footer("←→ MOVE    ENTER EQUIP    ESC CANCEL")
+            self._set_footer("←→ MOVE    ↩ EQUIP    ⎋ CANCEL")
             return
         if self._active_dialog is not None and self._active_dialog.kind in {
             DialogKind.CONFIRM,
             DialogKind.TRACE_NAME,
         }:
             self._set_footer(
-                "ENTER TRACE    ESC RESUME"
+                "↩ TRACE    ⎋ RESUME"
                 if self._active_dialog.kind is DialogKind.TRACE_NAME
-                else "←→ MOVE    ENTER SELECT    ESC RESUME"
+                else "←→ MOVE    ↩ SELECT    ⎋ RESUME"
             )
             return
         if (
@@ -1671,14 +1671,14 @@ class ChatApp(App[None]):
             and self._active_selector.kind is SelectorKind.REFERENCE
             and self._active_selector.menu_open
         ):
-            self._set_footer("↑↓ MOVE    ENTER REF    ESC CLOSE")
+            self._set_footer("↑↓ MOVE    ↩ REF    ⎋ CLOSE")
             return
         if (
             self._active_selector is not None
             and self._active_selector.kind is SelectorKind.COMMAND
             and self._active_selector.menu_open
         ):
-            self._set_footer("↑↓ MOVE    ENTER COMMAND    ESC CLOSE")
+            self._set_footer("↑↓ MOVE    ↩ COMMAND    ⎋ CLOSE")
             return
         telemetry = self._latest_telemetry()
         if telemetry is None:
@@ -2300,7 +2300,7 @@ class ChatApp(App[None]):
                 self._render_chat_specs_document,
                 "chat",
                 _link_label(self._link_id),
-                "↑↓ SCROLL    ESC LINK    CTRL+C TERMINATE",
+                "↑↓ SCROLL    ⎋ LINK    ⌃C TERMINATE",
             )
         )
 
@@ -2318,7 +2318,7 @@ class ChatApp(App[None]):
                 ),
                 "chat",
                 _link_label(self._link_id),
-                "↑↓ SCROLL    ESC LINK    CTRL+C TERMINATE",
+                "↑↓ SCROLL    ⎋ LINK    ⌃C TERMINATE",
             )
         )
 
@@ -2335,7 +2335,7 @@ class ChatApp(App[None]):
                 ),
                 "chat",
                 _link_label(self._link_id),
-                "↑↓ SCROLL    ESC LINK    CTRL+C TERMINATE",
+                "↑↓ SCROLL    ⎋ LINK    ⌃C TERMINATE",
             )
         )
 
@@ -2396,7 +2396,7 @@ class ChatApp(App[None]):
             self._render_registry_specs_document,
             "registry",
             None,
-            "↑↓ SCROLL    ←→ CONSTRUCT    ENTER CONNECT    ESC REGISTRY    CTRL+C TERMINATE",
+            "↑↓ SCROLL    ←→ CONSTRUCT    ↩ CONNECT    ⎋ REGISTRY    ⌃C TERMINATE",
             cycle=True,
             connect=True,
         )
@@ -2494,14 +2494,14 @@ class ChatApp(App[None]):
             and self._active_dialog.kind is DialogKind.CHROMA
         ):
             self.query_one("#catalog-hints", Static).update(
-                "←→ MOVE    ENTER EQUIP    ESC CANCEL"
+                "←→ MOVE    ↩ EQUIP    ⎋ CANCEL"
             )
             return
         if self._active_dialog is not None and self._active_dialog.trace_id is not None:
             self.query_one("#catalog-hints", Static).update(
-                "ENTER NAME    ESC RETAIN"
+                "↩ NAME    ⎋ RETAIN"
                 if self._active_dialog.kind is DialogKind.TRACE_RENAME
-                else "←→ MOVE    ENTER SELECT    ESC RETAIN"
+                else "←→ MOVE    ↩ SELECT    ⎋ RETAIN"
             )
             return
         has_traces = any(isinstance(row, SavedChat) for row in self._rows.values())
@@ -2509,18 +2509,18 @@ class ChatApp(App[None]):
             self._rows.get(self._selected_catalog_key or ""),
             SavedChat,
         )
-        fields = ["↑↓ MOVE", "ENTER CONNECT", "S SPECS", "C CHROMA"]
+        fields = ["↑↓ MOVE", "↩ CONNECT", "S SPECS", "C CHROMA"]
         if has_traces:
-            fields.append("SPACE DETAILS")
+            fields.append("⎵ DETAILS")
         if selected_trace:
-            fields.append("BACKSPACE MANAGE")
-        fields.append("CTRL+C TERMINATE")
+            fields.append("⌫ MANAGE")
+        fields.append("⌃C TERMINATE")
         available = max(20, self.size.width - 4)
         gap = "    " if available >= 60 else "  "
         for removable in (
-            "CTRL+C TERMINATE",
+            "⌃C TERMINATE",
             "C CHROMA",
-            "SPACE DETAILS",
+            "⎵ DETAILS",
             "↑↓ MOVE",
         ):
             if len(gap.join(fields)) <= available:

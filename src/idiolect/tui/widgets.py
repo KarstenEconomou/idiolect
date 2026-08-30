@@ -425,10 +425,10 @@ class ControlSheet(Static):
         ("@", "REFERENCE"),
         ("?", "CONTROL"),
         None,
-        ("↵", "TRANSMIT"),
-        ("⇧↵", "NEWLINE"),
+        ("↩", "TRANSMIT"),
+        ("⇧↩", "NEWLINE"),
         ("↑↓", "HISTORY"),
-        ("ESC", "CANCEL"),
+        ("⎋", "CANCEL"),
     )
 
     def compose(self) -> ComposeResult:

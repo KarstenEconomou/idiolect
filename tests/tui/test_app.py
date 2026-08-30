@@ -114,7 +114,7 @@ def test_registry_opens_highlighted_assistant_from_keyboard(tmp_path) -> None:
             assert "M" in prompt.plain
             assert "READY" in prompt.plain
             assert str(app.query_one("#catalog-hints", Static).content) == (
-                "↑↓ MOVE    ENTER CONNECT    S SPECS    C CHROMA    CTRL+C TERMINATE"
+                "↑↓ MOVE    ↩ CONNECT    S SPECS    C CHROMA    ⌃C TERMINATE"
             )
 
             await pilot.click(chooser, offset=(2, 1))
@@ -183,7 +183,7 @@ def test_registry_chroma_menu_previews_all_themes_and_persists(tmp_path) -> None
                 <= dialog.content_region.right
             )
             assert str(app.query_one("#catalog-hints", Static).content) == (
-                "←→ MOVE    ENTER EQUIP    ESC CANCEL"
+                "←→ MOVE    ↩ EQUIP    ⎋ CANCEL"
             )
 
             await pilot.press("up", "down")
@@ -242,14 +242,14 @@ def test_registry_chroma_menu_previews_all_themes_and_persists(tmp_path) -> None
                 assert (truecolor.red, truecolor.green, truecolor.blue) == expected
 
             hints = str(app.query_one("#catalog-hints", Static).content)
-            assert hints == "←→ MOVE    ENTER EQUIP    ESC CANCEL"
+            assert hints == "←→ MOVE    ↩ EQUIP    ⎋ CANCEL"
             await pilot.press("enter")
             await pilot.pause()
             assert app.query_one("#catalog-alert", StatusLine).state == (
                 "SYS: ACK HACKER equipped."
             )
             assert str(app.query_one("#catalog-hints", Static).content) == (
-                "↑↓ MOVE    ENTER CONNECT    S SPECS    C CHROMA    CTRL+C TERMINATE"
+                "↑↓ MOVE    ↩ CONNECT    S SPECS    C CHROMA    ⌃C TERMINATE"
             )
             await pilot.press("s")
             await pilot.pause()
@@ -321,7 +321,7 @@ def test_chroma_command_opens_menu_in_chat(tmp_path) -> None:
             assert app.focused is not None
             assert app.focused.id == "chroma-green"
             assert str(app.query_one("#footer", Static).content) == (
-                "←→ MOVE    ENTER EQUIP    ESC CANCEL"
+                "←→ MOVE    ↩ EQUIP    ⎋ CANCEL"
             )
             assert (
                 app.query_one(
@@ -515,7 +515,7 @@ def test_specs_side_arrows_cycle_available_registry_rows(tmp_path) -> None:
             assert specs.has_focus
             assert str(app.query_one("#specs-identity", Static).content) == first.name
             assert str(app.query_one("#specs-hints", Static).content) == (
-                "↑↓ SCROLL    ←→ CONSTRUCT    ENTER CONNECT    ESC REGISTRY    CTRL+C TERMINATE"
+                "↑↓ SCROLL    ←→ CONSTRUCT    ↩ CONNECT    ⎋ REGISTRY    ⌃C TERMINATE"
             )
 
             await pilot.press("right")
@@ -724,10 +724,10 @@ def test_registry_expands_and_collapses_trace_names(tmp_path) -> None:
             second_trace = chooser.get_option_at_index(2).prompt
             assert isinstance(second_trace, Text)
             assert "Morning session" in second_trace.plain
-            assert "SPACE DETAILS" in str(
+            assert "⎵ DETAILS" in str(
                 app.query_one("#catalog-hints", Static).content
             )
-            assert "BACKSPACE MANAGE" not in str(
+            assert "⌫ MANAGE" not in str(
                 app.query_one("#catalog-hints", Static).content
             )
             unselected_entry = trace.get_style_at_offset(
@@ -772,10 +772,10 @@ def test_registry_expands_and_collapses_trace_names(tmp_path) -> None:
             assert selected_entry.dim
             assert selected_name.color is None
             assert selected_name.dim
-            assert "SPACE DETAILS" in str(
+            assert "⎵ DETAILS" in str(
                 app.query_one("#catalog-hints", Static).content
             )
-            assert "BACKSPACE MANAGE" in str(
+            assert "⌫ MANAGE" in str(
                 app.query_one("#catalog-hints", Static).content
             )
 
@@ -837,7 +837,7 @@ def test_registry_confirms_trace_erasure(tmp_path) -> None:
                 == 0
             )
             assert str(app.query_one("#catalog-hints", Static).content) == (
-                "←→ MOVE    ENTER SELECT    ESC RETAIN"
+                "←→ MOVE    ↩ SELECT    ⎋ RETAIN"
             )
             chooser = app.query_one("#chooser", OptionList)
             subject = chooser.get_option_at_index(1).prompt
@@ -896,7 +896,7 @@ def test_registry_renames_trace_with_current_name_as_default(tmp_path) -> None:
             )
             assert name.content_region.x - trace_name_message.content_region.x == 1
             assert str(app.query_one("#catalog-hints", Static).content) == (
-                "ENTER NAME    ESC RETAIN"
+                "↩ NAME    ⎋ RETAIN"
             )
             name.value = "Morning session"
             await pilot.press("enter")
@@ -1203,10 +1203,10 @@ def test_blank_question_mark_opens_static_composer_controls(tmp_path) -> None:
                 ("/", "COMMAND"),
                 ("@", "REFERENCE"),
                 ("?", "CONTROL"),
-                ("↵", "TRANSMIT"),
-                ("⇧↵", "NEWLINE"),
+                ("↩", "TRANSMIT"),
+                ("⇧↩", "NEWLINE"),
                 ("↑↓", "HISTORY"),
-                ("ESC", "CANCEL"),
+                ("⎋", "CANCEL"),
             )
             assert all(row.region.height == 1 for row in sheet.query(".control-action"))
             first_row = sheet.query(".control-action").first()
@@ -1555,7 +1555,7 @@ def test_failed_confirmation_save_keeps_memory_only_chat(tmp_path) -> None:
             await pilot.pause()
             assert app.screen.query_one("#trace-name", Input).has_focus
             assert str(app.query_one("#footer", Static).content) == (
-                "ENTER TRACE    ESC RESUME"
+                "↩ TRACE    ⎋ RESUME"
             )
             await pilot.press("enter")
             await pilot.pause()
@@ -1695,7 +1695,7 @@ def test_command_menu_filters_navigates_and_returns_to_registry(tmp_path) -> Non
             assert not selected_description.styles.text_style.bold
             assert composer.has_focus
             assert str(app.query_one("#footer", Static).content) == (
-                "↑↓ MOVE    ENTER COMMAND    ESC CLOSE"
+                "↑↓ MOVE    ↩ COMMAND    ⎋ CLOSE"
             )
             await pilot.press("down")
             assert chroma_button.has_class("-selected")
@@ -2009,7 +2009,7 @@ def test_reference_menu_selects_bubble_and_escape_clears_reference(tmp_path) -> 
             )
             assert menu.query_one("#reference-2").has_class("-selected")
             assert str(app.query_one("#footer", Static).content) == (
-                "↑↓ MOVE    ENTER REF    ESC CLOSE"
+                "↑↓ MOVE    ↩ REF    ⎋ CLOSE"
             )
             composer_bar = app.query_one("#composer-bar", Horizontal)
             before_geometry = (
@@ -2227,7 +2227,7 @@ def test_specs_command_restores_the_unchanged_trace_chat(tmp_path) -> None:
             assert app.query_one("#chat").display is False
             assert app.query_one("#specs").display
             assert str(app.query_one("#specs-hints", Static).content) == (
-                "↑↓ SCROLL    ESC LINK    CTRL+C TERMINATE"
+                "↑↓ SCROLL    ⎋ LINK    ⌃C TERMINATE"
             )
             content = app.query_one("#specs-body", Static).content
             assert isinstance(content, SpecsDocument)
@@ -2554,7 +2554,7 @@ def test_dirty_slash_commands_open_connection_confirmation(tmp_path) -> None:
             assert app.focused is not None
             assert app.focused.id == "discard"
             assert str(app.query_one("#footer", Static).content) == (
-                "←→ MOVE    ENTER SELECT    ESC RESUME"
+                "←→ MOVE    ↩ SELECT    ⎋ RESUME"
             )
             assert (
                 app.query_one(
