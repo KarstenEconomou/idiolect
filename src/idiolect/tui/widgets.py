@@ -483,6 +483,7 @@ class CommandMenu(VerticalMenu):
         selected: str | None,
         *,
         registry_enabled: bool,
+        op_enabled: bool,
         retry_enabled: bool,
         trace_enabled: bool,
     ) -> None:
@@ -494,6 +495,7 @@ class CommandMenu(VerticalMenu):
                 COMMAND_DESCRIPTIONS[command],
                 disabled=(
                     (command == "/disconnect" and not registry_enabled)
+                    or (command == "/op" and not op_enabled)
                     or (command == "/retry" and not retry_enabled)
                     or (command == "/trace" and not trace_enabled)
                 ),
@@ -508,6 +510,7 @@ class CommandMenu(VerticalMenu):
             action.display = command in preview
             disabled = (
                 (command == "/disconnect" and not registry_enabled)
+                or (command == "/op" and not op_enabled)
                 or (command == "/retry" and not retry_enabled)
                 or (command == "/trace" and not trace_enabled)
             )

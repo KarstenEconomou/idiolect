@@ -194,6 +194,29 @@ def test_session_rejects_invalid_restored_turn_order() -> None:
         )
 
 
+def test_participant_name_is_frozen_after_the_first_model_turn() -> None:
+    """Check an OP override changes prompts only before conversation starts."""
+    state = _state()
+    state.add_env("Local notice")
+    state.set_participant_name(" analyst ")
+    state.add_user("hello")
+
+    prepared = prepare_prompt(state, lambda _value: 1, 0)
+
+    assert state.chat.participant_name == "analyst"
+    assert "[analyst]\nhello" in prepared.prompt
+    assert not state.participant_name_editable
+    with pytest.raises(ChatStateError, match="after first turn"):
+        state.set_participant_name("other")
+
+
+@pytest.mark.parametrize("value", ("", "bad[name", "bad|name", "bad\nname"))
+def test_participant_name_override_rejects_invalid_text(value: str) -> None:
+    """Check an OP override keeps the prompt-header grammar valid."""
+    with pytest.raises(ChatStateError, match="must contain|reserved"):
+        _state().set_participant_name(value)
+
+
 def _state(context: int = 4, prompt_limit: int = 500) -> ChatSession:
     """Return one synthetic chat state without local artifacts."""
     data = TrainDataConfig(

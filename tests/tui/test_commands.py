@@ -11,6 +11,7 @@ from idiolect.tui.commands import CommandError, completions, parse_command
         "/buffer",
         "/chroma",
         "/disconnect",
+        "/op",
         "/probe",
         "/retry",
         "/specs",
@@ -27,13 +28,14 @@ def test_known_command_is_parsed_without_arguments(value: str) -> None:
     assert command.name == value.split()[0][1:]
 
 
-def test_echo_command_keeps_its_argument_text() -> None:
-    """Check the one command that consumes composer arguments."""
-    command = parse_command("/echo hello world")
+@pytest.mark.parametrize("value", ("/echo hello world", "/op analyst"))
+def test_argument_command_keeps_its_argument_text(value: str) -> None:
+    """Check commands that consume composer arguments."""
+    command = parse_command(value)
 
     assert command is not None
-    assert command.name == "echo"
-    assert command.arguments == "hello world"
+    assert command.name == value.split()[0][1:]
+    assert command.arguments == value.split(maxsplit=1)[1]
     assert command.accepts_arguments
 
 
@@ -61,6 +63,7 @@ def test_command_completion_requires_one_command_prefix() -> None:
         "/chroma",
         "/disconnect",
         "/echo",
+        "/op",
         "/probe",
         "/retry",
         "/specs",
@@ -75,6 +78,7 @@ def test_command_completion_requires_one_command_prefix() -> None:
     assert completions("/bu") == ("/buffer",)
     assert completions("/ch") == ("/chroma",)
     assert completions("/ec") == ("/echo",)
+    assert completions("/o") == ("/op",)
     assert completions("message") == ()
     assert completions("/terminate now") == ()
 

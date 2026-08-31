@@ -1981,6 +1981,7 @@ def test_command_menu_filters_navigates_and_returns_to_registry(tmp_path) -> Non
             trace_button = menu.query_one("#command-trace", Horizontal)
             specs_button = menu.query_one("#command-specs", Horizontal)
             probe_button = menu.query_one("#command-probe", Horizontal)
+            op_button = menu.query_one("#command-op", Horizontal)
             buffer_button = menu.query_one("#command-buffer", Horizontal)
             chroma_button = menu.query_one("#command-chroma", Horizontal)
             assert menu.display is True
@@ -2015,6 +2016,10 @@ def test_command_menu_filters_navigates_and_returns_to_registry(tmp_path) -> Non
             assert (
                 str(probe_button.query_one(".command-description", Static).content)
                 == "View active LINK."
+            )
+            assert (
+                str(op_button.query_one(".command-description", Static).content)
+                == "Name OP."
             )
             assert (
                 str(buffer_button.query_one(".command-description", Static).content)
@@ -2055,6 +2060,9 @@ def test_command_menu_filters_navigates_and_returns_to_registry(tmp_path) -> Non
             assert echo_button.display
             assert buffer_button.display is False
             await pilot.press("down")
+            assert op_button.has_class("-selected")
+            assert op_button.display
+            await pilot.press("down")
             assert probe_button.has_class("-selected")
             assert probe_button.display
             await pilot.press("down")
@@ -2071,6 +2079,8 @@ def test_command_menu_filters_navigates_and_returns_to_registry(tmp_path) -> Non
             assert specs_button.has_class("-selected")
             await pilot.press("up")
             assert probe_button.has_class("-selected")
+            await pilot.press("up")
+            assert op_button.has_class("-selected")
             await pilot.press("up")
             assert echo_button.has_class("-selected")
             await pilot.press("up")
@@ -2167,6 +2177,12 @@ def test_echo_command_uses_an_env_turn_and_argument_bar(tmp_path) -> None:
             assert description_style.color is not None
             assert description_style.color.name == "bright_black"
             assert composer.text == ""
+            alert = app.query_one("#command-alert", StatusLine)
+            activity = app.query_one("#activity-row", Horizontal)
+            assert alert.state == "SYS: ACK LINK established."
+            assert alert.region.bottom == command_bar.region.y
+            assert command_bar.region.right == activity.region.right - 1
+            assert alert.region.right == activity.region.right
 
             await pilot.press("backspace")
             await pilot.pause()
@@ -2234,13 +2250,10 @@ def test_command_argument_errors_use_generic_messages(tmp_path) -> None:
                 "SYS: ERR COMMAND argument missing."
             )
             command_bar = app.query_one("#command-bar", Static)
-            alert = app.query_one("#chat-alert", StatusLine)
-            activity = app.query_one("#activity-row", Horizontal)
-            assert alert.region.y == command_bar.content_region.y
-            assert command_bar.region.right <= alert.region.x
-            assert alert.region.right == activity.region.right
+            assert not command_bar.display
+            assert not composer.command_selected
+            assert composer.text == ""
 
-            await pilot.press("escape")
             composer.clear()
             await pilot.pause()
             composer.insert("/chroma extra")
@@ -2282,6 +2295,58 @@ def test_echo_command_can_be_selected_after_prefilled_arguments(tmp_path) -> Non
             await pilot.pause()
             assert runtime.session is not None
             assert runtime.session.turns[-1].content == "hello"
+
+    asyncio.run(verify())
+
+
+def test_op_command_sets_clean_session_participant_policy(tmp_path) -> None:
+    """Check /op updates SPECS and becomes unavailable after the first turn."""
+    chat = ChatConfig(output=tmp_path)
+    generation = GenerationConfig()
+    runtime = ImmediateRuntime(chat, generation)
+    app = ChatApp(
+        chat,
+        generation,
+        runtime_factory=cast(Callable[..., ChatRuntime], lambda *_args: runtime),
+        initial_assistant=_assistant(),
+    )
+
+    async def verify() -> None:
+        async with app.run_test() as pilot:
+            await _wait_for_chat(app, pilot)
+            composer = app.query_one(Composer)
+            session = runtime.session
+            assert session is not None
+            assert session.chat.participant_name == "OP"
+
+            composer.insert("/op analyst")
+            await pilot.press("enter")
+            await pilot.pause()
+            assert composer.command_selected
+            assert composer.text == "analyst"
+            await pilot.press("enter")
+            await pilot.pause()
+
+            assert session.chat.participant_name == "analyst"
+            assert app.query_one("#chat-alert", StatusLine).state == (
+                "SYS: ACK OP named analyst."
+            )
+
+            composer.insert("/specs")
+            await pilot.press("enter")
+            await pilot.pause()
+            content = app.query_one("#specs-body", Static).content
+            assert isinstance(content, SpecsDocument)
+            assert "PARTICIPANT\n analyst\n" in content.plain
+            await pilot.press("escape")
+            await pilot.pause()
+
+            session.add_user("started")
+            composer.insert("/op")
+            await pilot.pause()
+            op_button = app.query_one("#command-op", Horizontal)
+            assert op_button.has_class("-disabled")
+            assert not op_button.has_class("-selected")
 
     asyncio.run(verify())
 

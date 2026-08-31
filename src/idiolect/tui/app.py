@@ -380,6 +380,7 @@ class ChatApp(App[None]):
     #reference-bar { display: none; height: auto; min-height: 3; margin: 0 1; padding: 0 1; border: solid $accent; background: $terminal; }
     #status { display: none; height: 1; color: $metadata; background: $terminal; padding: 0 2; }
     #chat-alert { display: none; width: auto; max-width: 70%; height: 1; color: $accent; background: $terminal; padding: 0 2 0 0; text-align: right; text-style: none; text-overflow: ellipsis; }
+    #command-alert { display: none; width: 100%; height: 1; color: $accent; background: $terminal; padding: 0 2; text-align: right; text-style: none; text-overflow: ellipsis; }
     #confirm-dialog { width: 100%; height: 2; padding: 0 1; background: $terminal; border: none; }
     #confirm-message { height: 1; color: ansi_white; text-style: bold; }
     #confirm-actions { height: 1; }
@@ -533,6 +534,7 @@ class ChatApp(App[None]):
                 yield Transcript(id="transcript")
             with Horizontal(id="activity-row"):
                 with Container(id="activity-primary"):
+                    yield StatusLine(id="command-alert")
                     yield ControlSheet(id="control-sheet")
                     yield CommandMenu(id="command-menu")
                     yield ReferenceMenu(id="reference-menu")
@@ -1194,6 +1196,8 @@ class ChatApp(App[None]):
             ValueError,
             WorkerError,
         ) as error:
+            if self._command_selected:
+                self._escape_command()
             self._show_err(str(error))
 
     def action_stop(self) -> None:
@@ -1799,6 +1803,14 @@ class ChatApp(App[None]):
             self._render_transcript()
             self._update_footer()
             return
+        if name == "op":
+            if not arguments.strip():
+                raise CommandError("COMMAND argument missing")
+            session = self._session()
+            session.set_participant_name(arguments)
+            self._show_ack(f"OP named {session.chat.participant_name}")
+            self._update_command_menu()
+            return
         if name == "terminate":
             self.action_interrupt()
         elif name == "disconnect":
@@ -1877,11 +1889,22 @@ class ChatApp(App[None]):
             last.role == "assistant" and last.finish_reason == "cancelled"
         ) or (last.role == "user" and self.runtime.state is WorkerState.FAILED)
 
+    def _op_enabled(self) -> bool:
+        """Return whether the active clean session can rename OP."""
+        session = self.runtime.session
+        return (
+            session is not None
+            and session.participant_name_editable
+            and not self._generating
+            and not self._loading
+        )
+
     def _enabled_command_indexes(self) -> tuple[int, ...]:
         return tuple(
             index
             for index, command in enumerate(self._command_matches)
             if (command != "/disconnect" or not self._generating)
+            and (command != "/op" or self._op_enabled())
             and (command != "/retry" or self._retry_enabled())
             and (command != "/trace" or self._trace_enabled())
         )
@@ -1932,6 +1955,7 @@ class ChatApp(App[None]):
             visible_matches,
             selected,
             registry_enabled=not self._generating,
+            op_enabled=self._op_enabled(),
             retry_enabled=self._retry_enabled(),
             trace_enabled=self._trace_enabled(),
         )
@@ -2208,11 +2232,18 @@ class ChatApp(App[None]):
         """Show one typed transient notice beside the active controls."""
         if self._notice_timer is not None:
             self._notice_timer.stop()
-        identifier = (
-            "#chat-alert" if self.query_one("#chat").display else "#catalog-alert"
-        )
-        other = "#catalog-alert" if identifier == "#chat-alert" else "#chat-alert"
-        self.query_one(other, StatusLine).set_state("")
+        if self.query_one("#chat").display:
+            identifier = (
+                "#command-alert"
+                if self.query_one("#command-bar", CommandBar).display
+                else "#chat-alert"
+            )
+        else:
+            identifier = "#catalog-alert"
+        for other in {"#catalog-alert", "#chat-alert", "#command-alert"} - {
+            identifier
+        }:
+            self.query_one(other, StatusLine).set_state("")
         body = self._notice_body(message)
         if body and not body.endswith((".", "!", "?")):
             body += "."
@@ -2223,7 +2254,7 @@ class ChatApp(App[None]):
             (f" {kind.value} {body}", Style(color="bright_black")),
         )
         notice = self.query_one(identifier, StatusLine)
-        if identifier == "#chat-alert":
+        if identifier in {"#chat-alert", "#command-alert"}:
             self._align_activity_notice()
         notice.set_content(content, value)
         self._notice_timer = self.set_timer(5, self._clear_notice)
@@ -2233,6 +2264,18 @@ class ChatApp(App[None]):
         if not self.is_mounted or len(self.query("#activity-row")) == 0:
             return
         command_bar = self.query_one("#command-bar", CommandBar)
+        chat_notice = self.query_one("#chat-alert", StatusLine)
+        command_notice = self.query_one("#command-alert", StatusLine)
+        target, source = (
+            (command_notice, chat_notice)
+            if command_bar.display
+            else (chat_notice, command_notice)
+        )
+        if source.state:
+            content = source.render()
+            assert isinstance(content, Text)
+            target.set_content(content, source.state)
+            source.set_state("")
         control_sheet = self.query_one("#control-sheet", ControlSheet)
         command_menu = self.query_one("#command-menu", CommandMenu)
         reference_menu = self.query_one("#reference-menu", ReferenceMenu)
@@ -2262,7 +2305,7 @@ class ChatApp(App[None]):
 
     def _clear_notice(self) -> None:
         """Clear the transient notice line."""
-        for identifier in ("#chat-alert", "#catalog-alert"):
+        for identifier in ("#chat-alert", "#command-alert", "#catalog-alert"):
             self.query_one(identifier, StatusLine).set_state("")
         self._notice_timer = None
 

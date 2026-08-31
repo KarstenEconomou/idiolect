@@ -7,6 +7,7 @@ COMMAND_DESCRIPTIONS = {
     "/chroma": "Equip CHROMA.",
     "/disconnect": "Disconnect active LINK.",
     "/echo": "SYS echo.",
+    "/op": "Name OP.",
     "/probe": "View active LINK.",
     "/retry": "Retry cancelled or failed GENERATION.",
     "/specs": "View CONSTRUCT specifications.",
@@ -15,7 +16,7 @@ COMMAND_DESCRIPTIONS = {
 }
 COMMANDS = tuple(sorted(COMMAND_DESCRIPTIONS))
 
-COMMAND_ARGUMENTS = frozenset({"/echo"})
+COMMAND_ARGUMENTS = frozenset({"/echo", "/op"})
 
 
 class CommandError(ValueError):

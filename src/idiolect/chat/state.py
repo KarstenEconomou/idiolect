@@ -110,6 +110,22 @@ class ChatSession:
         value = [asdict(turn) for turn in self.turns]
         return hashlib.sha256(canonical_json_bytes(value)).hexdigest()
 
+    @property
+    def participant_name_editable(self) -> bool:
+        """Return true before the first model-visible turn."""
+        return not any(turn.role != "env" for turn in self.turns)
+
+    def set_participant_name(self, value: str) -> None:
+        """Set the prompt participant name before the conversation starts."""
+        name = value.strip()
+        if not self.participant_name_editable:
+            raise ChatStateError("OP name cannot change after first turn")
+        if not name:
+            raise ChatStateError("OP name must contain text")
+        if any(character in "[]|\r\n" for character in name):
+            raise ChatStateError("OP name contains a reserved character")
+        self.chat = replace(self.chat, participant_name=name)
+
     def add_user(self, content: str, reference: int | None = None) -> None:
         """Append one user message when no generation is active."""
         if self.generating:

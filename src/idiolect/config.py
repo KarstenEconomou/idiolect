@@ -248,7 +248,7 @@ class ChatConfig:
 
     output: Path | None = None
     seed: int = 0
-    participant_name: str = ""
+    participant_name: str = "OP"
     context_policy: str = ""
     history: str = ""
     default_model: str = ""

@@ -71,7 +71,9 @@ The canonical policy uses these fixed rules:
 - `history = "explicit-save"` disables automatic transcript storage.
 - `context_policy = "recorded-window-drop-oldest"` keeps whole messages and
   removes the oldest messages when the token limit requires it.
-- `participant_name` supplies the synthetic operator name in model text.
+- `participant_name` supplies the synthetic operator name in model text. It is
+  `OP` by default. Use `/op NAME` before the first message to override it for
+  the active session. The selected name is recorded in a saved TRACE.
 - `default_context_messages` limits the base persona when no dataset supplies a
   recorded limit.
 
